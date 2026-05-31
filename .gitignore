@@ -1,0 +1,30 @@
+# SOPS-encrypted secrets
+secrets/*.yaml
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Node
+node_modules/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+
+# Certificates (Caddy internal)
+*.pem
+*.key
+certs/
