@@ -1,0 +1,69 @@
+# Guinevere Restic Backup — Template Service Unit
+# ================================================
+# Purpose: Template-based systemd service for restic backup operations.
+#          The %I instance specifier enables multi-repo configurations
+#          (e.g., 'primary' for Idcloudhost S3 primary repo,
+#           'r2-copy' for Cloudflare R2 secondary copy).
+#
+# Dependency: /opt/guinevere/scripts/guinevere-backup.sh
+#             /home/guinevere/secrets/age-key.txt (SOPS age key)
+#
+# Secrets: No EnvironmentFile with plaintext credentials.
+#          The backup script handles decryption via:
+#            sops exec-env /home/guinevere/secrets/restic.env
+#
+# Deployment:
+#   sudo cp guinevere-backup@.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now guinevere-backup@primary.timer
+#   sudo systemctl enable --now guinevere-backup-weekly@r2-copy.timer
+#   sudo systemctl enable --now guinevere-prune-weekly@primary.timer
+#
+# Logs:
+#   journalctl -eu guinevere-backup@primary.service
+#   journalctl -eu guinevere-backup@r2-copy.service
+#
+# Security: Runs as root (required to read /etc and /opt/guinevere).
+#           Hardened via systemd security directives (ProtectSystem=strict, etc.).
+
+[Unit]
+Description=Restic backup for %I — Guinevere
+Documentation=https://restic.readthedocs.io/en/stable/
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+
+# SOPS age key path for secrets decryption in backup script
+Environment=SOPS_AGE_KEY_FILE=/home/guinevere/secrets/age-key.txt
+
+# Main backup script (handles sops exec-env, restic backup + forget)
+ExecStart=/opt/guinevere/scripts/guinevere-backup.sh
+
+# Resource scheduling — lowest CPU/I/O priority
+Nice=19
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+# Timeout — allow up to 2 hours for initial or large backups
+TimeoutSec=7200
+
+# === Security Hardening ===
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+UMask=0077
+
+# Logging — all output captured to journald
+StandardOutput=journal
+StandardError=journal

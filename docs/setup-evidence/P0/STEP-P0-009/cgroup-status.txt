@@ -1,0 +1,53 @@
+# STEP-P0-009 Cgroup Status
+
+## guinevere.slice
+
+```
+$ systemctl status guinevere.slice
+● guinevere.slice - Guinevere resource control slice (8GB RAM, 2 CPU core quota) per ADR-014
+     Loaded: loaded (/etc/systemd/system/guinevere.slice; static)
+     Active: active since Sun 2026-05-31 13:34:53 WIB
+      Tasks: 0 (limit: 512)
+     Memory: 0B (high: 7.0G max: 8.0G available: 7.0G peak: 0B)
+        CPU: 0
+     CGroup: /guinevere.slice
+```
+
+## Cgroup v2 Knobs
+
+```
+$ cat /sys/fs/cgroup/guinevere.slice/memory.max
+8589934592
+$ cat /sys/fs/cgroup/guinevere.slice/memory.high
+7516192768
+$ cat /sys/fs/cgroup/guinevere.slice/cpu.max
+200000 100000
+$ cat /sys/fs/cgroup/guinevere.slice/io.weight
+default 50
+$ cat /sys/fs/cgroup/guinevere.slice/pids.max
+512
+```
+
+## Interpretation
+
+| Knob | Value | Meaning |
+|---|---|---|
+| memory.max | 8589934592 | 8GB hard limit |
+| memory.high | 7516192768 | 7GB throttle threshold |
+| cpu.max | 200000 100000 | 200% = 2 CPU core quota |
+| io.weight | default 50 | IO weight 50 (default=100) |
+| pids.max | 512 | Max 512 tasks/threads |
+
+## Notes
+
+- Slice is currently empty (0 tasks). No services running inside it yet.
+- All future `guinevere-*.service` units will include `Slice=guinevere.slice`.
+- cgroup v2 enforces limits at every nesting level — child slices cannot exceed parent limits.
+
+## Rollback
+
+```bash
+sudo systemctl stop guinevere.slice
+sudo rm /etc/systemd/system/guinevere.slice
+sudo systemctl daemon-reload
+```

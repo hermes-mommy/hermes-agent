@@ -1,0 +1,42 @@
+# Guinevere Restic Backup — Weekly Redundant Run Timer
+# =====================================================
+# Purpose: Schedules a redundant weekly full backup run for extra safety.
+#          Note: The daily backup script (guinevere-backup.sh) already backs
+#          up to BOTH primary (idcloudhost S3) and secondary (Cloudflare R2)
+#          every day. This weekly run provides an additional safety-net
+#          checkpoint at a different time window.
+#
+# Triggers guinevere-backup@.service (full dual-repo backup).
+#
+# Schedule: Sunday 04:00 WIB — after daily backup (02:00) completes
+#            and before weekly prune (05:00) starts.
+#
+# Ref: research-reports/P0-027-restic-patterns.md §3
+#      "restic copy approach — backup to primary, then copy snapshots
+#       to secondary repo. Deduplication works across repos if chunker
+#       params match."
+#
+# Deployment:
+#   sudo systemctl enable --now guinevere-backup-weekly@r2-copy.timer
+#
+# Verify:
+#   systemctl list-timers --all | grep guinevere
+#   journalctl -eu guinevere-backup@r2-copy.service
+
+[Unit]
+Description=Weekly redundant backup run for %I — Guinevere
+Documentation=https://restic.readthedocs.io/en/stable/045_working_with_repos.html
+
+# Explicitly reference the backup service template.
+# This timer activates guinevere-backup@<instance>.service
+# (e.g., guinevere-backup@r2-copy.service).
+
+[Timer]
+# Sunday 04:00 WIB — after daily backup completes, before prune starts
+OnCalendar=Sun 04:00:00
+Persistent=true
+# 30-minute randomization to spread load
+RandomizedDelaySec=1800
+
+[Install]
+WantedBy=timers.target

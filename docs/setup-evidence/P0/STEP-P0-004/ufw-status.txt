@@ -1,0 +1,102 @@
+# STEP-P0-004 UFW Status Evidence
+
+Date: 2026-05-31
+Host: faiz-prod-01 / 100.94.104.22
+
+## Baseline before P0-004 additive rule
+
+Command:
+ssh -o BatchMode=yes -o ConnectTimeout=10 root@100.94.104.22 "sudo ufw status verbose && sudo ufw status numbered && tailscale version && ip -brief addr show tailscale0"
+
+Output:
+Status: active
+Logging: on (low)
+Default: deny (incoming), allow (outgoing), deny (routed)
+New profiles: skip
+
+To                         Action      From
+--                         ------      ----
+22/tcp                     ALLOW IN    Anywhere                   # SSH key-only
+22/tcp (v6)                ALLOW IN    Anywhere (v6)              # SSH key-only
+
+Status: active
+
+     To                         Action      From
+     --                         ------      ----
+[ 1] 22/tcp                     ALLOW IN    Anywhere                   # SSH key-only
+[ 2] 22/tcp (v6)                ALLOW IN    Anywhere (v6)              # SSH key-only
+
+1.98.3
+  tailscale commit: a16e0f20cff0acd5617fd1b315df32cdad17a8fa
+  long version: 1.98.3-ta16e0f20c-ge0c644472
+  other commit: e0c6444725a27ff911a18cc4b18575d8700339d5
+  go version: go1.26.3 (tailscale/go e877d97384)
+tailscale0       UNKNOWN        100.94.104.22/32 fd7a:115c:a1e0::8f3b:6816/128 fe80::379f:c94c:3695:af1/64
+
+## Dry-run before applying P0-004 rule
+
+Command:
+ssh -o BatchMode=yes -o ConnectTimeout=10 root@100.94.104.22 "sudo ufw --dry-run allow 41641/udp comment 'Tailscale'"
+
+Relevant output excerpt:
+### tuple ### allow tcp 22 0.0.0.0/0 any 0.0.0.0/0 in comment=535348206b65792d6f6e6c79
+-A ufw-user-input -p tcp --dport 22 -j ACCEPT
+
+### tuple ### allow udp 41641 0.0.0.0/0 any 0.0.0.0/0 in comment=5461696c7363616c65
+-A ufw-user-input -p udp --dport 41641 -j ACCEPT
+
+### tuple ### allow tcp 22 ::/0 any ::/0 in comment=535348206b65792d6f6e6c79
+-A ufw6-user-input -p tcp --dport 22 -j ACCEPT
+
+### tuple ### allow udp 41641 ::/0 any ::/0 in comment=5461696c7363616c65
+-A ufw6-user-input -p udp --dport 41641 -j ACCEPT
+
+Result:
+Rules updated
+Rules updated (v6)
+
+## Applied command
+
+Command:
+ssh -o BatchMode=yes -o ConnectTimeout=10 root@100.94.104.22 "sudo ufw allow 41641/udp comment 'Tailscale'"
+
+Output:
+Rule added
+Rule added (v6)
+
+## Final UFW state
+
+Command:
+ssh -o BatchMode=yes -o ConnectTimeout=10 root@100.94.104.22 "sudo ufw status verbose && sudo ufw status numbered"
+
+Output:
+Status: active
+Logging: on (low)
+Default: deny (incoming), allow (outgoing), deny (routed)
+New profiles: skip
+
+To                         Action      From
+--                         ------      ----
+22/tcp                     ALLOW IN    Anywhere                   # SSH key-only
+41641/udp                  ALLOW IN    Anywhere                   # Tailscale
+22/tcp (v6)                ALLOW IN    Anywhere (v6)              # SSH key-only
+41641/udp (v6)             ALLOW IN    Anywhere (v6)              # Tailscale
+
+Status: active
+
+     To                         Action      From
+     --                         ------      ----
+[ 1] 22/tcp                     ALLOW IN    Anywhere                   # SSH key-only
+[ 2] 41641/udp                  ALLOW IN    Anywhere                   # Tailscale
+[ 3] 22/tcp (v6)                ALLOW IN    Anywhere (v6)              # SSH key-only
+[ 4] 41641/udp (v6)             ALLOW IN    Anywhere (v6)              # Tailscale
+
+## Added rules summary
+
+Command:
+ssh -o BatchMode=yes -o ConnectTimeout=10 root@100.94.104.22 "sudo ufw show added"
+
+Output:
+Added user rules (see 'ufw status' for running firewall):
+ufw allow 22/tcp comment 'SSH key-only'
+ufw allow 41641/udp comment 'Tailscale'

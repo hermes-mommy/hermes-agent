@@ -1,0 +1,25 @@
+=== P1-020 Redis DB5 Cost Tracking Keys ===
+DB: 5 (Rate Limiting / Cost Tracking)
+ACL User: guinevere_core (+@all -@dangerous)
+Date: 2026-06-01
+
+--- Budget Thresholds ---
+budget:monthly_cap           30.00
+budget:daily_alert           1.00
+budget:warning_threshold     15.00
+budget:critical_threshold    25.00
+budget:hard_stop             30.00
+
+--- Cost Counters ---
+cost:current_month           0.00
+cost:current_day             0.00
+
+--- Per-Model Costs (HSET) ---
+cost:by_model:gpt-5.5        0.00
+cost:by_model:deepseek-v4-flash  0.00
+cost:by_model:graceful_degradation 0.00
+
+--- Per-Phase Costs (HSET) ---
+cost:by_phase:P1             0.00
+
+DBSIZE: 11 keys

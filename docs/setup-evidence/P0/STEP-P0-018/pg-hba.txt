@@ -1,0 +1,30 @@
+=== P0-018 pg_hba.conf (Final) ===
+Date: 2026-05-31
+Path: /home/guinevere/data/postgres/pg_hba.conf (volume mount → /var/lib/postgresql/data/pg_hba.conf)
+Backup: /home/guinevere/data/postgres/pg_hba.conf.pre-P0-018
+
+=== CONTENTS ===
+# PostgreSQL Client Authentication — Guinevere P0-018 hardened
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+# Superuser admin via docker exec (Unix socket)
+local   all             guinevere                               trust
+# All other local — SCRAM required
+local   all             all                                     scram-sha-256
+# Loopback TCP
+host    all             all             127.0.0.1/32            scram-sha-256
+host    all             all             ::1/128                 scram-sha-256
+# PgBouncer connection pooling (guinevere-net Docker subnet)
+host    all             all             172.28.0.0/16           scram-sha-256
+# Replication
+local   replication     all                                     trust
+host    replication     all             127.0.0.1/32            scram-sha-256
+host    replication     all             ::1/128                 scram-sha-256
+# Remote (fallback, SCRAM required)
+host    all             all             all                     scram-sha-256
+
+=== CHANGE SUMMARY ===
+- All trust methods replaced with scram-sha-256 (except guinevere superuser local for docker exec admin)
+- 172.28.0.0/16 entry added for PgBouncer connection pooling
+- Loopback TCP entries preserved with scram-sha-256
+- Replication methods preserved with scram-sha-256
+- Remote fallback added with scram-sha-256

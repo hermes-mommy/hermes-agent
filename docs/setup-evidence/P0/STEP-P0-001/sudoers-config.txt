@@ -1,0 +1,23 @@
+# P0-001 sudoers config
+
+Path on VPS: `/etc/sudoers.d/guinevere`
+
+```sudoers
+# Guinevere limited service management only
+# Allows the guinevere user to manage guinevere-prefixed services, never Aizanta services.
+guinevere ALL=(root) NOPASSWD: /usr/bin/systemctl start guinevere-*, /usr/bin/systemctl stop guinevere-*, /usr/bin/systemctl restart guinevere-*, /usr/bin/systemctl status guinevere-*, /usr/bin/journalctl -u guinevere-*
+```
+
+## Validation
+```text
+/etc/sudoers.d/guinevere: parsed OK
+```
+
+## `sudo -l -U guinevere`
+```text
+User guinevere may run the following commands on faiz-prod-01:
+    (root) NOPASSWD: /usr/bin/systemctl start guinevere-*, /usr/bin/systemctl stop guinevere-*, /usr/bin/systemctl restart guinevere-*, /usr/bin/systemctl status guinevere-*, /usr/bin/journalctl -u guinevere-*
+```
+
+## Boundary
+No `aizanta-*` service management is allowed. The sudoers rule only permits `guinevere-*` service control and journal reads.

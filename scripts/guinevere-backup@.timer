@@ -1,0 +1,33 @@
+# Guinevere Restic Backup — Daily Timer Template
+# ===============================================
+# Purpose: Schedules daily restic backup via guinevere-backup@.service.
+#          Fires at 02:00 WIB (UTC+7) with 15-minute randomization.
+#          Persistent=true ensures missed backups fire after system boot.
+#
+# Timezone note: WIB = UTC+7. 02:00 WIB = 19:00 UTC previous day.
+#                systemd uses local time for OnCalendar expressions.
+#
+# Deployment:
+#   sudo systemctl enable --now guinevere-backup@primary.timer
+#
+# Verify schedule:
+#   systemd-analyze calendar "*-*-* 02:00:00"
+#
+# Check status:
+#   systemctl list-timers --all | grep guinevere
+#   journalctl -eu guinevere-backup@primary.service
+
+[Unit]
+Description=Daily restic backup for %I — Guinevere
+Documentation=https://restic.readthedocs.io/en/stable/
+
+[Timer]
+# 02:00 WIB (UTC+7) — off-peak hours
+OnCalendar=*-*-* 02:00:00
+# Fire missed backup if system was offline during scheduled time
+Persistent=true
+# Spread load across 15-minute window to avoid thundering herd
+RandomizedDelaySec=900
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,33 @@
+=== P0-020 Redis Configuration ===
+Date: 2026-05-31
+
+Docker run command (reconstructed from live config):
+  redis-server
+  --requirepass <REDACTED>
+  --maxmemory 2gb
+  --maxmemory-policy allkeys-lru
+  --save 900 1 --save 300 10 --save 60 10000
+  --appendonly yes
+  --appendfsync everysec
+  --rename-command FLUSHALL ""
+  --rename-command FLUSHDB ""
+  --rename-command CONFIG ""
+  --databases 16
+  --loglevel notice
+
+Verified config (redis-cli CONFIG GET):
+  maxmemory: 2147483648
+  maxmemory-policy: allkeys-lru
+  appendonly: yes
+  appendfsync: everysec
+  save: 900 1 300 10 60 10000
+  databases: 16
+  requirepass: set
+
+RDB Files: /home/guinevere/data/redis/
+  dump.rdb (RDB snapshot)
+  appendonly.aof (AOF log)
+
+Port: 127.0.0.1:6380
+Network: guinevere-net (Docker internal only)
+Shared VPS isolation: separate port from Aizanta Redis (127.0.0.1:6379)

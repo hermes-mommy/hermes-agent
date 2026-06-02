@@ -1,0 +1,27 @@
+[Unit]
+Description=Guinevere Obscura CDP Server
+Documentation=https://github.com/h4ckf0r0day/obscura
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/obscura serve --port 9222 --stealth --workers 2
+User=guinevere
+Slice=guinevere.slice
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Resource limits
+MemoryHigh=256M
+MemoryMax=512M
+CPUQuota=100%
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target

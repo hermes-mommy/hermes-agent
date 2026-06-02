@@ -1,0 +1,71 @@
+# Guinevere Restic Prune — Weekly Prune Service
+# ==============================================
+# Purpose: Weekly restic forget --prune to reclaim storage from expired
+#          snapshots. Runs as a separate service from the daily backup
+#          to avoid exclusive lock contention.
+#
+# Rationale (§8.7): "restic prune acquires an exclusive lock. If
+# forget --prune runs as ExecStartPost, it blocks the next scheduled
+# backup." — research-reports/P0-027-restic-patterns.md
+#
+# Solution: Separate systemd service + timer. Daily backup runs 'forget'
+# only (metadata-only, fast). Weekly prune runs heavy 'forget --prune'
+# during off-peak Sunday hours.
+#
+# Dependency: /usr/bin/restic
+#             /home/guinevere/secrets/age-key.txt (SOPS age key)
+#
+# Deployment:
+#   sudo cp guinevere-prune-weekly@.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now guinevere-prune-weekly@primary.timer
+#
+# Logs: journalctl -eu guinevere-prune-weekly@primary.service
+#
+# Security: Runs as root for SOPS key access. Hardened via systemd
+#           security directives (ProtectSystem=strict, etc.).
+
+[Unit]
+Description=Weekly restic prune for %I — Guinevere
+Documentation=https://restic.readthedocs.io/en/stable/
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+
+# SOPS age key for secrets decryption
+Environment=SOPS_AGE_KEY_FILE=/home/guinevere/secrets/age-key.txt
+
+# Prune: forget expired snapshots and reclaim storage space.
+# Uses sops exec-env to decrypt repo credentials, then runs restic forget
+# with keep flags matching the primary retention policy (7d/4w/3m).
+# Separate from daily backup to avoid exclusive lock contention.
+ExecStart=/bin/bash -c 'exec sops exec-env /home/guinevere/secrets/backup/idcloudhost-s3.env restic forget --keep-daily 7 --keep-weekly 4 --keep-monthly 3 --prune'
+
+# Resource scheduling — lowest CPU/I/O priority
+Nice=19
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+# Timeout — prune can take significant time on large repos
+TimeoutSec=7200
+
+# === Security Hardening ===
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+UMask=0077
+
+# Logging — all output captured to journald
+StandardOutput=journal
+StandardError=journal

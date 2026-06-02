@@ -1,0 +1,82 @@
+agent:
+  name: "Guinevere"
+  version: "0.1.0"
+  identity: "Guinevere de Baroque"
+  description: "Autonomous AI companion and engineering agent"
+
+llm:
+  primary:
+    provider: "9router"
+    model: "gpt-5.5"
+    base_url: "http://localhost:20128/v1"
+    max_tokens: 16384
+    temperature: 0.7
+    context_window: 1000000
+  sub_agent:
+    provider: "9router"
+    model: "deepseek-v4-flash"
+    base_url: "http://localhost:20128/v1"
+    max_tokens: 8192
+    temperature: 0.5
+  fallback:
+    provider: "graceful_degradation"
+    enabled: false
+    reason: "Ollama skipped per Faiz directive 2026-06-01; ADR-028 superseded by migration-9router decisions"
+    primary_route: "opencode-go/deepseek-v4-flash"
+    secondary_route: "openai-compatible-chat-d2069ce0-65f4-4191-b91f-9065118c7a0e/gpt-5.5"
+
+memory:
+  backend: "postgresql"
+  database: "guinevere"
+  schema: "memory"
+  redis_cache: true
+  redis_db: 3
+  embedding_model: "text-embedding-3-small"
+  embedding_dimensions: 1536
+  max_recall_items: 20
+  context_injection: true
+
+loop:
+  phases: 7
+  max_concurrent_loops: 3
+  heartbeat_interval: 30
+  progress_timeout: 300
+  resource_check_interval: 60
+
+safety:
+  safe_word: "HARD STOP"
+  yandere_max: "Y5"
+  yandere_baseline: "Y4"
+  distress_levels: ["D0","D1","D2","D3","D4"]
+  punishment_max: "L5"
+  punishment_deferred: ["L6"]
+
+budget:
+  monthly_cap: 30.0
+  daily_alert: 1.0
+  warning_threshold: 15.0
+  critical_threshold: 25.0
+  hard_stop_threshold: 30.0
+
+tools:
+  auth_matrix:
+    read: "auto"
+    write: "notify"
+    destructive: "approval"
+    forbidden: "blocked"
+
+messaging:
+  discord:
+    enabled: true
+    prefix: "!"
+    intents: ["messages","guilds","members","message_content"]
+
+monitoring:
+  prometheus:
+    enabled: true
+    port: 9091
+    path: "/metrics"
+  sentry:
+    enabled: true
+    traces_sample_rate: 0.1
+    profiles_sample_rate: 0.1

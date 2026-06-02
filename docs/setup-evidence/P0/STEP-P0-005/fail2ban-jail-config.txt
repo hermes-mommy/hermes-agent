@@ -1,0 +1,75 @@
+# STEP-P0-005 fail2ban Jail Config Evidence
+
+Date: 2026-05-31
+Host: faiz-prod-01 / 100.94.104.22
+
+## Runtime File Added
+
+Path:
+
+```text
+/etc/fail2ban/jail.d/zz-guinevere-p0-005.local
+```
+
+Content:
+
+```ini
+[DEFAULT]
+ignoreip = 127.0.0.1/8 ::1 100.94.104.22 100.112.201.124
+backend = systemd
+banaction = ufw[blocktype=deny]
+banaction_allports = ufw[blocktype=deny]
+
+[sshd]
+enabled = true
+port = ssh
+filter = sshd
+maxretry = 3
+findtime = 600
+bantime = 86400
+backend = systemd
+banaction = ufw[blocktype=deny]
+```
+
+Permissions:
+
+```text
+chmod 644 /etc/fail2ban/jail.d/zz-guinevere-p0-005.local
+```
+
+## Existing Aizanta Jail Preserved
+
+Path:
+
+```text
+/etc/fail2ban/jail.d/aizanta-sshd.local
+```
+
+Content observed after P0-005:
+
+```ini
+[sshd]
+enabled = true
+port = 22
+maxretry = 5
+findtime = 10m
+bantime = 24h
+backend = systemd
+```
+
+This file was not edited by P0-005. The Guinevere drop-in sorts later and tightens shared `sshd` runtime settings without overwriting Aizanta's file.
+
+## Backup
+
+Before adding the Guinevere drop-in, the existing fail2ban configuration directory was backed up:
+
+```text
+/etc/fail2ban.backup.p0-005-20260531 exists
+```
+
+## Design Notes
+
+- `jail.local` was intentionally not created because this VPS already had fail2ban and Aizanta-specific jail configuration.
+- The implementation uses a late-loading `jail.d/*.local` drop-in so rollback is one file removal plus service restart.
+- `ignoreip` explicitly includes localhost, VPS Tailscale IP `100.94.104.22`, and operator Windows Tailscale IP `100.112.201.124`.
+- The broad Tailscale CGNAT range was not whitelisted; only known operator/VPS IPs were whitelisted.

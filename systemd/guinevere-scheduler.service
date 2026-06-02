@@ -1,0 +1,33 @@
+[Unit]
+Description=Guinevere Loop Scheduler Daemon
+After=guinevere-loops.service network.target
+Requires=guinevere-loops.service
+
+[Service]
+Type=exec
+User=guinevere
+WorkingDirectory=/home/guinevere/code/guinevere
+Environment=PYTHONPATH=/home/guinevere/code/guinevere
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=VIRTUAL_ENV=/home/guinevere/code/guinevere/.venv
+Environment=REDIS_PASSWORD=%E/REDIS_PASSWORD
+ExecStart=/home/guinevere/code/guinevere/.venv/bin/python -m src.loops.scheduler
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+Slice=guinevere.slice
+
+# Resource limits
+MemoryHigh=1G
+MemoryMax=2G
+CPUQuota=200%
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/guinevere/code/guinevere /home/guinevere/data /home/guinevere/logs /home/guinevere/evidence
+
+[Install]
+WantedBy=multi-user.target

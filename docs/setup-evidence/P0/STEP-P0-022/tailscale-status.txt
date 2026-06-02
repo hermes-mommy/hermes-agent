@@ -1,0 +1,31 @@
+=== P0-022 Tailscale Status ===
+Date: 2026-05-31
+VPS: faiz-prod-01 (100.94.104.22)
+
+=== TAILSCALE VERSION ===
+1.98.3 (go1.26.3, commit a16e0f20c)
+
+=== DEVICE STATUS ===
+Self: 100.94.104.22 faiz-prod-01 (fazulfi@) linux -
+Tags: pending tag:service (ACL policy created, needs admin console apply)
+
+=== PEERS ===
+100.112.201.124  faizzzzz           windows  active; direct 182.8.68.196:7793
+100.104.35.93    backend            linux    -
+100.127.51.59    budgezen-openclaw  linux    -
+100.89.183.24    db-1               linux    -
+100.108.191.1    frontend           linux    -
+100.108.206.99   xiaomi-11t         android  offline
+
+=== CONNECTIVITY ===
+tailscale ping faizzzzz: pong in 17ms (direct)
+ping faizzzzz: 19ms (ICMP)
+MagicDNS: tail05ac84.ts.net (resolved)
+
+=== UFW ===
+41641/udp ALLOW (Tailscale)
+41641/udp (v6) ALLOW (Tailscale)
+
+=== SSH ===
+SSH via direct IP: OK (ssh guinevere-vps works)
+SSH via Tailscale: pending tag:service + --ssh enable

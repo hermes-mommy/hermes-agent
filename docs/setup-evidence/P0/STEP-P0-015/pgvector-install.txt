@@ -1,0 +1,55 @@
+# STEP-P0-015 — pgvector Installation Log
+
+## Package Info
+
+```
+$ dpkg-query -W postgresql-16-pgvector
+postgresql-16-pgvector	0.8.2-1.pgdg16+1
+
+$ cat /usr/share/postgresql/16/extension/vector.control
+# pgvector extension
+comment = 'vector data type and similarity search algorithms'
+default_version = '0.8.2'
+module_pathname = '$libdir/vector'
+trusted = true
+```
+
+## Extension Verification
+
+```
+$ psql -U guinevere -d guinevere -c "SELECT extname, extversion FROM pg_extension WHERE extname='vector'"
+ extname | extversion 
+---------+------------
+ vector  | 0.8.2
+
+$ psql -U guinevere -d guinevere -c "\dx"
+                   List of installed extensions
+  Name   | Version |   Schema   |         Description          
+---------+---------+------------+------------------------------
+ plpgsql | 1.0     | pg_catalog | PL/pgSQL procedural language
+ vector  | 0.8.2   | public     | vector data type and similarity search algorithms
+```
+
+## Functional Test
+
+```
+$ psql -U guinevere -d guinevere -c "
+CREATE TABLE IF NOT EXISTS p0_015_test (id serial PRIMARY KEY, embedding vector(3));
+INSERT INTO p0_015_test (embedding) VALUES ('[1,2,3]'), ('[4,5,6]');
+SELECT id, embedding, embedding <=> '[1,2,3]'::vector AS cosine_distance FROM p0_015_test ORDER BY cosine_distance;
+DROP TABLE p0_015_test;
+"
+
+ id | embedding | cosine_distance 
+----+-----------+-----------------
+  1 | [1,2,3]  |                0
+  2 | [4,5,6]  | 5.196152422706632
+```
+
+## Image
+
+```
+$ docker images guinevere-postgres-pgvector
+REPOSITORY                      TAG       IMAGE ID       SIZE
+guinevere-postgres-pgvector     16        abc...         500MB
+```

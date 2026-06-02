@@ -1,0 +1,79 @@
+=== VPS AUDIT 2026-05-31T00:00:00+07:00 ===
+
+--- OS ---
+PRETTY_NAME="Ubuntu 24.04 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04 LTS (Noble Numbat)"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=noble
+LOGO=ubuntu-logo
+
+--- Kernel ---
+6.8.0-31-generic
+
+--- Running Services ---
+auditd.service              loaded active running Security Auditing Service
+chrony.service              loaded active running chrony, an NTP client/server
+containerd.service          loaded active running containerd container runtime
+cron.service                loaded active running Regular background program processing daemon
+dbus.service                loaded active running D-Bus System Message Bus
+docker.service              loaded active running Docker Application Container Engine
+fail2ban.service            loaded active running Fail2Ban Service
+qemu-guest-agent.service    loaded active running QEMU Guest Agent
+rsyslog.service             loaded active running System Logging Service
+ssh.service                 loaded active running OpenBSD Secure Shell server
+tailscaled.service          loaded active running Tailscale node agent
+unattended-upgrades.service loaded active running Unattended Upgrades Shutdown
+user@1000.service           loaded active running User Manager for UID 1000
+
+--- Disk ---
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/vda1        99G  8.7G   85G  10% /
+
+--- Memory ---
+Mem:            15Gi       1.1Gi       6.2Gi        30Mi       8.3Gi        14Gi
+Swap:             0B          0B          0B
+
+--- CPU ---
+4
+
+--- Docker ---
+CONTAINER ID   IMAGE                COMMAND                  CREATED      STATUS                PORTS                      NAMES
+d6f85ed46c67   aizanta-bot          "uvicorn src.main:ap…"   7 days ago   Up 7 days (healthy)   8000/tcp                   aizanta-bot
+061f5d9d7ec6   nginx:1.27-alpine    "/docker-entrypoint.…"   7 days ago   Up 7 days (healthy)   100.94.104.22:80->80/tcp   aizanta-nginx
+41b76ae122be   python:3.12-slim     "tail -f /dev/null"      7 days ago   Up 7 days                                        objective_buck
+6a8f6e6debf3   python:3.12-slim     "tail -f /dev/null"      7 days ago   Up 7 days                                        elastic_beaver
+bcd72b99d3c9   aizanta-frontend     "docker-entrypoint.s…"   7 days ago   Up 7 days (healthy)   3000/tcp                   aizanta-frontend
+76269d716b7c   postgres:16-alpine   "docker-entrypoint.s…"   7 days ago   Up 7 days (healthy)   127.0.0.1:5432->5432/tcp   aizanta-postgres
+ba26765b6dbc   redis:7.2-alpine     "docker-entrypoint.s…"   7 days ago   Up 7 days (healthy)   127.0.0.1:6379->6379/tcp   aizanta-redis
+
+--- PostgreSQL ---
+Not installed
+
+--- Redis ---
+Not installed
+
+--- Ports ---
+LISTEN 0      4096                     127.0.0.1:6379       0.0.0.0:*
+LISTEN 0      4096                 100.94.104.22:80         0.0.0.0:*
+LISTEN 0      4096                 100.94.104.22:36438      0.0.0.0:*
+LISTEN 0      4096                     127.0.0.1:5432       0.0.0.0:*
+LISTEN 0      4096                       0.0.0.0:22         0.0.0.0:*
+LISTEN 0      4096                          [::]:22            [::]:*
+LISTEN 0      4096   [fd7a:115c:a1e0::8f3b:6816]:34717         [::]:*
+
+--- Tailscale ---
+100.94.104.22    faiz-prod-01       fazulfi@  linux    -                          
+100.104.35.93    backend            fazulfi@  linux    -                          
+100.127.51.59    budgezen-openclaw  fazulfi@  linux    -                          
+100.89.183.24    db-1               fazulfi@  linux    -                          
+100.112.201.124  faizzzzz           fazulfi@  windows  -                          
+100.108.191.1    frontend           fazulfi@  linux    -                          
+100.108.206.99   xiaomi-11t         fazulfi@  android  offline, last seen 8d ago

@@ -1,0 +1,17 @@
+$ find src -type d | sort
+src
+src/core
+src/core/api
+src/core/config
+src/core/models
+src/core/services
+src/discord
+src/financial
+src/loops
+src/mcp
+src/memory
+src/observability
+src/persona
+src/surveillance
+
+14 directories total.

@@ -1,0 +1,58 @@
+# STEP-P0-016 TimescaleDB Installation
+
+## Package: timescaledb-2-postgresql-16
+
+Version: 2.27.1 (requirement: >= 2.15)
+
+## Install Method
+
+Via TimescaleDB apt repository inside `guinevere-postgres` Docker container (Debian 13 trixie):
+
+```
+deb [signed-by=/usr/share/keyrings/timescaledb.gpg] https://packagecloud.io/timescale/timescaledb/debian/ bookworm main
+```
+
+## shared_preload_libraries
+
+```
+SHOW shared_preload_libraries;
+ timescaledb
+```
+
+Set via `ALTER SYSTEM SET shared_preload_libraries = 'timescaledb'`. Container restarted — only `guinevere-postgres` affected.
+
+## Extensions
+
+```
+SELECT extname, extversion FROM pg_extension ORDER BY extname;
+ plpgsql     | 1.0
+ timescaledb | 2.27.1
+ vector      | 0.8.2
+```
+
+## Container
+
+```
+$ pg_isready -U guinevere
+/var/run/postgresql:5432 - accepting connections
+```
+
+## Hypertable Test
+
+```
+CREATE TABLE test_metrics (time TIMESTAMPTZ NOT NULL, value DOUBLE PRECISION);
+SELECT create_hypertable('test_metrics', 'time');
+INSERT INTO test_metrics VALUES (NOW(), 1.0), (NOW(), 2.0);
+SELECT count(*) FROM test_metrics; -- 2
+DROP TABLE test_metrics;
+```
+
+## Rollback
+
+```bash
+docker exec guinevere-postgres psql -U guinevere -d guinevere -c "DROP EXTENSION timescaledb CASCADE"
+docker exec guinevere-postgres su - postgres -c "psql -c 'ALTER SYSTEM RESET shared_preload_libraries'"
+docker restart guinevere-postgres
+docker exec guinevere-postgres apt-get remove -y timescaledb-2-postgresql-16
+docker exec guinevere-postgres rm /etc/apt/sources.list.d/timescaledb.list
+```

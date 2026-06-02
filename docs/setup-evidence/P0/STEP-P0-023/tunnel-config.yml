@@ -1,0 +1,18 @@
+# Sanitized copy of /home/guinevere/config/cloudflared/config.yml
+# Credential file path is included, but credential file contents are NOT included.
+
+tunnel: 47d1c79b-e0e0-4562-95dd-93d91e62590b
+credentials-file: /home/guinevere/.cloudflared/47d1c79b-e0e0-4562-95dd-93d91e62590b.json
+
+ingress:
+  - hostname: discord-webhook.mypapyr.com
+    path: /webhook/discord*
+    service: http://localhost:8000
+    originRequest:
+      connectTimeout: 10s
+  - hostname: discord-webhook.mypapyr.com
+    path: /discord/webhook*
+    service: http://localhost:8000
+    originRequest:
+      connectTimeout: 10s
+  - service: http_status:404

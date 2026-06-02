@@ -1,0 +1,105 @@
+# STEP-P0-005 fail2ban Status Evidence
+
+Date: 2026-05-31
+Host: faiz-prod-01 / 100.94.104.22
+Step: P0-005 fail2ban configuration
+
+## Package and Service
+
+Command:
+
+```bash
+systemctl is-active fail2ban
+dpkg-query -W fail2ban
+```
+
+Output:
+
+```text
+active
+fail2ban	1.0.2-3ubuntu0.1
+```
+
+## Global fail2ban Status
+
+Command:
+
+```bash
+fail2ban-client status
+```
+
+Output:
+
+```text
+Status
+|- Number of jail:	1
+`- Jail list:	sshd
+```
+
+## sshd Jail Status
+
+Command:
+
+```bash
+fail2ban-client status sshd
+```
+
+Output after final TEST-NET cleanup:
+
+```text
+Status for the jail: sshd
+|- Filter
+|  |- Currently failed:	1
+|  |- Total failed:	1
+|  `- Journal matches:	_SYSTEMD_UNIT=sshd.service + _COMM=sshd
+`- Actions
+   |- Currently banned:	37
+   |- Total banned:	39
+   `- Banned IP list:	103.12.135.35 103.200.25.198 103.67.80.61 103.85.66.217 113.193.234.210 118.26.36.195 141.98.9.227 152.32.132.28 156.245.246.50 165.22.34.238 171.25.158.70 182.253.156.184 185.175.170.125 185.195.13.17 185.227.153.56 185.246.128.170 194.164.193.54 2.57.122.238 20.203.59.187 200.155.66.2 202.53.94.246 209.99.184.143 210.90.155.178 211.253.37.225 222.98.122.37 31.220.89.126 43.165.3.187 45.231.116.119 5.253.59.68 5.99.196.202 64.89.161.56 68.66.251.43 69.73.187.130 78.44.192.210 79.3.96.178 89.167.67.234 89.190.156.8
+```
+
+## Effective Runtime Settings
+
+Commands:
+
+```bash
+fail2ban-client get sshd ignoreip
+fail2ban-client get sshd actions
+fail2ban-client get sshd action ufw actionban
+fail2ban-client get sshd bantime
+fail2ban-client get sshd findtime
+fail2ban-client get sshd maxretry
+fail2ban-client get sshd journalmatch
+```
+
+Output:
+
+```text
+These IP addresses/networks are ignored:
+|- 127.0.0.0/8
+|- 100.94.104.22
+|- 100.112.201.124
+`- ::1
+
+The jail sshd has the following actions:
+ufw
+
+if [ -n "" ] && ufw app info ""
+then
+ufw prepend deny from <ip> to any app "" comment "by Fail2Ban after <failures> attempts against sshd"
+else
+ufw prepend deny from <ip> to any comment "by Fail2Ban after <failures> attempts against sshd"
+fi
+
+86400
+600
+3
+Current match filter:
+_SYSTEMD_UNIT=sshd.service + _COMM=sshd
+```
+
+## Notes
+
+- `fail2ban-client get sshd banaction` is not valid for fail2ban 1.0.2 on this host; `fail2ban-client get sshd actions` and `fail2ban-client get sshd action ufw actionban` are the verified commands.
+- `systemctl restart fail2ban` was required after reload because the generated config showed UFW action, but the runtime action remained stale until restart.
+- Existing active bans were preserved across restart.

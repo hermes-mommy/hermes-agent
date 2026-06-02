@@ -1,0 +1,50 @@
+# STEP-P0-006 CrowdSec Collections Evidence
+
+Date: 2026-05-31
+
+## Hub / Collection Commands
+
+Commands executed:
+
+```bash
+cscli hub update
+cscli collections install crowdsecurity/nginx
+cscli collections list -o human | grep -E 'crowdsecurity/(linux|sshd|nginx|whitelist-good-actors)'
+```
+
+## Enabled Collections
+
+Output:
+
+```text
+crowdsecurity/linux                  enabled  /etc/crowdsec/collections/linux.yaml
+crowdsecurity/nginx                  enabled  /etc/crowdsec/collections/nginx.yaml
+crowdsecurity/sshd                   enabled  /etc/crowdsec/collections/sshd.yaml
+crowdsecurity/whitelist-good-actors  enabled  /etc/crowdsec/collections/whitelist-good-actors.yaml
+```
+
+## Acquisition Notes
+
+CrowdSec unattended setup generated SSH acquisition from host auth logs:
+
+```yaml
+# /etc/crowdsec/acquis.d/setup.sshd.yaml
+filenames:
+  - /var/log/auth.log
+  - /var/log/secure
+labels:
+  type: syslog
+source: file
+```
+
+The nginx collection is installed as content-ready, but no fake host nginx acquisition was created because `/var/log/nginx` does not exist on the host. Aizanta nginx runs in Docker; this step did not touch Aizanta Docker, nginx, or log configuration.
+
+## Config Validation
+
+Command:
+
+```bash
+crowdsec -t
+```
+
+Result: command exited successfully with no validation error output.

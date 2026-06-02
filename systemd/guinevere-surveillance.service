@@ -1,0 +1,36 @@
+[Unit]
+Description=Guinevere Surveillance Consumer
+After=guinevere-core.service docker.service network.target
+Requires=guinevere-core.service
+
+[Service]
+Type=exec
+User=guinevere
+Group=guinevere
+WorkingDirectory=/home/guinevere/code/guinevere
+Environment=PYTHONPATH=/home/guinevere/code/guinevere
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=VIRTUAL_ENV=/home/guinevere/code/guinevere/.venv
+Environment=REDIS_PASSWORD=%E/REDIS_PASSWORD
+Environment=GUINEVERE_DB_PASSWORD=%E/GUINEVERE_DB_PASSWORD
+Environment=DATABASE_URL=postgresql+asyncpg://guinevere:%E/GUINEVERE_DB_PASSWORD@localhost:5433/guinevere
+ExecStart=/home/guinevere/code/guinevere/.venv/bin/python -m src.surveillance.consumer
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+Slice=guinevere.slice
+
+# Resource limits — smaller than loops daemon
+MemoryHigh=512M
+MemoryMax=768M
+CPUQuota=100%
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/guinevere/code/guinevere /home/guinevere/data /home/guinevere/logs /home/guinevere/evidence
+
+[Install]
+WantedBy=multi-user.target

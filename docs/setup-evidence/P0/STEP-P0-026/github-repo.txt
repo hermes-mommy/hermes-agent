@@ -1,0 +1,31 @@
+=== P0-026 GitHub Repository Connection ===
+Date: 2026-05-31
+VPS: faiz-prod-01 (100.94.104.22)
+
+=== Repository ===
+Name: fazulfi/guinevere
+URL: https://github.com/fazulfi/guinevere
+Visibility: Private
+Branch: main
+
+=== Remote ===
+origin  https://github.com/fazulfi/guinevere.git (fetch)
+origin  https://github.com/fazulfi/guinevere.git (push)
+Tracking: main -> origin/main
+
+=== Commit History ===
+92fee59 chore: add repository secret safeguards
+6a793e6 chore: initial repo structure
+
+=== Tracked Files ===
+.gitignore (95 lines)
+.sops.yaml (7 lines)
+README.md (5 lines)
+
+=== Secret Security ===
+- GitHub PAT NOT stored in repo or evidence
+- PAT encrypted with SOPS+age at /home/guinevere/secrets/github-pat.yaml
+- SHA256: 6027f08f9168f4e1afa1fb0a04dd995cceb139105db8ec60518458d74f1c245f
+- File: 1192 bytes, owner guinevere:guinevere, mode 600
+- Age recipient: age17cyg77cswk0du44k3r02g3l83x2f62crcnjnzv5cz5vtndve7yksck2zqj
+- PAT value NEVER captured in evidence, logs, or tracked files

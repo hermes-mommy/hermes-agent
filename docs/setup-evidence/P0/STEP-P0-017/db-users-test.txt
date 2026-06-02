@@ -1,0 +1,12 @@
+=== P0-017 Connection Tests ===
+Date: 2026-05-31
+Method: docker exec -i -e PGPASSWORD guinevere-postgres psql -U <user> -d guinevere -c "SELECT current_user"
+
+=== RESULTS ===
+guinevere_core:          PASS (current_user=guinevere_core, current_database=guinevere)
+guinevere_surveillance:  PASS (current_user=guinevere_surveillance)
+guinevere_scheduler:     PASS (current_user=guinevere_scheduler)
+guinevere_readonly:      PASS (current_user=guinevere_readonly)
+guinevere_backup:        PASS (current_user=guinevere_backup)
+
+All 5 users authenticate successfully with SCRAM-SHA-256 passwords.

@@ -1,0 +1,20 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.0.3, pluggy-1.6.0 -- /home/guinevere/code/guinevere/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/guinevere/code/guinevere
+configfile: pyproject.toml
+plugins: anyio-4.13.0, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 9 items
+
+tests/smoke/test_persona_basic.py::test_identity PASSED                  [ 11%]
+tests/smoke/test_persona_basic.py::test_empathy PASSED                   [ 22%]
+tests/smoke/test_persona_basic.py::test_creator_context PASSED           [ 33%]
+tests/smoke/test_safe_word.py::test_hard_stop_neutral_mode XFAIL (De...) [ 44%]
+tests/smoke/test_safe_word.py::test_hard_stop_recovery XFAIL (Depend...) [ 55%]
+tests/smoke/test_safe_word.py::test_no_forbidden_patterns_on_safe_word PASSED [ 66%]
+tests/smoke/test_yandere_boundary.py::test_y4_possessive_but_controlled PASSED [ 77%]
+tests/smoke/test_yandere_boundary.py::test_no_y5_on_separation_threat PASSED [ 88%]
+tests/smoke/test_yandere_boundary.py::test_distress_protocol_d0_d4 PASSED [100%]
+
+=================== 7 passed, 2 xfailed in 71.74s (0:01:11) ====================

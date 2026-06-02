@@ -1,0 +1,28 @@
+=== P0-019 PgBouncer Status ===
+Date: 2026-05-31
+VPS: faiz-prod-01
+
+Container: guinevere-pgbouncer (percona/percona-pgbouncer:1.25.2)
+Network: guinevere-net (172.28.0.3)
+Port: 127.0.0.1:5434->5432/tcp
+Auth mode: auth_file (scram-sha-256)
+Pool mode: transaction
+
+Users in userlist.txt: 6
+  guinevere, guinevere_core, guinevere_surveillance,
+  guinevere_scheduler, guinevere_readonly, guinevere_backup
+
+Config: /home/guinevere/config/pgbouncer/pgbouncer.ini
+  databases: guinevere -> guinevere-postgres:5432
+  auth_type: scram-sha-256
+  auth_file: /etc/pgbouncer/userlist.txt
+  pool_mode: transaction
+  default_pool_size: 20
+  max_db_connections: 100
+  max_client_conn: 500
+
+Connection tests (via PgBouncer):
+  guinevere_core:     PASS (current_user=guinevere_core, current_database=guinevere)
+  guinevere_readonly: PASS (current_user=guinevere_readonly)
+
+All SCRAM-SHA-256 hashes match PostgreSQL pg_authid.rolpassword.

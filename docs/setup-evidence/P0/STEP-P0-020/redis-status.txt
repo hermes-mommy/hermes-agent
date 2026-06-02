@@ -1,0 +1,42 @@
+=== P0-020 Redis 7 Docker Status ===
+Date: 2026-05-31
+VPS: faiz-prod-01 (100.94.104.22)
+
+=== Container ===
+Image: redis:7.4-alpine
+Name: guinevere-redis
+Status: running
+Network: guinevere-net
+Port: 127.0.0.1:6380->6379/tcp
+Restart: unless-stopped
+Resources: --cpus 1 --memory 3g
+
+=== Redis Version ===
+redis_version:7.4.9
+
+=== Configuration ===
+maxmemory: 2147483648 (2GB)
+maxmemory-policy: allkeys-lru
+databases: 16
+
+=== Persistence ===
+RDB: save 900 1 / 300 10 / 60 10000
+AOF: appendonly yes, appendfsync everysec
+Data dir: /home/guinevere/data/redis → /data (container)
+
+=== Security ===
+requirepass: set (SCRAM-style password, SOPS encrypted)
+protected-mode: n/a (container internal, port mapping to 127.0.0.1)
+rename-command: FLUSHALL, FLUSHDB, CONFIG disabled
+
+=== Authentication ===
+Without password: NOAUTH Authentication required.
+With password: PONG
+
+=== Connection ===
+redis-cli -h 127.0.0.1 -p 6380 -a <password> PING → PONG
+
+=== SOPS ===
+File: /home/guinevere/secrets/redis-password.yaml (600, guinevere:guinevere)
+SHA256: e9a5accb460eabdba5a2a01999638ad6d5a4a4e50f867038269dc81b43c5b267
+Age recipient: age17cyg77cswk0du44k3r02g3l83x2f62crcnjnzv5cz5vtndve7yksck2zqj

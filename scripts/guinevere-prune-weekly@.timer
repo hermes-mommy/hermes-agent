@@ -1,0 +1,37 @@
+# Guinevere Restic Prune — Weekly Prune Timer
+# ============================================
+# Purpose: Schedules weekly restic prune via guinevere-prune-weekly@.service.
+#          Runs Sunday 05:00 WIB — after R2 copy (04:00) completes,
+#          ensuring the daily backup → R2 copy → prune pipeline executes
+#          in correct order without overlap.
+#
+# Design rationale (§8.7):
+#   - Daily backup (02:00 WIB): restic backup + 'forget' only (metadata)
+#   - Weekly R2 copy (04:00 WIB Sun): restic copy to secondary repo
+#   - Weekly prune (05:00 WIB Sun): restic forget --prune (heavy, exclusive lock)
+#
+# This separation prevents the exclusive lock from 'prune' blocking
+# backup or copy operations.
+#
+# Ref: research-reports/P0-027-restic-patterns.md §8.7
+#
+# Deployment:
+#   sudo systemctl enable --now guinevere-prune-weekly@primary.timer
+#
+# Verify:
+#   systemctl list-timers --all | grep guinevere
+#   journalctl -eu guinevere-prune-weekly@primary.service
+
+[Unit]
+Description=Weekly restic prune for %I — Guinevere
+Documentation=https://restic.readthedocs.io/en/stable/
+
+[Timer]
+# Sunday 05:00 WIB — after R2 copy (04:00) completes
+OnCalendar=Sun 05:00:00
+Persistent=true
+# 15-minute randomization
+RandomizedDelaySec=900
+
+[Install]
+WantedBy=timers.target

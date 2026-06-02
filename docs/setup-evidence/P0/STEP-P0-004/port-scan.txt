@@ -1,0 +1,109 @@
+# STEP-P0-004 Port Scan Fallback Evidence
+
+Date: 2026-05-31
+Scanner host: Windows workstation over Tailscale
+Target: 100.94.104.22 (faiz-prod-01)
+
+## Tool availability
+
+Command:
+```powershell
+nmap --version
+```
+
+Output:
+```text
+nmap : The term 'nmap' is not recognized as the name of a cmdlet, function, script file, or operable program. Check
+the spelling of the name, or if a path was included, verify that the path is correct and try again.
+```
+
+Because `nmap` is not installed in this Windows execution environment, deterministic `Test-NetConnection` checks were used as the fallback port probe. This evidence does not claim a real nmap scan.
+
+## SSH reachability expected open
+
+Command:
+```powershell
+Test-NetConnection -ComputerName 100.94.104.22 -Port 22
+```
+
+Output:
+```text
+ComputerName     : 100.94.104.22
+RemoteAddress    : 100.94.104.22
+RemotePort       : 22
+InterfaceAlias   : Tailscale
+SourceAddress    : 100.112.201.124
+TcpTestSucceeded : True
+```
+
+## Guinevere PostgreSQL target port expected blocked/closed
+
+Command:
+```powershell
+Test-NetConnection -ComputerName 100.94.104.22 -Port 5433
+```
+
+Output:
+```text
+WARNING: TCP connect to (100.94.104.22 : 5433) failed
+
+ComputerName           : 100.94.104.22
+RemoteAddress          : 100.94.104.22
+RemotePort             : 5433
+InterfaceAlias         : Tailscale
+SourceAddress          : 100.112.201.124
+PingSucceeded          : True
+PingReplyDetails (RTT) : 17 ms
+TcpTestSucceeded       : False
+```
+
+## Guinevere Redis target port expected blocked/closed
+
+Command:
+```powershell
+Test-NetConnection -ComputerName 100.94.104.22 -Port 6380
+```
+
+Output:
+```text
+WARNING: TCP connect to (100.94.104.22 : 6380) failed
+
+ComputerName           : 100.94.104.22
+RemoteAddress          : 100.94.104.22
+RemotePort             : 6380
+InterfaceAlias         : Tailscale
+SourceAddress          : 100.112.201.124
+PingSucceeded          : True
+PingReplyDetails (RTT) : 17 ms
+TcpTestSucceeded       : False
+```
+
+## Tailscale UDP caveat
+
+Command:
+```powershell
+Test-NetConnection -ComputerName 100.94.104.22 -Port 41641
+```
+
+Output:
+```text
+WARNING: TCP connect to (100.94.104.22 : 41641) failed
+
+ComputerName           : 100.94.104.22
+RemoteAddress          : 100.94.104.22
+RemotePort             : 41641
+InterfaceAlias         : Tailscale
+SourceAddress          : 100.112.201.124
+PingSucceeded          : True
+PingReplyDetails (RTT) : 17 ms
+TcpTestSucceeded       : False
+```
+
+This is expected because `Test-NetConnection -Port` checks TCP, while Tailscale direct connections use UDP 41641. UFW evidence for UDP 41641 is captured in `ufw-status.txt`.
+
+## Interpretation
+
+- SSH port 22 is reachable as required.
+- Guinevere PostgreSQL target port 5433 is not reachable from the workstation.
+- Guinevere Redis target port 6380 is not reachable from the workstation.
+- Tailscale UDP 41641 is allowed in UFW, but this fallback probe cannot validate UDP reachability.

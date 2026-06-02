@@ -1,0 +1,1 @@
+# Safety test suite — P1-021 HARD STOP Protocol Verification Gate

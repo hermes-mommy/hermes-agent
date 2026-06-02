@@ -1,0 +1,38 @@
+Migration Generation and Application Output
+Date: 2026-06-02
+Host: guinevere-vps (Tailscale 100.94.104.22)
+Project: /home/guinevere/code/guinevere
+Migration: 65f863220922_add_search_vector_do_not_recall
+
+=== Current revision ===
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+e401bb5fd274 (head)
+
+=== Generating autogenerate revision ===
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.schemas
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.tables
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.types
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.constraints
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.defaults
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.comments
+INFO  [alembic.autogenerate.compare.tables] Detected added column 'memory.episodes.search_vector'
+INFO  [alembic.autogenerate.compare.tables] Detected added column 'memory.episodes.do_not_recall'
+INFO  [alembic.autogenerate.compare.constraints] Detected added index 'ix_episodes_search_vector_gin' on '('search_vector',)'
+Generating /home/guinevere/code/guinevere/alembic/versions/65f863220922_add_search_vector_do_not_recall.py ... done
+
+=== Migration files ===
+drwxrwxr-x 4 guinevere guinevere  4096 Jun  2 05:49 ..
+-rw-rw-r-- 1 guinevere guinevere   741 Jun  2 05:52 2bed93fd1dd0_baseline_init.py
+-rw-rw-r-- 1 guinevere guinevere  1652 Jun  2 13:58 65f863220922_add_search_vector_do_not_recall.py
+-rw-rw-r-- 1 guinevere guinevere 77190 Jun  2 07:27 e401bb5fd274_initial_schema_47_tables.py
+drwxrwxr-x 2 guinevere guinevere  4096 Jun  2 13:58 __pycache__
+
+=== Upgrade head ===
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade e401bb5fd274 -> 65f863220922, add_search_vector_do_not_recall
+
+=== Done ===

@@ -1,0 +1,65 @@
+# STEP-P0-012 — Age Key Proof (ORIGINAL — COMPROMISED — ROTATED 2026-05-31)
+
+> **⚠️ THIS FILE DOCUMENTS THE ORIGINAL (EXPOSED) KEY.**
+> Key was rotated after session chat exposure incident. Do NOT use this key for SOPS encryption.
+> See `age-pubkey.txt` and `age-test.txt` in this directory for the current active key.
+
+## Public Key (COMPROMISED — DO NOT USE)
+
+```
+age1ekex7ffc6u47k5naxsef70x72pquqage2utewfzaskkutnsj2u9qgpwe5f
+```
+
+## Key File
+
+- **Path** (original): `/home/guinevere/secrets/age-key.txt`
+- **Owner**: `guinevere:guinevere`
+- **Permissions**: `600` (rw-------)
+- **Size**: 189 bytes
+- **Type**: ASCII text
+- **Created**: 2026-05-31T14:11:56+07:00
+
+## Round-Trip Encrypt/Decrypt Test (Original Key)
+
+```
+$ echo 'guinevere-p0-012-test' > plain.txt
+$ age -r age1ekex7ffc6u47k5naxsef70x72pquqage2utewfzaskkutnsj2u9qgpwe5f -o test.enc plain.txt
+$ age -d -i /home/guinevere/secrets/age-key.txt -o dec.txt test.enc
+$ cat dec.txt
+guinevere-p0-012-test
+```
+
+**Result: PASS** — encryption and decryption work correctly (original key before rotation).
+
+## Post-Rotation Status
+
+- **Old key backup**: `/home/guinevere/secrets/age-key.txt.compromised-20260531` (root:root, 189 bytes)
+- **New public key**: `age17cyg77cswk0du44k3r02g3l83x2f62crcnjnzv5cz5vtndve7yksck2zqj`
+- **Round-trip test (new key)**: PASS — verified via re-audit on 2026-05-31
+
+## Security
+
+- ⚠️ **Private key is NEVER included in evidence, logs, git, or any artifact.**
+- Only the public key fingerprint is recorded.
+- Key file is accessible only by user `guinevere` (chmod 600).
+- Key is in `/home/guinevere/secrets/` which was created with 700 permissions in P0-003.
+
+## Backup
+
+- Key backup is mandatory per ADR-015 and the Encryption Key Management Policy.
+- Backup location: operator-managed secure storage (password manager, encrypted USB, or paper backup).
+- Recovery procedure: copy backup key to `/home/guinevere/secrets/age-key.txt`, chmod 600, chown guinevere:guinevere.
+
+## Rollback
+
+```bash
+# Remove key
+sudo rm /home/guinevere/secrets/age-key.txt
+
+# Generate new key
+sudo -u guinevere age-keygen -o /home/guinevere/secrets/age-key.txt
+chmod 600 /home/guinevere/secrets/age-key.txt
+
+# Update all SOPS-encrypted files with new public key
+sops updatekeys <encrypted-file>
+```

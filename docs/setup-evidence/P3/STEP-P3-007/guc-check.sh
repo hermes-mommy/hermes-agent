@@ -1,0 +1,11 @@
+#!/bin/bash
+echo "=== GUC CHECK ==="
+echo "--- pg_settings for hnsw/ef_search ---"
+docker exec guinevere-postgres psql -U guinevere -d guinevere -c "SELECT name, setting, context FROM pg_settings WHERE name LIKE '%hnsw%' OR name LIKE '%ef_search%';"
+echo ""
+echo "--- SHOW ALL | grep hnsw ---"
+docker exec guinevere-postgres psql -U guinevere -d guinevere -c "SHOW ALL;" 2>/dev/null | grep -i hnsw || echo "No hnsw GUC found in SHOW ALL"
+echo ""
+echo "--- pgvector version details ---"
+docker exec guinevere-postgres psql -U guinevere -d guinevere -c "SELECT extversion, extconfig, extcondition FROM pg_extension WHERE extname = 'vector';"
+echo "=== GUC CHECK COMPLETE ==="

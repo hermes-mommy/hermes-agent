@@ -1,0 +1,17 @@
+=== P0-021 Redis ACL Connection Tests ===
+Date: 2026-05-31
+
+All tests executed via redis-py in Docker container on guinevere-net:
+
+guinevere_admin → ACL WHOAMI: guinevere_admin ✅
+guinevere_core → ACL WHOAMI: guinevere_core ✅
+guinevere_session → ACL WHOAMI: guinevere_session ✅
+guinevere_cache → ACL WHOAMI: guinevere_cache ✅
+guinevere_scheduler → ACL WHOAMI: guinevere_scheduler ✅
+guinevere_surveillance → ACL WHOAMI: guinevere_surveillance ✅
+
+default → disabled ✅ (cannot auth)
+requirepass → removed ✅
+
+All 6/6 ACL users authenticate successfully.
+Default user disabled — locked down.

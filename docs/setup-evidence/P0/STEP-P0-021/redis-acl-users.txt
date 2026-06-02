@@ -1,0 +1,45 @@
+=== P0-021 Redis ACL Users ===
+Date: 2026-05-31
+VPS: faiz-prod-01 (100.94.104.22)
+Redis: 7.4.9-alpine on guinevere-net (127.0.0.1:6380)
+
+=== ACL USERS ===
+1. guinevere_admin
+2. guinevere_core
+3. guinevere_session
+4. guinevere_cache
+5. guinevere_scheduler
+6. guinevere_surveillance
+
+=== PERMISSIONS ===
+All users: +@all -@dangerous
+guinevere_admin: +@all (full admin, including dangerous)
+
+=== AUTH TEST RESULTS (all PASS) ===
+guinevere_admin:       auth OK
+guinevere_core:        auth OK
+guinevere_session:     auth OK
+guinevere_cache:       auth OK
+guinevere_scheduler:   auth OK
+guinevere_surveillance: auth OK
+
+=== IMPLEMENTATION ===
+Created via redis-py executing raw ACL SETUSER commands through container.
+Notable issues: redis-py's acl_setuser() helper corrupts passwords.
+Workaround: r.execute_command('ACL', 'SETUSER', name, 'on', f'>{password}', '~*', '+@all', '-@dangerous').
+
+=== SECURITY ===
+- Default user disabled
+- requirepass removed (ACL users only)
+- 32-char hex passwords (192 bits entropy)
+- SOPS encrypted at /home/guinevere/secrets/redis-acl-passwords.yaml
+- SHA256: b79f1f849d418f5f237240a6ea7a0f0bb8f18c03153bba358c3e859773667345
+
+=== ADR COMPLIANCE ===
+- ADR-030: Redis DB0-DB5, ACL users per service
+- Keyspace assignment: admin(DB0), core(DB0), session(DB1-pending config), cache(DB2), scheduler(DB3), surveillance(DB4)
+- ADR-015: SOPS+age encryption
+
+=== NOTE ===
+aclfile not configured (keeps ACL in RDB). Use SAVE/BGSAVE for persistence.
+Keyspace (DB) restrictions applied via future redis.conf config, not ACL.

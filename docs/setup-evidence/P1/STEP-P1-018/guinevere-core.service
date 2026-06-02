@@ -1,0 +1,32 @@
+[Unit]
+Description=Guinevere Core Daemon
+After=docker.service network.target guinevere-9router.service
+Requires=docker.service guinevere-9router.service
+
+[Service]
+Type=exec
+User=guinevere
+WorkingDirectory=/home/guinevere/code/guinevere
+Environment=PYTHONPATH=/home/guinevere/code/guinevere
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=VIRTUAL_ENV=/home/guinevere/code/guinevere/.venv
+ExecStart=/home/guinevere/code/guinevere/.venv/bin/uvicorn src.core.main:app --host 127.0.0.1 --port 8000 --workers 2
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+Slice=guinevere.slice
+
+# Resource limits (guinevere.slice: 8GB RAM, 200% CPU = 2 vCPU)
+MemoryHigh=1G
+MemoryMax=2G
+CPUQuota=200%
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/guinevere/code/guinevere /home/guinevere/data /home/guinevere/logs /home/guinevere/evidence
+
+[Install]
+WantedBy=multi-user.target

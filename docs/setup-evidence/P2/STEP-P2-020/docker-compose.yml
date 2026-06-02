@@ -1,0 +1,18 @@
+services:
+  gotify:
+    image: gotify/server:latest
+    container_name: guinevere-gotify
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:80"
+    volumes:
+      - /home/guinevere/data/gotify:/app/data
+    environment:
+      GOTIFY_DEFAULTUSER_NAME: admin
+      GOTIFY_DEFAULTUSER_PASS: ${GOTIFY_ADMIN_PASSWORD}
+    networks:
+      - guinevere-net
+
+networks:
+  guinevere-net:
+    external: true

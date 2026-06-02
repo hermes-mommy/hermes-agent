@@ -1,0 +1,100 @@
+# P0-022 Tailscale ACL Policy — Guinevere
+
+## Tailnet Info
+- VPS: faiz-prod-01 (100.94.104.22)
+- Operator: faizzzzz (100.112.201.124, fazulfi@github)
+- Tailscale version: 1.98.3
+- MagicDNS: tail05ac84.ts.net
+
+## ACL Policy (HuJSON)
+
+```jsonc
+{
+  // Define groups and tags
+  "groups": {
+    "group:admin": ["fazulfi@github"],
+  },
+  "tagOwners": {
+    "tag:service": ["group:admin"],
+  },
+
+  // ACL grants — only these connections are allowed
+  "grants": [
+    // Admin group has full access to everything
+    {
+      "src": ["group:admin"],
+      "dst": ["*:*"],
+    },
+
+    // Tagged services on VPS can reach each other
+    {
+      "src": ["tag:service"],
+      "dst": ["tag:service:*"],
+    },
+
+    // Admin group can SSH into all machines
+    {
+      "src": ["group:admin"],
+      "dst": ["*:22"],
+    },
+  ],
+
+  // SSH grants (separate from network grants)
+  "ssh": [
+    {
+      "action": "accept",
+      "src": ["group:admin"],
+      "dst": ["tag:service"],
+      "users": ["root", "guinevere", "aizanta", "faiz"],
+    },
+  ],
+
+  // Auto-approvers for headless devices
+  "autoApprovers": {
+    "routes": {
+      "0.0.0.0/0": [],
+      "10.0.0.0/8": ["tag:service"],
+    },
+  },
+
+  // Self-test: verify admin can reach everything at policy change time
+  "tests": [
+    {
+      "src": "fazulfi@github",
+      "accept": ["tag:service:22"],
+      "deny": ["tag:service:5433"],
+    },
+  ],
+}
+```
+
+## Instructions for Faiz
+
+1. Go to https://login.tailscale.com/admin/acls
+2. Replace existing ACL with the above HuJSON
+3. Check "Convert to grants" if prompted
+4. Apply
+
+## Verification Commands
+
+```bash
+tailscale status                    # VPS online at 100.94.104.22
+tailscale ip -4                     # 100.94.104.22
+tailscale ping faizzzzz             # <20ms direct
+ping faizzzzz                       # ICMP <20ms
+tailscale status --json | grep Tags # confirm tag:service after tagging
+```
+
+## Post-ACL Steps (after policy applied)
+
+```bash
+# Tag the VPS as a service
+sudo tailscale set --advertise-tags=tag:service
+
+# Enable Tailscale SSH
+sudo tailscale set --ssh
+
+# Re-verify
+tailscale status --self
+tailscale ping faizzzzz
+```

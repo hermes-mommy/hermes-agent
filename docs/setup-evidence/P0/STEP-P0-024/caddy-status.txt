@@ -1,0 +1,28 @@
+=== P0-024 Caddy Status ===
+Date: 2026-05-31
+VPS: faiz-prod-01 (100.94.104.22)
+
+=== Installation ===
+Version: 2.11.3 (installed via Cloudsmith official repo)
+Service: caddy.service (active, running)
+Slice: guinevere.slice (MemoryMax=8G, CPUQuota=200%)
+Config path: /etc/caddy/Caddyfile
+
+=== Configuration ===
+3 TLS sites:
+- https://100.94.104.22:8443 → FastAPI backend (localhost:8000)
+- https://100.94.104.22:3443 → Grafana backend (localhost:3000)
+- https://127.0.0.1:9443 → Prometheus backend (localhost:9090)
+
+TLS: internal (self-signed, auto-generated per Caddy)
+Port 80: auto_https off (port 80 is Aizanta nginx)
+Bind: 100.94.104.22 (Tailscale) + 127.0.0.1
+
+=== Verification ===
+systemctl is-active caddy: active
+ss listening: 100.94.104.22:8443, 100.94.104.22:3443, 127.0.0.1:9443
+Health checks: backends not running yet — expected for P0 infrastructure phase
+
+=== Aizanta Impact ===
+No port conflict — Caddy uses 8443/3443/9443, Aizanta uses 80.
+Aizanta 5/5 healthy, protected ports unchanged.

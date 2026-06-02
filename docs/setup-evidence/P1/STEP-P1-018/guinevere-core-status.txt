@@ -1,0 +1,23 @@
+● guinevere-core.service - Guinevere Core Daemon
+     Loaded: loaded (/etc/systemd/system/guinevere-core.service; enabled; preset: enabled)
+     Active: active (running) since Mon 2026-06-01 09:46:57 WIB; 41s ago
+   Main PID: 661232 (uvicorn)
+      Tasks: 8 (limit: 18653)
+     Memory: 115.7M (high: 1.0G max: 2.0G available: 908.2M peak: 116.4M)
+        CPU: 3.639s
+     CGroup: /guinevere.slice/guinevere-core.service
+             ├─661232 /home/guinevere/code/guinevere/.venv/bin/python3 /home/guinevere/code/guinevere/.venv/bin/uvicorn src.core.main:app --host 127.0.0.1 --port 8000 --workers 2
+             ├─661234 /home/guinevere/code/guinevere/.venv/bin/python3 -B -c "from multiprocessing.resource_tracker import main;main(6)"
+             ├─661235 /home/guinevere/code/guinevere/.venv/bin/python3 -B -c "from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=7, pipe_handle=9)" --multiprocessing-fork
+             └─661236 /home/guinevere/code/guinevere/.venv/bin/python3 -B -c "from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=7, pipe_handle=13)" --multiprocessing-fork
+
+Jun 01 09:46:58 faiz-prod-01 uvicorn[661232]: INFO:     Started parent process [661232]
+Jun 01 09:47:00 faiz-prod-01 uvicorn[661235]: INFO:     Started server process [661235]
+Jun 01 09:47:00 faiz-prod-01 uvicorn[661235]: INFO:     Waiting for application startup.
+Jun 01 09:47:00 faiz-prod-01 uvicorn[661235]: 2026-06-01 09:47:00 [info     ] guinevere_starting             version=0.1.0
+Jun 01 09:47:00 faiz-prod-01 uvicorn[661235]: INFO:     Application startup complete.
+Jun 01 09:47:00 faiz-prod-01 uvicorn[661236]: INFO:     Started server process [661236]
+Jun 01 09:47:00 faiz-prod-01 uvicorn[661236]: INFO:     Waiting for application startup.
+Jun 01 09:47:00 faiz-prod-01 uvicorn[661236]: 2026-06-01 09:47:00 [info     ] guinevere_starting             version=0.1.0
+Jun 01 09:47:00 faiz-prod-01 uvicorn[661236]: INFO:     Application startup complete.
+Jun 01 09:47:08 faiz-prod-01 uvicorn[661235]: INFO:     127.0.0.1:57908 - "GET /health HTTP/1.1" 200 OK

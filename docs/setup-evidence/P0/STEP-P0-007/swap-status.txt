@@ -1,0 +1,52 @@
+# STEP-P0-007 Swap Status
+
+## Package/Runtime State
+
+```
+$ swapon --show
+NAME      TYPE SIZE USED PRIO
+/swapfile file   4G   0B   -2
+
+$ free -h
+               total        used        free      shared  buff/cache   available
+Mem:            15Gi       1.3Gi       5.5Gi        30Mi       8.7Gi        13Gi
+Swap:          4.0Gi          0B       4.0Gi
+
+$ cat /proc/sys/vm/swappiness
+10
+
+$ cat /proc/sys/vm/vfs_cache_pressure
+50
+
+$ grep swap /etc/fstab
+/swapfile none swap sw 0 0
+
+$ cat /etc/sysctl.d/99-guinevere.conf
+# Guinevere P0-007 swap tuning
+vm.swappiness=10
+vm.vfs_cache_pressure=50
+```
+
+## Swap File
+
+- **Path**: `/swapfile`
+- **Size**: 4 GB
+- **UUID**: `be6bd904-e3cb-4c65-892b-6d2e813de105`
+- **Permissions**: 600 (root only)
+- **Method**: `fallocate -l 4G` (safe on ext4 / kernel 6.8.x)
+
+## Decision: 4GB vs 8GB
+
+StepPrompts specifies 4GB; DeploymentGuide/TechArch references 8GB.
+**Chosen: 4GB** for shared VPS safety:
+- Aizanta 6GB + Guinevere 8GB = 14GB, 4GB swap brings total VM to 18GB (safe margin)
+- 85GB free disk; 4GB swap is <5% of free space
+- Can be increased later if monitoring shows swap pressure
+
+## Rollback
+
+1. `sudo swapoff /swapfile`
+2. Remove `/swapfile none swap sw 0 0` from `/etc/fstab`
+3. `sudo rm /swapfile`
+4. Remove `/etc/sysctl.d/99-guinevere.conf` (or revert to defaults)
+5. Fstab backup at `/etc/fstab.backup.p0-007-20260531`

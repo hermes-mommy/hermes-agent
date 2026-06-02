@@ -1,0 +1,191 @@
+=== HNSW INDEX VERIFICATION: P3-006 ===
+Date: 2026-06-02 06:23:24 UTC
+
+=== 1. Schema: episodes.embedding column ===
+ column_name |  data_type   | udt_name | character_maximum_length 
+-------------+--------------+----------+--------------------------
+ embedding   | USER-DEFINED | vector   |                         
+(1 row)
+
+
+=== 2. Schema: semantic_facts.embedding column ===
+ column_name |  data_type   | udt_name | character_maximum_length 
+-------------+--------------+----------+--------------------------
+ embedding   | USER-DEFINED | vector   |                         
+(1 row)
+
+
+=== 3. HNSW Index definitions ===
+            indexname             |                                                                       indexdef                                                                       
+----------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------
+ ix_episodes_embedding_hnsw       | CREATE INDEX ix_episodes_embedding_hnsw ON memory.episodes USING hnsw (embedding vector_cosine_ops) WITH (m='16', ef_construction='128')
+ ix_semantic_facts_embedding_hnsw | CREATE INDEX ix_semantic_facts_embedding_hnsw ON memory.semantic_facts USING hnsw (embedding vector_cosine_ops) WITH (m='16', ef_construction='128')
+(2 rows)
+
+
+=== 4. HNSW Index reloptions (m, ef_construction) ===
+ssh : ERROR:  column i.indexrelid does not exist
+At line:1 char:1
++ ssh -o ConnectTimeout=10 -o BatchMode=yes guinevere-vps "bash /home/g ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (ERROR:  column ... does not exist:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+LINE 1: ...x_name, a.attname AS column_name, pg_get_indexdef(i.indexrel...
+                                                             ^
+HINT:  Perhaps you meant to reference the column "ix.indexrelid".
+
+=== 5. Check for stale embedding_vec column/index ===
+ column_name | table_schema | table_name 
+-------------+--------------+------------
+(0 rows)
+
+ indexname | indexdef 
+-----------+----------
+(0 rows)
+
+
+=== 6. Cosine query EXPLAIN (episodes) ===
+                                                                                                                                QUERY PLAN                                                                                                                                
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.01..0.02 rows=1 width=88) (actual time=0.031..0.031 rows=0 loops=1)
+   Output: id, episode_type, title, ((embedding <=> '[0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]'::vector))
+   Buffers: shared hit=3
+   ->  Sort  (cost=0.01..0.02 rows=0 width=88) (actual time=0.029..0.030 rows=0 loops=1)
+         Output: id, episode_type, title, ((embedding <=> '[0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]'::vector))
+         Sort Key: ((episodes.embedding <=> '[0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]'::vector))
+         Sort Method: quicksort  Memory: 25kB
+         Buffers: shared hit=3
+         ->  Result  (cost=0.00..0.00 rows=0 width=88) (actual time=0.001..0.001 rows=0 loops=1)
+               Output: id, episode_type, title, (embedding <=> '[0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]'::vector)
+               One-Time Filter: false
+ Planning:
+   Buffers: shared hit=588
+ Planning Time: 1.486 ms
+ Execution Time: 0.080 ms
+(15 rows)
+
+
+=== 7. Cosine query EXPLAIN (semantic_facts) ===
+                                                                                                                                  QUERY PLAN                                                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=8.97..12.18 rows=10 width=120) (actual time=0.053..0.054 rows=0 loops=1)
+   Output: id, subject, predicate, object_val, ((embedding <=> '[0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]'::vector))
+   Buffers: shared hit=7
+   ->  Index Scan using ix_semantic_facts_embedding_hnsw on memory.semantic_facts  (cost=8.97..50.60 rows=130 width=120) (actual time=0.052..0.052 rows=0 loops=1)
+         Output: id, subject, predicate, object_val, (embedding <=> '[0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]'::vector)
+         Order By: (semantic_facts.embedding <=> '[0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]'::vector)
+         Buffers: shared hit=7
+ Planning:
+   Buffers: shared hit=529
+ Planning Time: 1.334 ms
+ Execution Time: 0.125 ms
+(11 rows)
+
+
+=== 8. Cosine query with enable_seqscan=off (episodes) ===
+SET
+                                                                                                                                QUERY PLAN                                                                                                                                
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.01..0.02 rows=1 width=88) (actual time=0.042..0.043 rows=0 loops=1)
+   Output: id, episode_type, title, ((embedding <=> '[0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]'::vector))
+   Buffers: shared hit=3
+   ->  Sort  (cost=0.01..0.02 rows=0 width=88) (actual time=0.041..0.041 rows=0 loops=1)
+         Output: id, episode_type, title, ((embedding <=> '[0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]'::vector))
+         Sort Key: ((episodes.embedding <=> '[0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]'::vector))
+         Sort Method: quicksort  Memory: 25kB
+         Buffers: shared hit=3
+         ->  Result  (cost=0.00..0.00 rows=0 width=88) (actual time=0.001..0.001 rows=0 loops=1)
+               Output: id, episode_type, title, (embedding <=> '[0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]'::vector)
+               One-Time Filter: false
+ Planning:
+   Buffers: shared hit=588
+ Planning Time: 1.536 ms
+ Execution Time: 0.094 ms
+(15 rows)
+
+
+=== 9. Table row counts ===
+      table_name       | row_count 
+-----------------------+-----------
+ memory.episodes       |         0
+ memory.semantic_facts |         0
+(2 rows)
+
+
+=== 10. Index sizes ===
+ERROR:  relation "ix_episodes_embedding_hnsw" does not exist
+
+=== VERIFICATION COMPLETE ===
+=== VECTOR DIMENSION VERIFICATION ===
+
+=== Episodes embedding dimension ===
+  attname  | atttypmod 
+-----------+-----------
+ embedding |      1536
+(1 row)
+
+
+=== Dimension calc: (atttypmod - 4) / 4 ===
+   table_name    | vector_dim 
+-----------------+------------
+ memory.episodes |        383
+(1 row)
+
+
+=== semantic_facts embedding dimension ===
+  attname  | atttypmod 
+-----------+-----------
+ embedding |      1536
+(1 row)
+
+      table_name       | vector_dim 
+-----------------------+------------
+ memory.semantic_facts |        383
+(1 row)
+
+
+=== Index sizes ===
+            indexname             | index_size 
+----------------------------------+------------
+ ix_episodes_embedding_hnsw       | 16 kB
+ ix_semantic_facts_embedding_hnsw | 16 kB
+(2 rows)
+
+
+=== Complete column listing (episodes) ===
+    column_name     |        data_type         | is_nullable 
+--------------------+--------------------------+-------------
+ id                 | uuid                     | NO
+ started_at         | timestamp with time zone | NO
+ ended_at           | timestamp with time zone | YES
+ episode_type       | text                     | NO
+ title              | text                     | YES
+ summary            | text                     | YES
+ key_insights       | jsonb                    | YES
+ mood_at_start      | text                     | YES
+ mood_at_end        | text                     | YES
+ emotional_tone     | text                     | YES
+ faiz_behavior      | jsonb                    | YES
+ raw_content        | text                     | YES
+ embedding          | USER-DEFINED             | YES
+ importance         | integer                  | YES
+ tags               | ARRAY                    | YES
+ related_ids        | ARRAY                    | YES
+ version            | integer                  | YES
+ classification     | text                     | NO
+ purpose            | text                     | YES
+ source             | text                     | YES
+ retention_class    | text                     | NO
+ retention_until    | timestamp with time zone | YES
+ access_policy      | text                     | NO
+ encryption_profile | text                     | NO
+ deletion_state     | text                     | NO
+ key_id             | text                     | YES
+ key_version        | integer                  | YES
+ created_at         | timestamp with time zone | NO
+ updated_at         | timestamp with time zone | NO
+(29 rows)
+
+
+=== DONE ===

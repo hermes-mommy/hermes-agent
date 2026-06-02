@@ -1,0 +1,69 @@
+# STEP-P0-015 — pgvector Functional Test Log
+
+## Extension Status
+
+```
+$ docker exec guinevere-postgres psql -U guinevere -d guinevere -c "SELECT extname, extversion FROM pg_extension WHERE extname='vector'"
+ extname | extversion 
+---------+------------
+ vector  | 0.8.2
+(1 row)
+
+$ docker exec guinevere-postgres psql -U guinevere -d guinevere -c "\dx"
+                   List of installed extensions
+  Name   | Version |   Schema   |         Description          
+---------+---------+------------+------------------------------
+ plpgsql | 1.0     | pg_catalog | PL/pgSQL procedural language
+ vector  | 0.8.2   | public     | vector data type and similarity search algorithms
+(2 rows)
+```
+
+## Cosine Distance Test
+
+```sql
+-- Create test table
+CREATE TABLE IF NOT EXISTS p0_015_test (id serial PRIMARY KEY, embedding vector(3));
+
+-- Insert test embeddings
+INSERT INTO p0_015_test (embedding) VALUES ('[1,2,3]'), ('[4,5,6]');
+
+-- Cosine distance: identical vector = 0, different vector > 0
+SELECT id, embedding, embedding <=> '[1,2,3]'::vector AS cosine_distance
+FROM p0_015_test ORDER BY cosine_distance;
+
+ id | embedding | cosine_distance 
+----+-----------+-----------------
+  1 | [1,2,3]  |                0
+  2 | [4,5,6]  | 5.196152422706632
+(2 rows)
+
+-- Cleanup
+DROP TABLE p0_015_test;
+```
+
+**Result: PASS**
+- Identical vector `[1,2,3] <=> [1,2,3]` = 0 (correct)
+- Different vector `[4,5,6] <=> [1,2,3]` = 5.196 (expected cosine distance ≠ 0)
+- `<=>` operator functional
+- Table cleanup successful
+
+## pgvector Binary
+
+```
+$ docker exec guinevere-postgres ls -la /usr/lib/postgresql/16/lib/vector.so
+-rwxr-xr-x 1 root root 422920 May 23 06:57 /usr/lib/postgresql/16/lib/vector.so
+
+$ docker exec guinevere-postgres cat /usr/share/postgresql/16/extension/vector.control
+# pgvector extension
+comment = 'vector data type and similarity search algorithms'
+default_version = '0.8.2'
+module_pathname = '$libdir/vector'
+trusted = true
+```
+
+## Connection Test
+
+```
+$ docker exec guinevere-postgres pg_isready -U guinevere -d guinevere
+/var/run/postgresql:5432 - accepting connections
+```

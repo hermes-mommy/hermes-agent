@@ -1,0 +1,48 @@
+=== 1. Column verification ===
+  column_name  | data_type | udt_name | is_nullable | column_default 
+---------------+-----------+----------+-------------+----------------
+ do_not_recall | boolean   | bool     | NO          | false
+ search_vector | tsvector  | tsvector | YES         | 
+(2 rows)
+
+
+=== 2. GIN index verification ===
+           indexname           |                                        indexdef                                         
+-------------------------------+-----------------------------------------------------------------------------------------
+ ix_episodes_search_vector_gin | CREATE INDEX ix_episodes_search_vector_gin ON memory.episodes USING gin (search_vector)
+(1 row)
+
+
+=== 3. FTS query test ===
+ fts_works 
+-----------
+ t
+(1 row)
+
+
+=== 4. Generated column test (rollback) ===
+BEGIN
+INSERT 0 1
+                  id                  |    title    |                                       search_vector                                        | do_not_recall 
+--------------------------------------+-------------+--------------------------------------------------------------------------------------------+---------------
+ 08720faa-e48a-4838-ace7-eae40dd9212b | Hello World | 'everyth':8 'faiz':10 'guinever':6 'hello':1A 'rememb':7 'summari':5B 'test':4B 'world':2A | f
+(1 row)
+
+ROLLBACK
+
+=== 5. do_not_recall default verification ===
+BEGIN
+INSERT 0 1
+ do_not_recall 
+---------------
+ f
+(1 row)
+
+ROLLBACK
+
+=== 6. Alembic revision check ===
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+65f863220922 (head)
+
+=== VERIFICATION COMPLETE ===

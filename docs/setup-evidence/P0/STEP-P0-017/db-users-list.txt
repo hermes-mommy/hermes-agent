@@ -1,0 +1,49 @@
+=== P0-017 Database Users and Schemas ===
+Date: 2026-05-31
+VPS: faiz-prod-01 (100.94.104.22)
+PostgreSQL: 16.14 Docker on guinevere-net (127.0.0.1:5433)
+
+=== ROLES CREATED ===
+        rolname         | rolcanlogin | rolconnlimit
+------------------------+-------------+--------------
+ guinevere_backup       | t           |           -1
+ guinevere_core         | t           |           -1
+ guinevere_readonly     | t           |           -1
+ guinevere_scheduler    | t           |           -1
+ guinevere_surveillance | t           |           -1
+
+All 5 roles have LOGIN privilege, SCRAM-SHA-256 passwords, unlimited connections.
+
+=== SCHEMAS CREATED ===
+   nspname
+--------------
+ audit
+ config
+ financial
+ loops
+ memory
+ persona
+ surveillance
+
+=== SCHEMA USAGE GRANTS ===
+guinevere_core:         memory, persona, surveillance, loops, financial, config, audit
+guinevere_surveillance: surveillance, memory
+guinevere_scheduler:    loops, config
+guinevere_readonly:     memory, persona, surveillance, loops, financial, config, audit
+guinevere_backup:       public
+
+=== ALTER DEFAULT PRIVILEGES ===
+For ROLE guinevere (object creator) in all schemas:
+  guinevere_core:         SELECT, INSERT, UPDATE, DELETE on tables + USAGE on sequences + EXECUTE on functions
+  guinevere_surveillance: SELECT, INSERT, UPDATE, DELETE on tables + USAGE on sequences (surveillance, memory only)
+  guinevere_scheduler:    SELECT, INSERT, UPDATE, DELETE on tables + USAGE on sequences (loops, config only)
+  guinevere_readonly:     SELECT on tables + USAGE on sequences (all schemas)
+  guinevere_backup:       SELECT on tables + USAGE on sequences (all schemas)
+
+=== SOPS ENCRYPTED PASSWORDS ===
+File: /home/guinevere/secrets/db-passwords.yaml
+Size: 2004 bytes
+Owner: guinevere:guinevere (600)
+SHA256: 952c5fd9e843545f03fa74baaa4dc81295441ceb21b32a44dd0c2fbb51b898da
+Age recipient: age17cyg77cswk0du44k3r02g3l83x2f62crcnjnzv5cz5vtndve7yksck2zqj
+Decrypt verification: SOPS_AGE_KEY_FILE decrypts correctly, 5 user keys present

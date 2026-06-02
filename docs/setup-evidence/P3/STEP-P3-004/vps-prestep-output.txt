@@ -1,0 +1,71 @@
+==============================================
+P3-004 PRE-STEP RUNTIME SAFETY CHECKS (VPS)
+Date: 2026-06-02
+Accessed via: root@82.25.62.204 (public IP)
+==============================================
+
+=== Aizanta PostgreSQL Health (PG 5432) ===
+127.0.0.1:5432 - accepting connections
+
+=== Guinevere PostgreSQL Health (PG 5433) ===
+127.0.0.1:5433 - accepting connections
+
+=== Guinevere PgBouncer Health (PG 5434) ===
+127.0.0.1:5434 - accepting connections
+
+=== Redis Health (Port 6380) ===
+NOAUTH Authentication required.
+
+=== System Memory (free -h) ===
+               total        used        free      shared  buff/cache   available
+Mem:            15Gi       1.6Gi       1.2Gi        91Mi        12Gi        13Gi
+Swap:          4.0Gi          0B       4.0Gi
+
+=== Uptime & Load ===
+ 11:35:49 up 10 days,  1:00,  1 user,  load average: 0.01, 0.04, 0.06
+
+=== Disk Usage ===
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/vda1        99G   17G   77G  18% /
+/dev/vda1        99G   17G   77G  18% /home
+
+=== Aizanta Containers ===
+aizanta-bot         Up 9 days (healthy)
+aizanta-nginx       Up 9 days (healthy)
+aizanta-frontend    Up 27 hours (healthy)
+aizanta-postgres    Up 9 days (healthy)
+aizanta-redis       Up 9 days (healthy)
+
+=== Guinevere Containers ===
+guinevere-redis      Up 41 hours
+guinevere-pgbouncer  Up 42 hours
+guinevere-postgres   Up 43 hours
+
+=== Guinevere Systemd Services ===
+  cloudflared.service               loaded active running Cloudflare Tunnel
+  guinevere-9router.service         loaded active running Guinevere 9Router LLM Proxy
+  guinevere-core.service            loaded active running Guinevere Core Daemon
+
+==============================================
+LOCAL DEV MACHINE PRE-STEP CHECKS
+==============================================
+
+=== Disk (C:) ===
+235.49 GB free / 474.72 GB total
+
+=== Memory ===
+Total: 13.84 GB | Free: 1.96 GB | Used: 11.88 GB
+
+=== CPU ===
+12 cores, AMD Ryzen 5 7530U, 51% load
+
+=== Uptime ===
+1d 19h
+
+=== Port Scan (Canonical Guinevere Ports) ===
+PORT 5432 : NOT LISTENING
+PORT 5433 : NOT LISTENING
+PORT 5434 : NOT LISTENING
+PORT 6379 : NOT LISTENING
+PORT 6380 : NOT LISTENING
+PORT 20128 : LISTENING - 9Router active (64 models listed)

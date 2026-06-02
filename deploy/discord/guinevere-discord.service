@@ -1,0 +1,51 @@
+[Unit]
+Description=Guinevere Discord Bot
+After=network-online.target guinevere-core.service
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=guinevere
+Group=guinevere
+WorkingDirectory=/home/guinevere/code/guinevere
+
+# Decrypt token via SOPS before starting
+ExecStartPre=/usr/bin/sops --decrypt --input-type dotenv --output-type dotenv \
+  /home/guinevere/code/guinevere/secrets/.env.discord.sops \
+  > /run/guinevere-discord-token
+ExecStartPre=/usr/bin/chmod 600 /run/guinevere-discord-token
+
+EnvironmentFile=/run/guinevere-discord-token
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/guinevere/code/guinevere
+
+ExecStart=/home/guinevere/code/guinevere/.venv/bin/python -m src.discord.bot
+
+ExecStopPost=/usr/bin/shred -u /run/guinevere-discord-token
+
+Restart=on-failure
+RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+StandardOutput=journal
+StandardError=journal
+
+# Resource limits
+Slice=guinevere.slice
+MemoryHigh=512M
+MemoryMax=768M
+CPUQuota=100%
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/guinevere/code/guinevere /home/guinevere/data /home/guinevere/logs
+
+[Install]
+WantedBy=multi-user.target

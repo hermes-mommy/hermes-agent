@@ -1,0 +1,79 @@
+# STEP-P0-014 — PostgreSQL Status
+
+## Container
+
+```
+$ docker ps --filter name=guinevere-postgres --format '{{.ID}} {{.Names}} {{.Status}} {{.Ports}}'
+8d0e8591e2f6 guinevere-postgres Up 6 minutes (healthy) 127.0.0.1:5433->5432/tcp
+
+$ docker inspect guinevere-postgres --format '{{json .NetworkSettings.Networks}}'
+{"guinevere-net":{"IPAddress":"172.28.0.2","Gateway":"172.28.0.1","Subnet":"172.28.0.0/16"}}
+```
+
+## Connectivity
+
+```
+$ psql -h 127.0.0.1 -p 5433 -U guinevere -d guinevere -c "SELECT version(), current_database(), current_user, inet_server_addr();"
+PostgreSQL 16.14 (Debian 16.14-1.pgdg120+2) on x86_64-pc-linux-gnu
+current_database: guinevere
+current_user: guinevere
+inet_server_addr: 172.28.0.2
+
+$ pg_isready -h 127.0.0.1 -p 5433 -U guinevere -d guinevere
+127.0.0.1:5433 - accepting connections
+```
+
+## Container Health
+
+```
+$ docker inspect guinevere-postgres --format '{{json .State.Health}}'
+{"Status":"healthy","FailingStreak":0,"Log":[{"Start":"...","End":"...","ExitCode":0,"Output":"..."}]}
+```
+
+Health check: `pg_isready -U guinevere -d guinevere` every 10s with 5 retries.
+
+## PostgreSQL Config
+
+```
+$ docker exec guinevere-postgres psql -U guinevere -d guinevere -c "SHOW shared_buffers; SHOW timezone; SHOW max_connections; SHOW work_mem; SHOW effective_cache_size; SHOW maintenance_work_mem; SHOW port;"
+ shared_buffers | 1GB
+ timezone       | Asia/Jakarta
+ max_connections | 100
+ work_mem       | 16MB
+ effective_cache_size | 3GB
+ maintenance_work_mem | 256MB
+ port           | 5432
+```
+
+## Deployment Parameters
+
+| Parameter | Value |
+|---|---|
+| Image | `postgres:16` (resolved to `postgres:16.14-trixie`) |
+| Network | `guinevere-net` |
+| IP | 172.28.0.2 |
+| Bind | 127.0.0.1:5433:5432 |
+| User | `guinevere` |
+| Database | `guinevere` |
+| Volume | `/home/guinevere/data/postgres` |
+| Timezone | `Asia/Jakarta` |
+| Docker socket | `/var/run/docker.sock` (for pg_isready healthcheck) |
+
+## Volume
+
+```
+$ ls -la /home/guinevere/data/postgres/
+drwx------ 19 systemd-coredump systemd-coredump 4096 May 31 22:42 pgdata
+
+$ sudo du -sh /home/guinevere/data/postgres/
+27M     /home/guinevere/data/postgres/
+```
+
+## Rollback
+
+```bash
+docker stop guinevere-postgres
+docker rm guinevere-postgres
+# Optional: remove volume
+sudo rm -rf /home/guinevere/data/postgres
+```

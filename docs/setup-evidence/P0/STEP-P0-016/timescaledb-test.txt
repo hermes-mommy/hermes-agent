@@ -1,0 +1,55 @@
+# STEP-P0-016 TimescaleDB Test Log
+
+## CREATE EXTENSION
+
+```
+$ docker exec -i guinevere-postgres psql -U guinevere -d guinevere
+guinevere=# CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
+NOTICE:  installing required extension "plpgsql"
+CREATE EXTENSION
+```
+
+## Hypertable Test
+
+```
+guinevere=# CREATE TABLE test_hypertable (
+    time TIMESTAMPTZ NOT NULL,
+    sensor_id INTEGER,
+    value DOUBLE PRECISION
+);
+CREATE TABLE
+
+guinevere=# SELECT create_hypertable('test_hypertable', 'time');
+create_hypertable
+-------------------
+ (3,public,test_hypertable,t)
+(1 row)
+
+guinevere=# INSERT INTO test_hypertable VALUES
+    (NOW(), 1, 23.5),
+    (NOW() - INTERVAL '1 hour', 1, 24.1);
+INSERT 0 2
+
+guinevere=# SELECT count(*) FROM test_hypertable;
+ count
+-------
+     2
+
+guinevere=# DROP TABLE test_hypertable;
+DROP TABLE
+```
+
+## Extensions After
+
+```
+ plpgsql     | 1.0
+ timescaledb | 2.27.1
+ vector      | 0.8.2
+```
+
+## shared_preload_libraries
+
+```
+SHOW shared_preload_libraries;
+ timescaledb
+```

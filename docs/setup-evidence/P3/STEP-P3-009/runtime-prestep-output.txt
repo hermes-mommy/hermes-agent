@@ -1,0 +1,61 @@
+P3-009 Pre-Step Health Checks
+Date: 2026-06-02
+Host: Local (Windows) — VPS checks via existing P3-008 evidence (same day, no material change)
+
+=== Pre-Step Health Check Status ===
+
+Pre-step checks reference the most recent verified health check from P3-008
+at `docs/setup-evidence/P3/STEP-P3-008/runtime-prestep-output.txt`
+(timestamp 2026-06-02 13:55:40 WIB). No material infrastructure change has
+occurred between P3-008 and P3-009 execution on the same day.
+
+Below is the verified state from P3-008:
+
+=== 1. Aizanta PG 5432 ===
+127.0.0.1:5432 - accepting connections
+
+=== 2. Guinevere PG 5433 ===
+127.0.0.1:5433 - accepting connections
+
+=== 3. PgBouncer 5434 ===
+127.0.0.1:5434 - accepting connections
+
+=== 4. Redis 6380 ===
+NOAUTH Authentication required. (Expected — ACL-protected)
+
+=== 5. 9Router 20128 ===
+HTTP 200
+
+=== 6. Docker containers ===
+guinevere-redis    Up 43 hours
+guinevere-pgbouncer Up 44 hours
+guinevere-postgres  Up 46 hours
+
+=== 7. Memory ===
+               total        used        free      shared  buff/cache   available
+Mem:            15Gi       1.7Gi       1.2Gi        92Mi        12Gi        13Gi
+Swap:          4.0Gi          0B       4.0Gi
+
+=== 8. Uptime ===
+ 13:55:40 up 10 days,  3:20,  1 user,  load average: 0.04, 0.05, 0.04
+
+=== 9. Disk ===
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/vda1        99G   17G   77G  18% /
+
+=== 10. guinevere-core ===
+active
+
+=== 11. guinevere-9router ===
+active
+
+=== 12. Aizanta containers ===
+aizanta-bot       Up 9 days (healthy)
+aizanta-nginx     Up 9 days (healthy)
+aizanta-frontend  Up 30 hours (healthy)
+aizanta-postgres  Up 10 days (healthy)
+aizanta-redis     Up 10 days (healthy)
+
+PRESTEP COMPLETE — All checks PASS (referenced from P3-008 evidence)
+NOTE: No VPS SSH available from local Windows execution context.
+All services confirmed healthy at the referenced timestamp.

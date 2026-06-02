@@ -1,0 +1,21 @@
+# STEP-P0-012 — Age Round-Trip Test
+
+## Test
+```
+echo 'guinevere-test-v2' | age -r age17cyg77cswk0du44k3r02g3l83x2f62crcnjnzv5cz5vtndve7yksck2zqj -o /tmp/rt.enc
+age -d -i /home/guinevere/secrets/age-key.txt /tmp/rt.enc
+```
+
+## Result
+```
+guinevere-test-v2
+```
+
+## Status
+✅ Round-trip encrypt/decrypt PASS
+
+## Key Info
+- Public key: age17cyg77cswk0du44k3r02g3l83x2f62crcnjnzv5cz5vtndve7yksck2zqj
+- Key file: /home/guinevere/secrets/age-key.txt
+- Permissions: 0600 guinevere:guinevere
+- Key rotated: 2026-05-31 (old key backed up as .compromised-20260531)

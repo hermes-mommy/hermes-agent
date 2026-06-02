@@ -1,0 +1,47 @@
+# STEP-P0-006 CrowdSec Allowlist Proof
+
+Date: 2026-05-31
+
+## Allowlist Created Before Bouncer Enablement
+
+Commands:
+
+```bash
+cscli allowlists create guinevere-trusted -d 'Guinevere trusted localhost and Tailscale operator/VPS IPs'
+cscli allowlists add guinevere-trusted 127.0.0.1/8 ::1 100.94.104.22 100.112.201.124 -d 'P0-006 trusted localhost plus Samm and VPS Tailscale IPs'
+cscli allowlists inspect guinevere-trusted
+cscli allowlists check 100.112.201.124
+cscli allowlists check 100.94.104.22
+cscli decisions delete --ip 100.112.201.124 || true
+cscli decisions delete --ip 100.94.104.22 || true
+```
+
+## Inspect Output
+
+```text
+Allowlist: guinevere-trusted
+Description: Guinevere trusted localhost and Tailscale operator/VPS IPs
+Managed by Console: no
+
+Value            Comment                                                   Expiration
+127.0.0.1/8      P0-006 trusted localhost plus Samm and VPS Tailscale IPs  never
+::1              P0-006 trusted localhost plus Samm and VPS Tailscale IPs  never
+100.94.104.22    P0-006 trusted localhost plus Samm and VPS Tailscale IPs  never
+100.112.201.124  P0-006 trusted localhost plus Samm and VPS Tailscale IPs  never
+```
+
+## Check Output
+
+```text
+100.112.201.124 is allowlisted by item 100.112.201.124 from guinevere-trusted (P0-006 trusted localhost plus Samm and VPS Tailscale IPs)
+100.94.104.22 is allowlisted by item 100.94.104.22 from guinevere-trusted (P0-006 trusted localhost plus Samm and VPS Tailscale IPs)
+level=info msg="0 decision(s) deleted"
+level=info msg="0 decision(s) deleted"
+```
+
+## Safety Notes
+
+- Samm/operator Tailscale IP: `100.112.201.124`.
+- VPS Tailscale IP: `100.94.104.22`.
+- Neither trusted IP was used for test bans.
+- Safe TEST-NET address `192.0.2.1` was used for bouncer validation instead.

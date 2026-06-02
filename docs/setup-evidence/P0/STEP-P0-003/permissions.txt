@@ -1,0 +1,41 @@
+Command:
+ssh -o BatchMode=yes -o ConnectTimeout=10 root@100.94.104.22 "stat -c '%U:%G %a %n' /home/guinevere ..."
+
+Output:
+guinevere:guinevere 750 /home/guinevere
+guinevere:guinevere 750 /home/guinevere/code
+guinevere:guinevere 750 /home/guinevere/code/guinevere
+guinevere:guinevere 750 /home/guinevere/config
+guinevere:guinevere 750 /home/guinevere/config/hermes
+guinevere:guinevere 750 /home/guinevere/config/9router
+guinevere:guinevere 750 /home/guinevere/config/mcp
+guinevere:guinevere 750 /home/guinevere/config/caddy
+guinevere:guinevere 750 /home/guinevere/config/sops
+guinevere:guinevere 750 /home/guinevere/data
+guinevere:guinevere 750 /home/guinevere/data/postgres
+guinevere:guinevere 750 /home/guinevere/data/redis
+guinevere:guinevere 750 /home/guinevere/data/prometheus
+guinevere:guinevere 750 /home/guinevere/data/grafana
+guinevere:guinevere 750 /home/guinevere/data/loki
+guinevere:guinevere 750 /home/guinevere/data/backups
+guinevere:guinevere 750 /home/guinevere/data/uploads
+guinevere:guinevere 750 /home/guinevere/logs
+guinevere:guinevere 750 /home/guinevere/logs/guinevere
+guinevere:guinevere 750 /home/guinevere/logs/surveillance
+guinevere:guinevere 750 /home/guinevere/logs/loops
+guinevere:guinevere 750 /home/guinevere/backups
+guinevere:guinevere 750 /home/guinevere/backups/local
+guinevere:guinevere 750 /home/guinevere/backups/s3
+guinevere:guinevere 750 /home/guinevere/backups/r2
+guinevere:guinevere 750 /home/guinevere/evidence
+guinevere:guinevere 700 /home/guinevere/secrets
+guinevere:guinevere 700 /home/guinevere/scripts
+guinevere:guinevere 750 /home/guinevere/tmp
+
+Systemd placeholder:
+drwxr-xr-x 2 root root 4096 May 31 04:08 /etc/systemd/system/guinevere-*.service.d
+
+Code directory listing:
+total 8
+drwxr-x--- 2 guinevere guinevere 4096 May 31 04:08 .
+drwxr-x--- 3 guinevere guinevere 4096 May 31 04:08 ..

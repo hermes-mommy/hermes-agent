@@ -1,0 +1,27 @@
+# STEP-P0-013 SOPS Config
+
+## .sops.yaml
+```
+creation_rules:
+  - path_regex: secrets/.*\.yaml$
+    age: age17cyg77cswk0du44k3r02g3l83x2f62crcnjnzv5cz5vtndve7yksck2zqj
+  - path_regex: secrets/.*\.env$
+    age: age17cyg77cswk0du44k3r02g3l83x2f62crcnjnzv5cz5vtndve7yksck2zqj
+  - path_regex: secrets/.*\.json$
+    age: age17cyg77cswk0du44k3r02g3l83x2f62crcnjnzv5cz5vtndve7yksck2zqj
+```
+
+## SOPS Version
+- sops 3.9.4 (>= 3.8 requirement ✓)
+- SOPS_AGE_KEY_FILE=/home/guinevere/secrets/age-key.txt
+
+## Encrypted Secrets
+- File: secrets/guinevere-secrets.yaml
+- All values ENC[AES256_GCM,...] format
+- Round-trip decrypt verified: sops --decrypt returns plaintext
+
+## Evidence
+- Encrypt: sops --encrypt --in-place guinevere-secrets.yaml → ENCRYPT-OK
+- Decrypt: sops --decrypt guinevere-secrets.yaml → PLACEHOLDER values
+- Permissions: secrets/guinevere-secrets.yaml (repo file, git-tracked)
+- .gitignore: blocks *.yaml, *.env, *.json, allows .gitignore and *.sops.yaml

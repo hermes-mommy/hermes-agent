@@ -1,0 +1,38 @@
+P3-009 Backup Checkpoint Verification
+Date: 2026-06-02
+Checkpoint ID: 13159f70
+
+=== Verification Method ===
+
+Backup checkpoint 13159f70 is verified via existing evidence from:
+`docs/setup-evidence/P3/STEP-P3-002/backup-checkpoint-20260602.md`
+
+This evidence was created during P3-002 (47-table migration) and confirmed
+by Faiz's explicit approval condition:
+
+> "Kalau backup sukses → snapshot ID muncul → approve P3-002 lanjut."
+
+=== Snapshot Details (from P3-002 evidence) ===
+
+Primary repository (S3):
+  snapshot 13159f70 saved
+  2026-06-02 06:27:33  faiz-prod-01  guinevere,daily,20260602_062732
+  Paths: /home/guinevere/config, /tmp/tmp.hquCXrm65a
+  Size: 31.718 KiB
+
+Secondary repository (R2/Cloudflare):
+  snapshot 13c66a7c saved
+  2026-06-02 06:27:40  faiz-prod-01  guinevere,daily,20260602_062732
+
+=== Verification Result ===
+
+BACKUP CHECKPOINT CONFIRMED: 13159f70 exists in primary (S3) restic repository.
+Dual-provider (primary S3 + secondary R2) backup completed successfully.
+
+VERDICT: PASS — Checkpoint 13159f70 verified. P3-009 write pipeline is safe to proceed.
+
+=== Marker Caveat (from P3-002) ===
+
+/var/log/guinevere/last-backup-success marker file is still absent
+(the Docker Edition v2 backup script does not write it). This is a
+tracker/script-sync caveat, not a blocker — the snapshot ID is confirmed.

@@ -1,0 +1,52 @@
+=== P0-019 PgBouncer Status ===
+Date: 2026-05-31
+VPS: faiz-prod-01 (100.94.104.22)
+
+=== Container ===
+Image: percona/percona-pgbouncer:1.25.2
+Name: guinevere-pgbouncer
+Status: running (healthy)
+Network: guinevere-net (172.28.0.3)
+Port: 127.0.0.1:5434->5432
+Pool Mode: transaction
+Auth Type: scram-sha-256 (auth_file)
+Max Client Connections: 500
+Default Pool Size: 20
+
+=== Configuration ===
+Config dir: /home/guinevere/config/pgbouncer/
+Main config: /home/guinevere/config/pgbouncer/pgbouncer.ini
+Userlist: /home/guinevere/config/pgbouncer/userlist.txt (SCRAM-SHA-256 hashes, 6 users)
+
+Key settings:
+- [pgbouncer] listen_addr=0.0.0.0, listen_port=6432, auth_type=scram-sha-256, auth_file=/etc/pgbouncer/userlist.txt, pool_mode=transaction, default_pool_size=20, max_client_conn=500, max_db_connections=100
+- [databases] guinevere=host=guinevere-postgres port=5432 dbname=guinevere
+- [users] guinevere_pgbouncer=pool_mode=session (auth_user for admin, never pooled)
+
+=== Database Connection ===
+Host DB: guinevere-postgres (172.28.0.2:5432)
+Database: guinevere
+pg_hba.conf: 172.28.0.0/16 scram-sha-256
+
+=== Users in userlist.txt ===
+guinevere (superuser, admin/docker exec only)
+guinevere_pgbouncer (auth user, session mode)
+guinevere_core
+guinevere_surveillance
+guinevere_scheduler
+guinevere_readonly
+guinevere_backup
+
+All 6 users have SCRAM-SHA-256 hashes extracted from pg_authid.rolpassword, verified to match PostgreSQL expectations.
+
+=== Connection Tests ===
+guinevere_core via PgBouncer (127.0.0.1:5434): PASS
+  SELECT current_user, current_database() → guinevere_core | guinevere
+guinevere_readonly via PgBouncer (127.0.0.1:5434): PASS
+  SELECT current_user → guinevere_readonly
+guinevere (superuser) via PgBouncer (127.0.0.1:5434): PASS
+  SELECT current_user → guinevere
+
+=== Service ===
+Active: active (running)
+Auto-restart: via Docker --restart unless-stopped

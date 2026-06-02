@@ -1,0 +1,44 @@
+# STEP-P0-005 fail2ban Whitelist Proof
+
+Date: 2026-05-31
+Host: faiz-prod-01 / 100.94.104.22
+
+## Safety Requirement
+
+P0-005 required fail2ban to avoid banning Samm/operator access. The known safe Tailscale IPs were identified from live and prior evidence:
+
+- VPS Tailscale IP: `100.94.104.22`
+- Operator Windows Tailscale IP: `100.112.201.124`
+- Loopback: `127.0.0.1/8`, `::1`
+
+## Effective ignoreip Runtime Proof
+
+Command:
+
+```bash
+sudo fail2ban-client get sshd ignoreip
+```
+
+Output:
+
+```text
+These IP addresses/networks are ignored:
+|- 127.0.0.0/8
+|- 100.94.104.22
+|- 100.112.201.124
+`- ::1
+```
+
+## Operator IP Safety Note
+
+Before P0-005, `fail2ban-client get sshd ignoreip` returned:
+
+```text
+No IP address/network is ignored
+```
+
+`journalctl -u fail2ban` also showed previous `Found` events involving `100.112.201.124`, so adding the explicit operator Tailscale IP was required before considering P0-005 safe.
+
+## Whitelist Scope Decision
+
+The whole Tailscale CGNAT range `100.64.0.0/10` was not whitelisted. The implementation whitelists only the known VPS and operator Tailscale IPs to avoid over-broad bypass while preventing lockout.

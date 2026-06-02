@@ -1,0 +1,74 @@
+# STEP-P0-002 SSH Config Evidence
+
+Date: 2026-05-31
+Scope: Local Windows OpenSSH config and remote SSH hardening relevant to Guinevere access.
+
+## Local SSH alias
+
+Source file: `C:\Users\faizz\.ssh\config`
+
+```sshconfig
+Host guinevere-vps
+    HostName 100.94.104.22
+    User guinevere
+    IdentityFile ~/.ssh/id_ed25519
+    IdentitiesOnly yes
+    ServerAliveInterval 60
+    ServerAliveCountMax 3
+```
+
+## Local SSH config ACL after repair
+
+Command:
+```powershell
+icacls "$env:USERPROFILE\.ssh\config"
+```
+
+Output:
+```text
+C:\Users\faizz\.ssh\config BUILTIN\Administrators:(F)
+                           NT AUTHORITY\SYSTEM:(F)
+                           FAIZZZZZ\faizz:(F)
+
+Successfully processed 1 files; Failed processing 0 files
+```
+
+Note: Windows OpenSSH rejected the config while an inherited stale unknown SID had write/read permissions. The ACL was tightened to the owner, SYSTEM, and Administrators so OpenSSH would parse the alias.
+
+## Parsed alias proof
+
+Command:
+```powershell
+ssh -G guinevere-vps
+```
+
+Relevant output:
+```text
+host guinevere-vps
+user guinevere
+hostname 100.94.104.22
+identitiesonly yes
+serveralivecountmax 3
+serveraliveinterval 60
+identityfile ~/.ssh/id_ed25519
+```
+
+## Remote SSH hardening file
+
+Source file: `/etc/ssh/sshd_config.d/99-aizanta-hardening.conf`
+
+Command:
+```bash
+sudo grep -nE '^(PermitRootLogin|PasswordAuthentication|PubkeyAuthentication|KbdInteractiveAuthentication|AllowUsers)' /etc/ssh/sshd_config.d/99-aizanta-hardening.conf
+```
+
+Output:
+```text
+1:PermitRootLogin prohibit-password
+2:PasswordAuthentication no
+3:PubkeyAuthentication yes
+4:KbdInteractiveAuthentication no
+8:AllowUsers root aizanta guinevere
+```
+
+Rollback backup created before remote config edit: `/etc/ssh/sshd_config.d/99-aizanta-hardening.conf.pre-p0-002`.

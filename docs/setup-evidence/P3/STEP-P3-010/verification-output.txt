@@ -1,0 +1,134 @@
+﻿======================================================================
+P3-010 Read Pipeline - Verification Suite
+======================================================================
+
+--- 1. Module Imports ---
+  [PASS] from src.memory.read_pipeline imports all symbols
+
+--- 2. Function Signature ---
+  [PASS] recall_memories has session param
+  [PASS] recall_memories has query_text param
+  [PASS] recall_memories has limit param
+  [PASS] recall_memories has exclude_dnr param
+  [PASS] recall_memories has safe_mode param
+  [PASS] recall_memories has principal param
+  [PASS] recall_memories has embedding_service param
+  [PASS] recall_memories has token_budget param
+  [PASS] limit defaults to 20
+  [PASS] exclude_dnr defaults to True
+  [PASS] safe_mode defaults to False
+  [PASS] principal defaults to guinevere_core
+  [PASS] token_budget defaults to 4000
+
+--- 3. Classification Constants ---
+  [PASS] RESTRICTED == Restricted
+  [PASS] CRITICAL == Critical
+  [PASS] PUBLIC == Public
+  [PASS] INTERNAL == Internal
+  [PASS] CONFIDENTIAL == Confidential
+
+--- 4. Error Types & Hierarchy ---
+  [PASS] ReadPipelineQueryError catchable as ReadPipelineError
+  [PASS] ReadPipelineSafetyError catchable as ReadPipelineError
+  [PASS] ReadPipelineTokenBudgetError catchable as ReadPipelineError
+
+--- 5. Empty Query Validation ---
+  [PASS] Empty query raises ReadPipelineQueryError
+
+--- 6. RRF Fusion (via public recall) ---
+  [PASS] RRF results returned
+  [PASS] RRF returns 2 episodes
+  [PASS] Two-signal episode ranks above FTS-only
+  [PASS] Both-signal score is positive
+  [PASS] FTS-only score is positive
+  [PASS] Both-signal combined score
+
+--- 7. Recency Decay Scoring ---
+  [PASS] Recency for now is ~1.0
+  [PASS] Recency for 90 days ago is ~0.5
+  [PASS] Recency for 180 days ago is ~0.25
+  [PASS] Recency for None is 0
+  [PASS] Recency for future is ~1.0 (clamped)
+
+--- 8. Importance Factor (via public recall) ---
+  [PASS] Importance test returns 2 results
+  [PASS] Importance=10 ranks above importance=1
+  [PASS] High importance combined score
+  [PASS] Low importance combined score
+
+--- 9. Combined Score ---
+  [PASS] Combined score returned
+  [PASS] Combined score has 2 entries
+  [PASS] Newer/higher-importance ranks higher
+
+--- 10. DNR Exclusion ---
+  [PASS] DNR exclude=True runs without error
+  [PASS] DNR exclude=False runs without error
+
+--- 11. Classification Ceiling ---
+  [PASS] guinevere_core can read Critical
+  [PASS] Unknown principal: all Critical -> safety error
+
+--- 12. Safe-Mode Critical Substitution ---
+  [PASS] Safe mode returned results
+  [PASS] Safe mode replaces Critical content
+  [PASS] Safe mode does NOT contain raw Critical content
+  [PASS] Non-safe-mode returns raw Critical content
+
+--- 13. Token Budget Enforcement ---
+  [PASS] Token budget returned results
+  [PASS] Total estimated tokens <= budget
+  [PASS] Token budget trimmed excess
+
+--- 14. Return Fields ---
+  [PASS] Result has id key
+  [PASS] Result has safe_content key
+  [PASS] Result has classification key
+  [PASS] Result has importance key
+  [PASS] Result has created_at key
+  [PASS] Result has combined_score key
+  [PASS] Result has is_summarized key
+  [PASS] id is string
+  [PASS] safe_content is string
+  [PASS] classification is string
+  [PASS] importance is int
+  [PASS] combined_score is float
+  [PASS] is_summarized is bool
+
+--- 15. Embedding Service Integration ---
+  [PASS] Fake embedding is 1536-dim
+  [PASS] Fake embedding has float values
+
+--- 16. __init__.py Exports ---
+  [PASS] from src.memory re-exports ReadPipelineError
+  [PASS] from src.memory re-exports ReadPipelineQueryError
+  [PASS] from src.memory re-exports ReadPipelineSafetyError
+  [PASS] from src.memory re-exports ReadPipelineTokenBudgetError
+  [PASS] from src.memory re-exports RecencyConfig
+  [PASS] from src.memory re-exports recall_memories
+  [PASS] from src.memory re-exports RRF_K
+  [PASS] from src.memory re-exports RECENCY_HALF_LIFE_DAYS
+  [PASS] from src.memory re-exports SAFE_MODE_PLACEHOLDER
+  [PASS] from src.memory re-exports DEFAULT_TOKEN_BUDGET
+
+--- 17. RecencyConfig ---
+  [PASS] RecencyConfig default half_life=90
+  [PASS] RecencyConfig default reference_time=None
+  [PASS] RecencyConfig custom half_life=30
+  [PASS] RecencyConfig custom reference_time set
+
+--- 18. No Secrets in Output ---
+  [PASS] No API key pattern in read_pipeline repr
+  [PASS] Query error mentions query_text
+  [PASS] Query error mentions non-empty
+
+--- 19. Public API Consistency ---
+  [PASS] RRF_K == 60
+  [PASS] SAFE_MODE_PLACEHOLDER is non-empty
+  [PASS] DEFAULT_TOKEN_BUDGET > 0
+  [PASS] RECENCY_HALF_LIFE_DAYS == 90
+
+======================================================================
+RESULTS: 88 passed, 0 failed
+======================================================================
+

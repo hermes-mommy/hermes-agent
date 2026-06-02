@@ -1,0 +1,34 @@
+# STEP-P0-013 SOPS Round-Trip Test
+
+## Encrypt
+```
+$ sops --encrypt --in-place --age age17cyg... guinevere-secrets.yaml
+ENCRYPT-OK
+$ wc -c guinevere-secrets.yaml
+3544 guinevere-secrets.yaml
+```
+
+## Decrypt
+```
+$ sops --decrypt guinevere-secrets.yaml | head -3
+# Guinevere Secrets - ENCRYPTED with SOPS + age
+llm:
+    nine_router_api_key: PLACEHOLDER
+DECRYPT-OK
+```
+
+## Aizanta Post-Check
+```
+aizanta-bot Up 7 days (healthy)
+aizanta-nginx Up 7 days (healthy)
+aizanta-frontend Up 8 days (healthy)
+aizanta-postgres Up 8 days (healthy)
+aizanta-redis Up 8 days (healthy)
+```
+
+## Protected Ports (unchanged)
+```
+127.0.0.1:6379    docker-proxy
+100.94.104.22:80  docker-proxy
+127.0.0.1:5432    docker-proxy
+```

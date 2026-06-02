@@ -1,0 +1,73 @@
+# STEP-P0-025 Git Status Evidence
+
+Date: 2026-05-31
+Host: faiz-prod-01 (100.94.104.22)
+Repo: /home/guinevere/code/guinevere
+User: guinevere
+
+## Git status
+
+Command:
+```bash
+sudo -u guinevere GIT_MASTER=1 git -C /home/guinevere/code/guinevere status --short
+```
+
+Output:
+```text
+<clean working tree>
+```
+
+## Commit history
+
+Command:
+```bash
+sudo -u guinevere GIT_MASTER=1 git -C /home/guinevere/code/guinevere log --oneline -3
+```
+
+Output:
+```text
+92fee59 chore: add repository secret safeguards
+6a793e6 chore: initial repo structure
+```
+
+## Tracked files
+
+Command:
+```bash
+sudo -u guinevere GIT_MASTER=1 git -C /home/guinevere/code/guinevere ls-files
+```
+
+Output:
+```text
+.gitignore
+.sops.yaml
+README.md
+```
+
+## File line counts
+
+```text
+  95 /home/guinevere/code/guinevere/.gitignore
+   7 /home/guinevere/code/guinevere/.sops.yaml
+   5 /home/guinevere/code/guinevere/README.md
+ 107 total
+```
+
+## Remote
+
+```text
+<no remote configured>
+```
+
+This is expected: P0-026 owns GitHub repository/PAT/remote configuration.
+
+## Secret scan
+
+Tracked file secret scan returned no matches for private keys, AGE-SECRET-KEY, tokens, passwords, or plaintext environment files.
+
+## Notes
+
+- Initial repo commit: `6a793e6 chore: initial repo structure`
+- Auditor-fix commit: `92fee59 chore: add repository secret safeguards`
+- `.sops.yaml` exists and is tracked with age recipient `age17cyg77cswk0du44k3r02g3l83x2f62crcnjnzv5cz5vtndve7yksck2zqj`
+- `.gitignore` expanded to cover secrets, runtime data, evidence, audit reports, backups, logs, DB files, Docker local data, IDE/OS noise, and internal certs

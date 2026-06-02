@@ -1,0 +1,85 @@
+# STEP-P0-008 Chrony/NTP Status
+
+## Time State
+
+```
+$ timedatectl status
+Local time: Sun 2026-05-31 13:16:14 WIB
+Universal time: Sun 2026-05-31 06:16:14 UTC
+Time zone: Asia/Jakarta (WIB, +0700)
+System clock synchronized: yes
+NTP service: active
+RTC in local TZ: no
+```
+
+## Chrony Service
+
+```
+$ systemctl is-active chrony
+active
+
+$ chronyc -v
+chronyc (chrony) version 4.5 (+READLINE +SECHASH +IPV6 -DEBUG)
+```
+
+## Chrony Configuration
+
+```
+$ grep '^pool' /etc/chrony/chrony.conf
+pool id.pool.ntp.org iburst maxsources 4
+pool 0.id.pool.ntp.org iburst maxsources 2
+pool 1.id.pool.ntp.org iburst maxsources 2
+pool 2.id.pool.ntp.org iburst maxsources 2
+pool 3.id.pool.ntp.org iburst maxsources 2
+```
+
+## Chrony Sources (Indonesian pools)
+
+```
+MS Name/IP address         Stratum Poll Reach LastRx Last sample
+^+ time.citra.net.id             2   6    17    18  -2083us[ -878us] +/-   37ms
+^- 0.ntp.lambda.net.id           3   6    17    19  -2265us[-1060us] +/-   59ms
+^- waktos1.unpak.ac.id           2   6    17    18  -2060us[ -855us] +/-  511ms
+^- ns1.ads.net.id                3   6    17    18  -1581us[ -376us] +/-   75ms
+^* 165.154.228.19                3   6    17    18  +2418us[+3624us] +/-   18ms
+^+ pdns2.lunanet.id              2   6    17    20   -560us[ +645us] +/-   21ms
+^+ ntp.skyline.net.id            2   6    17    20  -1993us[ -787us] +/-   39ms
+^- 1.ntp.lambda.net.id           2   6    17    19  -4555us[-3350us] +/-   59ms
+^- 157-15-124-110.domainesi>     2   6    17    19  +1352us[+2557us] +/-   90ms
+^- waktos2.unpak.ac.id           2   6    17    18   +897us[+2102us] +/-  513ms
+```
+
+12 Indonesian sources, current best `^*` 165.154.228.19 (Stratum 3).
+
+## Systemd-timesyncd
+
+```
+$ systemctl is-enabled systemd-timesyncd
+masked
+```
+
+Chrony is the sole NTP daemon on the system.
+
+## Post-change Service Health
+
+| Service | Status |
+|---|---|
+| chrony | active |
+| fail2ban | active (sshd jail OK) |
+| crowdsec | active (CAPI connected) |
+| crowdsec-firewall-bouncer | active |
+| rsyslog | restarted |
+
+## Chrony Config Backup
+
+`/etc/chrony/chrony.conf.backup.p0-008-20260531`
+
+## Rollback
+
+```bash
+sudo cp /etc/chrony/chrony.conf.backup.p0-008-20260531 /etc/chrony/chrony.conf
+sudo systemctl restart chrony
+sudo systemctl unmask systemd-timesyncd
+sudo timedatectl set-timezone Etc/UTC
+sudo systemctl restart fail2ban crowdsec crowdsec-firewall-bouncer rsyslog
+```

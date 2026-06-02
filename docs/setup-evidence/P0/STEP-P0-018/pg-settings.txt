@@ -1,0 +1,20 @@
+=== P0-018 Connection Limits and Log Settings ===
+Date: 2026-05-31
+
+=== CONNECTION LIMITS (ALTER USER) ===
+        rolname         | rolconnlimit
+------------------------+--------------
+ guinevere_backup       |            5
+ guinevere_core         |           30
+ guinevere_readonly     |           15
+ guinevere_scheduler    |           10
+ guinevere_surveillance |           10
+
+=== LOG SETTINGS (ALTER SYSTEM) ===
+log_connections = on
+log_disconnections = on
+log_statement = ddl
+log_min_duration_statement = 1s
+
+=== POSTGRESQL VERSION ===
+PostgreSQL 16.14 (Debian 16.14-1.pgdg13+1)

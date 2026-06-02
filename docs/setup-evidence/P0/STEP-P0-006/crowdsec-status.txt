@@ -1,0 +1,114 @@
+# STEP-P0-006 CrowdSec Status Evidence
+
+Date: 2026-05-31
+Host: faiz-prod-01 / 100.94.104.22
+
+## Installed Packages
+
+Command:
+
+```bash
+dpkg-query -W crowdsec crowdsec-firewall-bouncer-nftables
+```
+
+Output:
+
+```text
+crowdsec	1.7.8
+crowdsec-firewall-bouncer-nftables	0.0.34
+```
+
+## Services
+
+Command:
+
+```bash
+systemctl is-active crowdsec
+systemctl is-active crowdsec-firewall-bouncer
+```
+
+Output:
+
+```text
+active
+active
+```
+
+## CrowdSec Version
+
+Command:
+
+```bash
+cscli version
+```
+
+Output excerpt:
+
+```text
+version: v1.7.8-debian-pragmatic-amd64-63227459
+Codename: alphaga
+BuildDate: 2026-05-11_12:36:14
+Platform: linux
+User-Agent: crowdsec/v1.7.8-debian-pragmatic-amd64-63227459-linux
+```
+
+## Metrics
+
+Command:
+
+```bash
+cscli metrics
+```
+
+Output excerpt:
+
+```text
+Acquisition Metrics:
+Source                         Lines read  Lines parsed  Lines poured to bucket
+file:/var/log/audit/audit.log  800         605           -
+file:/var/log/auth.log         225         33            27
+file:/var/log/kern.log         29          -             -
+file:/var/log/syslog           190         -             -
+
+Local API Bouncers Metrics:
+Bouncer                         Route                 Method  Hits
+cs-firewall-bouncer-1780205575  /v1/decisions/stream  GET     28
+
+Parser Metrics:
+crowdsecurity/sshd-logs          140 hits, 5 parsed
+crowdsecurity/sshd-success-logs  135 hits, 28 parsed
+crowdsecurity/syslog-logs        444 hits, 444 parsed
+
+Scenario Metrics:
+crowdsecurity/ssh-bf                 current count 3, instantiated 4, poured 5
+crowdsecurity/ssh-slow-bf            current count 4, instantiated 4, poured 5
+crowdsecurity/ssh-time-based-bf      current count 4, instantiated 32, poured 5
+```
+
+## CAPI / Community Blocklist
+
+Command:
+
+```bash
+cscli capi status
+cscli decisions list --origin CAPI | sed -n '1,80p'
+```
+
+Output excerpt:
+
+```text
+You can successfully interact with Central API (CAPI)
+Sharing signals is enabled
+Pulling community blocklist is enabled
+Pulling blocklists from the console is enabled
+
+ID  Source  Scope:Value             Reason          Action  expiration
+2   CAPI    Ip:185.220.101.100      ssh:bruteforce  ban     166h58m39s
+3   CAPI    Ip:147.185.132.100      ssh:bruteforce  ban     166h58m39s
+...
+```
+
+## Notes
+
+- CrowdSec uses local API on `127.0.0.1:8080`; no public listener was introduced.
+- No API keys are stored in repo evidence.

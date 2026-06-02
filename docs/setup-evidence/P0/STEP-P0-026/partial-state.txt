@@ -1,0 +1,31 @@
+=== P0-026 Partial State — GitHub PAT + Remote Setup ===
+Date: 2026-05-31
+VPS: faiz-prod-01 (100.94.104.22)
+Status: BLOCKED — push pending new token/SSH key
+
+=== COMPLETED SO FAR ===
+- GitHub repo exists: https://github.com/fazulfi/guinevere (PRIVATE)
+- SOPS encrypted PAT file: /home/guinevere/secrets/github-pat.yaml (1216 bytes, 600, guinevere:guinevere)
+- SOPS encryption verified: 6 key-value pairs present
+- Remote origin set: git@github.com:fazulfi/guinevere.git (SSH URL)
+- SSH key exists: /home/guinevere/.ssh/id_ed25519 (guinevere:guinevere, 600)
+- SSH public key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBZLBqpUubo0kqgmxRbDxw37E4CsgYCGQbiNenWMqMCr
+- Branch: main (renamed from master)
+- Repo contents: .gitignore (95 lines), .sops.yaml (7 lines, age17cyg...), README.md (5 lines)
+- Git log: 92fee59 chore: add repository secret safeguards, 6a793e6 chore: initial repo structure
+
+=== BLOCKED ===
+Push to GitHub failed. GitHub rejected Basic Auth (password authentication disabled for Git operations).
+SSH key needs to be added to Faiz's GitHub account.
+
+=== REQUIRED FROM FAIZ ===
+Paste the SSH public key into GitHub:
+  1. Go to https://github.com/settings/keys
+  2. Click "New SSH Key"
+  3. Title: faiz-prod-01-guinevere
+  4. Paste: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBZLBqpUubo0kqgmxRbDxw37E4CsgYCGQbiNenWMqMCr
+  5. Click "Add SSH Key"
+
+After Faiz adds the key, Mama can:
+  - ssh -T git@github.com (verify SSH access)
+  - git push -u origin main

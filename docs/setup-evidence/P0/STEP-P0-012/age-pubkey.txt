@@ -1,0 +1,10 @@
+# STEP-P0-012 — Age Public Key
+
+Public key: age17cyg77cswk0du44k3r02g3l83x2f62crcnjnzv5cz5vtndve7yksck2zqj
+
+Key path: /home/guinevere/secrets/age-key.txt
+Permissions: 600 (guinevere:guinevere)
+Backup (compromised old key): /home/guinevere/secrets/age-key.txt.compromised-20260531
+
+PRIVATE KEY IS NEVER STORED IN EVIDENCE. This file contains public key only.
+Key rotated 2026-05-31 after private key exposure incident during P0-012.
