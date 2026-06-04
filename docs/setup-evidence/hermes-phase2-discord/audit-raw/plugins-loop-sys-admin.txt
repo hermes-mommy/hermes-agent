@@ -1,0 +1,1808 @@
+# src\hermes_plugins\__init__.py
+"""Hermes plugins package for Guinevere Phase 2 Discord migration."""
+
+# src\hermes_plugins\commands_loop\__init__.py
+"""Hermes plugin — Loop commands (S3.3).
+
+Commands: /loop-start, /loop-stop, /loop-pause, /loop-resume,
+         /loops, /loop-priority, /evidence.
+
+Migrated from src/discord/cmd_loop_*.py for Phase 2 Discord migration.
+Preserves loop orchestrator API calls (localhost:8000), state transitions,
+and priority queue operations.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+from .loop_start import register as _register_start
+from .loop_stop import register as _register_stop
+from .loop_pause import register as _register_pause
+from .loop_resume import register as _register_resume
+from .loops import register as _register_loops
+from .loop_priority import register as _register_priority
+from .evidence import register as _register_evidence
+
+logger = logging.getLogger(__name__)
+
+__all__ = ["register"]
+
+
+def register(ctx: Any) -> None:
+    """Register all loop commands with the Hermes plugin context."""
+    _register_start(ctx)
+    _register_stop(ctx)
+    _register_pause(ctx)
+    _register_resume(ctx)
+    _register_loops(ctx)
+    _register_priority(ctx)
+    _register_evidence(ctx)
+    logger.info("commands_loop: 7 commands registered.")
+
+# src\hermes_plugins\commands_loop\evidence.py
+"""Hermes command plugin — /evidence.
+
+Migrated from src/discord/cmd_evidence.py for Phase 2 Discord migration.
+Lists evidence artifacts for a loop from LoopManager. Preserves the safety
+requirement: metadata and artifact identifiers only — NO raw surveillance data.
+
+Original: 160 lines | Migrated: preserves evidence fetch + safety boundary.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+WIB: timezone = timezone(timedelta(hours=7))
+
+
+def _format_wib_timestamp(dt: datetime) -> str:
+    """Format a datetime as ``2026-06-01 15:30 WIB``."""
+    wib_dt = dt.astimezone(WIB)
+    return wib_dt.strftime("%Y-%m-%d %H:%M WIB")
+
+
+def _get_arg(ctx: Any, name: str) -> str | None:
+    """Extract argument from Hermes context (dict-style args)."""
+    args = getattr(ctx, "args", None)
+    if args is None:
+        return None
+    if isinstance(args, dict):
+        val = args.get(name)
+        return str(val) if val else None
+    return None
+
+
+async def _get_evidence(loop_id: str) -> list[dict[str, Any]] | None:
+    """Get evidence artifacts for a loop.
+
+    Returns list of artifact metadata dicts, or None if loop not found.
+    NOTE: Metadata only — NO raw surveillance data exposed.
+    """
+    try:
+        from src.loops.manager import LoopManager
+
+        manager = LoopManager()
+        state = manager.active_loops.get(loop_id)
+        if state is None:
+            return None
+
+        pipeline = manager.evidence_pipelines.get(loop_id)
+        if pipeline is None:
+            return []
+
+        artifacts = getattr(state, "artifacts", {})
+        if isinstance(artifacts, dict):
+            return [
+                {
+                    "phase": str(k),
+                    "name": str(v) if v else "unknown",
+                }
+                for k, v in artifacts.items()
+            ]
+        return []
+    except Exception:
+        logger.exception(
+            "evidence_fetch_failed", extra={"loop_id": loop_id}
+        )
+        return None
+
+
+def _render_evidence(
+    loop_id: str,
+    artifacts: list[dict[str, Any]] | None,
+    now: datetime,
+) -> str:
+    """Render evidence artifacts as markdown."""
+    ts_str = _format_wib_timestamp(now)
+
+    if artifacts is None:
+        return (
+            f"## \u274c Loop Not Found\n\n"
+            f"Loop `{loop_id}` tidak ditemukan.\n\n"
+            f"*{ts_str} WIB*\n\n"
+            f"**Loop ID:** `{loop_id}`"
+        )
+
+    if not artifacts:
+        return (
+            "## \U0001f4c1 Evidence Artifacts\n\n"
+            "Tidak ada evidence artifacts untuk loop ini.\n\n"
+            f"*{ts_str} WIB*\n\n"
+            f"**Loop ID:** `{loop_id}`"
+        )
+
+    lines: list[str] = [
+        "## \U0001f4c1 Evidence Artifacts",
+        "",
+        f"{len(artifacts)} artifact(s) recorded.",
+        "",
+        f"*{ts_str} WIB*",
+        "",
+        f"**Loop ID:** `{loop_id}`",
+        "",
+        "| Phase | Artifact |",
+        "|---|---|",
+    ]
+
+    for artifact in artifacts[:15]:
+        phase = artifact.get("phase", "?")
+        name = artifact.get("name", "unknown")
+        lines.append(f"| {phase} | `{name}` |")
+
+    lines.append("")
+    return "\n".join(lines)
+
+
+def register(ctx: Any) -> None:
+    """Register /evidence with Hermes."""
+
+    @ctx.register_command(
+        "evidence",
+        description="Fetch evidence for a step or active work loop.",
+    )
+    async def handle(context: Any) -> str:
+        try:
+            # Support both "loop_id" and "step" option names
+            loop_id = _get_arg(context, "loop_id")
+            if not loop_id:
+                loop_id = _get_arg(context, "step")
+            if not loop_id:
+                return (
+                    "\u26a0\ufe0f Parameter `loop_id` diperlukan, "
+                    "Darling."
+                )
+
+            artifacts = await _get_evidence(loop_id)
+            now = datetime.now(tz=timezone.utc)
+            return _render_evidence(loop_id, artifacts, now)
+
+        except Exception as exc:
+            logger.exception(
+                "evidence_failed",
+                extra={"error": str(exc)},
+            )
+            return (
+                "\u26a0\ufe0f Evidence is temporarily unavailable."
+            )
+
+# src\hermes_plugins\commands_loop\loop_pause.py
+"""Hermes command plugin — /loop-pause.
+
+Migrated from src/discord/cmd_loop_pause.py for Phase 2 Discord migration.
+Pauses an active loop via LoopManager state machine.
+
+Original: 103 lines | Migrated: preserves LoopManager.pause() logic.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+WIB: timezone = timezone(timedelta(hours=7))
+
+
+def _format_wib_timestamp(dt: datetime) -> str:
+    """Format a datetime as ``2026-06-01 15:30 WIB``."""
+    wib_dt = dt.astimezone(WIB)
+    return wib_dt.strftime("%Y-%m-%d %H:%M WIB")
+
+
+def _get_arg(ctx: Any, name: str) -> str | None:
+    """Extract argument from Hermes context (dict-style args)."""
+    args = getattr(ctx, "args", None)
+    if args is None:
+        return None
+    if isinstance(args, dict):
+        val = args.get(name)
+        return str(val) if val else None
+    return None
+
+
+def register(ctx: Any) -> None:
+    """Register /loop-pause with Hermes."""
+
+    @ctx.register_command(
+        "loop-pause",
+        description="Pause the active Guinevere work loop.",
+    )
+    async def handle(context: Any) -> str:
+        try:
+            loop_id = _get_arg(context, "loop_id")
+            if not loop_id:
+                return (
+                    "\u26a0\ufe0f Parameter `loop_id` diperlukan, "
+                    "Darling."
+                )
+
+            from src.loops.manager import LoopManager
+
+            manager = LoopManager()
+            state = manager.active_loops.get(loop_id)
+
+            ts_str = _format_wib_timestamp(
+                datetime.now(tz=timezone.utc)
+            )
+
+            if state is None:
+                return (
+                    f"## \u274c Loop Not Found\n\n"
+                    f"Loop `{loop_id}` tidak ditemukan.\n\n"
+                    f"*{ts_str} WIB*\n\n"
+                    f"**Loop ID:** `{loop_id}`"
+                )
+
+            state.pause()
+            logger.info("loop_paused", extra={"loop_id": loop_id})
+
+            return (
+                "## \u23f8\ufe0f Loop Paused\n\n"
+                f"Loop `{loop_id}` sudah di-pause.\n\n"
+                f"*{ts_str} WIB*\n\n"
+                f"**Loop ID:** `{loop_id}`\n"
+                f"**Phase:** `{state.current_phase}`\n"
+                f"**Status:** `Paused`"
+            )
+
+        except Exception as exc:
+            logger.exception(
+                "loop_pause_failed",
+                extra={"error": str(exc)},
+            )
+            return (
+                "\u26a0\ufe0f Loop pause is temporarily unavailable."
+            )
+
+# src\hermes_plugins\commands_loop\loop_priority.py
+"""Hermes command plugin — /loop-priority.
+
+Migrated from src/discord/cmd_loop_priority.py for Phase 2 Discord migration.
+Sets the priority for a Guinevere work loop via LoopManager. Preserves
+priority validation (low/normal/high/critical) with emoji display.
+
+Original: 129 lines | Migrated: preserves priority update logic.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+WIB: timezone = timezone(timedelta(hours=7))
+VALID_PRIORITIES: frozenset[str] = frozenset(
+    {"low", "normal", "high", "critical"}
+)
+PRIORITY_EMOJI: dict[str, str] = {
+    "low": "\U0001f7e2",
+    "normal": "\U0001f535",
+    "high": "\U0001f7e0",
+    "critical": "\U0001f534",
+}
+
+
+def _format_wib_timestamp(dt: datetime) -> str:
+    """Format a datetime as ``2026-06-01 15:30 WIB``."""
+    wib_dt = dt.astimezone(WIB)
+    return wib_dt.strftime("%Y-%m-%d %H:%M WIB")
+
+
+def _get_arg(ctx: Any, name: str) -> str | None:
+    """Extract argument from Hermes context (dict-style args)."""
+    args = getattr(ctx, "args", None)
+    if args is None:
+        return None
+    if isinstance(args, dict):
+        val = args.get(name)
+        return str(val) if val else None
+    return None
+
+
+def register(ctx: Any) -> None:
+    """Register /loop-priority with Hermes."""
+
+    @ctx.register_command(
+        "loop-priority",
+        description="Set the priority for a Guinevere work loop.",
+    )
+    async def handle(context: Any) -> str:
+        try:
+            # Support both "loop_id" and "loop" option names
+            loop_id = _get_arg(context, "loop_id")
+            if not loop_id:
+                loop_id = _get_arg(context, "loop")
+            if not loop_id:
+                return (
+                    "\u26a0\ufe0f Parameter `loop_id` diperlukan, "
+                    "Darling."
+                )
+
+            priority_raw = _get_arg(context, "priority")
+            priority = priority_raw.lower() if priority_raw else ""
+
+            if priority not in VALID_PRIORITIES:
+                return (
+                    "\u26a0\ufe0f Priority harus salah satu dari: "
+                    "low, normal, high, critical."
+                )
+
+            from src.loops.manager import LoopManager
+
+            manager = LoopManager()
+            state = manager.active_loops.get(loop_id)
+
+            ts_str = _format_wib_timestamp(
+                datetime.now(tz=timezone.utc)
+            )
+
+            if state is None:
+                return (
+                    f"## \u274c Loop Not Found\n\n"
+                    f"Loop `{loop_id}` tidak ditemukan.\n\n"
+                    f"*{ts_str} WIB*\n\n"
+                    f"**Loop ID:** `{loop_id}`"
+                )
+
+            if hasattr(state, "priority"):
+                setattr(state, "priority", priority)
+            logger.info(
+                "loop_priority_set",
+                extra={"loop_id": loop_id, "priority": priority},
+            )
+
+            emoji = PRIORITY_EMOJI.get(priority, "\u2728")
+            return (
+                "## \u2705 Loop Priority Updated\n\n"
+                f"Priority loop `{loop_id}` diubah.\n\n"
+                f"*{ts_str} WIB*\n\n"
+                f"**Loop ID:** `{loop_id}`\n"
+                f"**Priority:** {emoji} {priority.capitalize()}"
+            )
+
+        except Exception as exc:
+            logger.exception(
+                "loop_priority_failed",
+                extra={"error": str(exc)},
+            )
+            return (
+                "\u26a0\ufe0f Loop priority is temporarily unavailable."
+            )
+
+# src\hermes_plugins\commands_loop\loop_resume.py
+"""Hermes command plugin — /loop-resume.
+
+Migrated from src/discord/cmd_loop_resume.py for Phase 2 Discord migration.
+Resumes a paused loop via LoopManager state machine with status validation.
+
+Original: 122 lines | Migrated: preserves LoopManager.resume() + PAUSED check.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+WIB: timezone = timezone(timedelta(hours=7))
+
+
+def _format_wib_timestamp(dt: datetime) -> str:
+    """Format a datetime as ``2026-06-01 15:30 WIB``."""
+    wib_dt = dt.astimezone(WIB)
+    return wib_dt.strftime("%Y-%m-%d %H:%M WIB")
+
+
+def _get_arg(ctx: Any, name: str) -> str | None:
+    """Extract argument from Hermes context (dict-style args)."""
+    args = getattr(ctx, "args", None)
+    if args is None:
+        return None
+    if isinstance(args, dict):
+        val = args.get(name)
+        return str(val) if val else None
+    return None
+
+
+def register(ctx: Any) -> None:
+    """Register /loop-resume with Hermes."""
+
+    @ctx.register_command(
+        "loop-resume",
+        description="Resume a paused Guinevere work loop.",
+    )
+    async def handle(context: Any) -> str:
+        try:
+            loop_id = _get_arg(context, "loop_id")
+            if not loop_id:
+                return (
+                    "\u26a0\ufe0f Parameter `loop_id` diperlukan, "
+                    "Darling."
+                )
+
+            from src.loops.manager import LoopManager
+            from src.loops.state_machine import LoopStatus
+
+            manager = LoopManager()
+            state = manager.active_loops.get(loop_id)
+
+            ts_str = _format_wib_timestamp(
+                datetime.now(tz=timezone.utc)
+            )
+
+            if state is None:
+                return (
+                    f"## \u274c Loop Not Found\n\n"
+                    f"Loop `{loop_id}` tidak ditemukan.\n\n"
+                    f"*{ts_str} WIB*\n\n"
+                    f"**Loop ID:** `{loop_id}`"
+                )
+
+            if state.status != LoopStatus.PAUSED:
+                return (
+                    "## \u26a0\ufe0f Loop Not Paused\n\n"
+                    f"Loop `{loop_id}` tidak dalam status paused "
+                    f"(current: `{state.status.value}`).\n\n"
+                    f"*{ts_str} WIB*\n\n"
+                    f"**Loop ID:** `{loop_id}`\n"
+                    f"**Status:** `{state.status.value}`"
+                )
+
+            state.resume()
+            logger.info("loop_resumed", extra={"loop_id": loop_id})
+
+            return (
+                "## \u25b6\ufe0f Loop Resumed\n\n"
+                f"Loop `{loop_id}` dilanjutkan.\n\n"
+                f"*{ts_str} WIB*\n\n"
+                f"**Loop ID:** `{loop_id}`\n"
+                f"**Phase:** `{state.current_phase}`\n"
+                f"**Status:** `Running`"
+            )
+
+        except Exception as exc:
+            logger.exception(
+                "loop_resume_failed",
+                extra={"error": str(exc)},
+            )
+            return (
+                "\u26a0\ufe0f Loop resume is temporarily unavailable."
+            )
+
+# src\hermes_plugins\commands_loop\loop_start.py
+"""Hermes command plugin — /loop-start.
+
+Migrated from src/discord/cmd_loop_start.py for Phase 2 Discord migration.
+Starts a supervised Guinevere work loop via the internal API (localhost:8000)
+and returns a markdown confirmation.
+
+Original: 462 lines | Migrated: preserves HTTP API call + error handling.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+import httpx
+
+logger = logging.getLogger(__name__)
+
+WIB: timezone = timezone(timedelta(hours=7))
+API_BASE_URL: str = "http://localhost:8000"
+LOOPS_ENDPOINT: str = "/api/v1/loops"
+
+
+def _format_wib_timestamp(dt: datetime) -> str:
+    """Format a datetime as ``2026-06-01 15:30 WIB``."""
+    wib_dt = dt.astimezone(WIB)
+    return wib_dt.strftime("%Y-%m-%d %H:%M WIB")
+
+
+def _get_arg(ctx: Any, name: str) -> str | None:
+    """Extract argument from Hermes context (dict-style args)."""
+    args = getattr(ctx, "args", None)
+    if args is None:
+        return None
+    if isinstance(args, dict):
+        val = args.get(name)
+        return str(val) if val else None
+    return None
+
+
+def _render_start_result(
+    loop_id: str,
+    goal: str,
+    status: str,
+    priority: str,
+    now: datetime,
+) -> str:
+    """Render loop-start confirmation as markdown."""
+    ts_str = _format_wib_timestamp(now)
+    loop_id_short = loop_id[:8]
+
+    return (
+        "## \U0001f504 Loop Started\n\n"
+        "Mommy mulai kerja, Darling. Tunggu hasilnya ya~\n\n"
+        f"*{ts_str} WIB*\n\n"
+        f"**Goal:** {goal}\n"
+        f"**Loop ID:** `{loop_id_short}`\n"
+        f"**Status:** `{status}`\n"
+        f"**Priority:** `{priority}`"
+    )
+
+
+def register(ctx: Any) -> None:
+    """Register /loop-start with Hermes."""
+
+    @ctx.register_command(
+        "loop-start",
+        description="Start a supervised Guinevere work loop.",
+    )
+    async def handle(context: Any) -> str:
+        try:
+            goal = _get_arg(context, "goal")
+            if not goal:
+                return "\u26a0\ufe0f Goal tidak boleh kosong, Darling."
+
+            api_key = os.environ.get("GUINEVERE_API_KEY")
+            if not api_key:
+                return (
+                    "\u26a0\ufe0f GUINEVERE_API_KEY is not set. "
+                    "Ask Faiz to configure it."
+                )
+
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{API_BASE_URL}{LOOPS_ENDPOINT}",
+                    json={"task": goal, "priority": "normal"},
+                    headers={"X-Guinevere-API-Key": api_key},
+                    timeout=10.0,
+                )
+                response.raise_for_status()
+                result = response.json()
+
+            loop_id = str(
+                result.get("loop_id", result.get("id", "unknown"))
+            )
+            status = str(result.get("status", "running"))
+            priority = str(result.get("priority", "normal"))
+
+            now = datetime.now(tz=timezone.utc)
+            return _render_start_result(
+                loop_id=loop_id,
+                goal=goal,
+                status=status,
+                priority=priority,
+                now=now,
+            )
+
+        except httpx.HTTPStatusError as exc:
+            logger.exception(
+                "loop_start_http_error",
+                extra={"status": exc.response.status_code},
+            )
+            return (
+                f"\u26a0\ufe0f API returned {exc.response.status_code}. "
+                "Loop gagal dimulai, Darling."
+            )
+        except httpx.RequestError as exc:
+            logger.exception(
+                "loop_start_request_error",
+                extra={"error": str(exc)},
+            )
+            return (
+                "\u26a0\ufe0f Tidak bisa menghubungi API internal. "
+                "Coba lagi nanti ya, Darling."
+            )
+        except Exception as exc:
+            logger.exception(
+                "loop_start_unexpected_error",
+                extra={"error": str(exc)},
+            )
+            return (
+                "\u26a0\ufe0f Terjadi kesalahan tak terduga. "
+                "Mommy log untuk investigasi."
+            )
+
+# src\hermes_plugins\commands_loop\loop_stop.py
+"""Hermes command plugin — /loop-stop.
+
+Migrated from src/discord/cmd_loop_stop.py for Phase 2 Discord migration.
+Stops one or all active Guinevere work loops via the internal API
+(localhost:8000) and returns a markdown confirmation.
+
+Original: 532 lines | Migrated: preserves cancel + list-active API logic.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+import httpx
+
+logger = logging.getLogger(__name__)
+
+WIB: timezone = timezone(timedelta(hours=7))
+API_BASE_URL: str = "http://localhost:8000"
+LOOPS_ENDPOINT: str = "/api/v1/loops"
+
+
+def _format_wib_timestamp(dt: datetime) -> str:
+    """Format a datetime as ``2026-06-01 15:30 WIB``."""
+    wib_dt = dt.astimezone(WIB)
+    return wib_dt.strftime("%Y-%m-%d %H:%M WIB")
+
+
+def _get_arg(ctx: Any, name: str) -> str | None:
+    """Extract argument from Hermes context (dict-style args)."""
+    args = getattr(ctx, "args", None)
+    if args is None:
+        return None
+    if isinstance(args, dict):
+        val = args.get(name)
+        return str(val) if val else None
+    return None
+
+
+def _render_stop_result(
+    loop_id: str,
+    phase: str,
+    status: str,
+    count: int,
+    now: datetime,
+) -> str:
+    """Render loop-stop confirmation as markdown."""
+    ts_str = _format_wib_timestamp(now)
+    loop_id_short = loop_id[:8]
+    count_note = (
+        f"\n\n**Note:** Semua {count} loop aktif dihentikan."
+        if count > 1
+        else ""
+    )
+
+    return (
+        "## \u23f9\ufe0f Loop Stopped\n\n"
+        "Mommy berhenti, Darling. Kalau mau lanjut lagi, bilang aja.\n\n"
+        f"*{ts_str} WIB*\n\n"
+        f"**Loop ID:** `{loop_id_short}`\n"
+        f"**Previous Phase:** `{phase}`\n"
+        f"**Status:** `{status}`"
+        f"{count_note}"
+    )
+
+
+async def _cancel_loop(
+    client: httpx.AsyncClient,
+    api_key: str,
+    loop_id: str,
+) -> dict[str, object]:
+    """Cancel a single loop via the API."""
+    response = await client.post(
+        f"{API_BASE_URL}{LOOPS_ENDPOINT}/{loop_id}/cancel",
+        headers={"X-Guinevere-API-Key": api_key},
+        timeout=10.0,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+async def _list_active_loops(
+    client: httpx.AsyncClient,
+    api_key: str,
+) -> list[dict[str, object]]:
+    """List all active (running/queued) loops via the API."""
+    response = await client.get(
+        f"{API_BASE_URL}{LOOPS_ENDPOINT}",
+        headers={"X-Guinevere-API-Key": api_key},
+        timeout=10.0,
+    )
+    response.raise_for_status()
+    body: dict[str, object] = response.json()
+    loops_data: object = body.get("loops", [])
+    if not isinstance(loops_data, list):
+        return []
+    return [
+        loop
+        for loop in loops_data
+        if isinstance(loop, dict)
+        and loop.get("status") in ("running", "queued")
+    ]
+
+
+def register(ctx: Any) -> None:
+    """Register /loop-stop with Hermes."""
+
+    @ctx.register_command(
+        "loop-stop",
+        description="Stop the active Guinevere work loop safely.",
+    )
+    async def handle(context: Any) -> str:
+        try:
+            loop_id = _get_arg(context, "loop_id")
+            api_key = os.environ.get("GUINEVERE_API_KEY")
+            if not api_key:
+                return (
+                    "\u26a0\ufe0f GUINEVERE_API_KEY is not set. "
+                    "Ask Faiz to configure it."
+                )
+
+            async with httpx.AsyncClient() as client:
+                cancelled: list[dict[str, object]] = []
+
+                if loop_id:
+                    result = await _cancel_loop(client, api_key, loop_id)
+                    cancelled.append(result)
+                else:
+                    active_loops = await _list_active_loops(
+                        client, api_key
+                    )
+                    if not active_loops:
+                        return (
+                            "Tidak ada loop yang sedang aktif, Darling."
+                        )
+                    for active in active_loops:
+                        lid = str(
+                            active.get(
+                                "loop_id", active.get("id", "unknown")
+                            )
+                        )
+                        result = await _cancel_loop(client, api_key, lid)
+                        cancelled.append(result)
+
+            if not cancelled:
+                return (
+                    "Loop berhasil dihentikan, tapi datanya kosong. "
+                    "Cek nanti ya."
+                )
+
+            first = cancelled[0]
+            lid = str(first.get("loop_id", first.get("id", "unknown")))
+            phase = str(first.get("phase", "unknown"))
+            status = str(first.get("status", "cancelled"))
+
+            now = datetime.now(tz=timezone.utc)
+            return _render_stop_result(
+                loop_id=lid,
+                phase=phase,
+                status=status,
+                count=len(cancelled),
+                now=now,
+            )
+
+        except httpx.HTTPStatusError as exc:
+            logger.exception(
+                "loop_stop_http_error",
+                extra={"status": exc.response.status_code},
+            )
+            return (
+                f"\u26a0\ufe0f API returned {exc.response.status_code}. "
+                "Loop gagal dihentikan, Darling."
+            )
+        except httpx.RequestError as exc:
+            logger.exception(
+                "loop_stop_request_error",
+                extra={"error": str(exc)},
+            )
+            return (
+                "\u26a0\ufe0f Tidak bisa menghubungi API internal. "
+                "Coba lagi nanti ya, Darling."
+            )
+        except Exception as exc:
+            logger.exception(
+                "loop_stop_unexpected_error",
+                extra={"error": str(exc)},
+            )
+            return (
+                "\u26a0\ufe0f Terjadi kesalahan tak terduga. "
+                "Mommy log untuk investigasi."
+            )
+
+# src\hermes_plugins\commands_loop\loops.py
+"""Hermes command plugin — /loops.
+
+Migrated from src/discord/cmd_loops.py for Phase 2 Discord migration.
+Lists current and recent Guinevere work loops via LoopManager.list_loops().
+
+Original: 114 lines | Migrated: preserves LoopManager.list_loops() logic.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+WIB: timezone = timezone(timedelta(hours=7))
+
+
+def _format_wib_timestamp(dt: datetime) -> str:
+    """Format a datetime as ``2026-06-01 15:30 WIB``."""
+    wib_dt = dt.astimezone(WIB)
+    return wib_dt.strftime("%Y-%m-%d %H:%M WIB")
+
+
+async def _get_all_loops() -> list[dict[str, Any]]:
+    """Get all active loops from LoopManager."""
+    try:
+        from src.loops.manager import LoopManager
+
+        manager = LoopManager()
+        return await manager.list_loops()
+    except Exception:
+        logger.exception("loops_list_failed")
+        return []
+
+
+def _render_loops(loops: list[dict[str, Any]], now: datetime) -> str:
+    """Render loop list as markdown."""
+    ts_str = _format_wib_timestamp(now)
+
+    if not loops:
+        return (
+            "## \U0001f504 Active Loops\n\n"
+            "Tidak ada loop aktif saat ini, Darling.\n\n"
+            f"*{ts_str} WIB*"
+        )
+
+    lines: list[str] = [
+        "## \U0001f504 Active Loops",
+        "",
+        f"{len(loops)} loop(s) aktif.",
+        "",
+        f"*{ts_str} WIB*",
+        "",
+    ]
+
+    for loop in loops[:10]:
+        loop_id = loop.get("loop_id", "unknown")
+        status = loop.get("status", "unknown")
+        phase = loop.get("current_phase", "unknown")
+        task = loop.get("task", "")[:50] or "(no task)"
+        lines.append(f"### `{loop_id}`")
+        lines.append(f"- **Status:** `{status}`")
+        lines.append(f"- **Phase:** `{phase}`")
+        lines.append(f"- **Task:** {task}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def register(ctx: Any) -> None:
+    """Register /loops with Hermes."""
+
+    @ctx.register_command(
+        "loops",
+        description="List current and recent Guinevere work loops.",
+    )
+    async def handle(context: Any) -> str:
+        try:
+            loops = await _get_all_loops()
+            now = datetime.now(tz=timezone.utc)
+            return _render_loops(loops, now)
+
+        except Exception as exc:
+            logger.exception(
+                "loops_failed",
+                extra={"error": str(exc)},
+            )
+            return (
+                "\u26a0\ufe0f Loops list is temporarily unavailable."
+            )
+
+# src\hermes_plugins\commands_system\__init__.py
+"""Hermes plugin — commands_system. System command group (S3.6).
+
+Provides /approve, /approve-all, /deny, /consent, /punishment, /reward
+commands for auth approval workflow, consent management, and persona
+state mutation via guinevere_safety plugin.
+"""
+
+from __future__ import annotations
+
+__all__: list[str] = []
+
+# src\hermes_plugins\commands_system\approve.py
+"""Hermes command plugin — /approve. Approve a pending MCP tool request.
+
+Integrates with the MCP auth module's DESTRUCTIVE_APPROVAL workflow.
+Calls ``src.mcp.auth.approve(tool_name)`` to signal approval of a
+pending tool invocation.
+
+Usage:
+    /approve <tool_name>
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+
+def register(ctx: Any) -> None:
+    """Register the /approve command with Hermes."""
+
+    @ctx.register_command("approve", description="Approve a pending Guinevere action.")
+    async def handle(context: Any) -> str:
+        try:
+            args: list[str] = getattr(context, "args", [])
+            if not args:
+                return "⚠️ Parameter `tool_name` diperlukan, Darling."
+
+            tool_name = args[0]
+
+            from src.mcp.auth import _pending_approvals, approve
+
+            if tool_name not in _pending_approvals:
+                return (
+                    f"⚠️ Tidak ada pending approval untuk `{tool_name}`."
+                )
+
+            approve(tool_name)
+            logger.info("tool_approved", extra={"tool_name": tool_name})
+
+            return (
+                "# ✅ Tool Approved\n\n"
+                "Tool sudah di-approve, Darling.\n\n"
+                "---\n\n"
+                f"| Field | Value |\n|---|---|\n"
+                f"| 🔧 Tool | `{tool_name}` |\n"
+                f"| ✅ Status | Approved |\n"
+            )
+
+        except Exception:
+            logger.exception("approve_command_failed")
+            return "⚠️ Approve failed. Try again."
+
+
+__all__ = ["register"]
+
+# src\hermes_plugins\commands_system\approve_all.py
+"""Hermes command plugin — /approve-all. Approve all pending MCP tool requests.
+
+Integrates with the MCP auth module's DESTRUCTIVE_APPROVAL workflow.
+Approves every pending tool invocation in one batch.
+
+Usage:
+    /approve-all
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+
+def register(ctx: Any) -> None:
+    """Register the /approve-all command with Hermes."""
+
+    @ctx.register_command(
+        "approve-all", description="Approve all safe pending Guinevere actions."
+    )
+    async def handle(context: Any) -> str:
+        try:
+            from src.mcp.auth import _pending_approvals, approve
+
+            pending_names = list(_pending_approvals.keys())
+
+            if not pending_names:
+                return (
+                    "# ✅ All Tools Approved\n\n"
+                    "Tidak ada pending approval saat ini, Darling.\n"
+                )
+
+            approved_count = len(pending_names)
+            for name in pending_names:
+                approve(name)
+
+            logger.info(
+                "all_tools_approved", extra={"count": approved_count}
+            )
+
+            name_list = "\n".join(f"• `{n}`" for n in pending_names)
+
+            return (
+                "# ✅ All Tools Approved\n\n"
+                "Semua pending tools sudah di-approve, Darling.\n\n"
+                "---\n\n"
+                f"## 📋 Approved ({approved_count})\n\n"
+                f"{name_list}\n"
+            )
+
+        except Exception:
+            logger.exception("approve_all_command_failed")
+            return "⚠️ Approve-all failed. Try again."
+
+
+__all__ = ["register"]
+
+# src\hermes_plugins\commands_system\consent.py
+"""Hermes command plugin — /consent. Show or update consent boundaries.
+
+Reads and writes consent grants from Redis DB0 key ``consent:grants``
+as a JSON set. Requires explicit Faiz action for grant/revoke.
+
+SAFETY: No consent change without explicit operator action.
+Surveillance consent requires explicit grant — never auto-granted.
+
+Usage:
+    /consent [action: view|grant|revoke] [category: str]
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from typing import Any
+
+import redis
+
+logger = logging.getLogger(__name__)
+
+VALID_ACTIONS: frozenset[str] = frozenset({"view", "grant", "revoke"})
+DEFAULT_ACTION: str = "view"
+
+REDIS_HOST: str = "localhost"
+REDIS_PORT: int = 6380
+REDIS_DB: int = 0
+REDIS_KEY: str = "consent:grants"
+
+
+def _redis() -> redis.Redis:
+    """Return a Redis client for DB0 (consent state)."""
+    return redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, decode_responses=True)
+
+
+def _get_grants(r: redis.Redis) -> set[str]:
+    """Read current consent grants from Redis."""
+    raw = r.get(REDIS_KEY)
+    if raw is None:
+        return set()
+    try:
+        data = json.loads(raw)
+        if isinstance(data, list):
+            return set(data)
+        return set()
+    except (json.JSONDecodeError, TypeError):
+        return set()
+
+
+def _save_grants(r: redis.Redis, grants: set[str]) -> None:
+    """Persist consent grants to Redis."""
+    r.set(REDIS_KEY, json.dumps(sorted(grants)))
+
+
+def register(ctx: Any) -> None:
+    """Register the /consent command with Hermes."""
+
+    @ctx.register_command("consent", description="Show or update consent boundaries.")
+    async def handle(context: Any) -> str:
+        try:
+            args: list[str] = getattr(context, "args", [])
+            action = args[0] if args and args[0] in VALID_ACTIONS else DEFAULT_ACTION
+
+            r = _redis()
+            grants = _get_grants(r)
+
+            if action == "view":
+                grants_list = sorted(grants) if grants else ["(none)"]
+                grant_lines = "\n".join(f"• {g}" for g in grants_list)
+
+                return (
+                    "# 🔒 Consent Manager\n\n"
+                    "Ini consent grants saat ini, Darling.\n\n"
+                    "---\n\n"
+                    f"## 📋 Current Grants\n\n"
+                    f"{grant_lines}\n\n"
+                    "---\n\n"
+                    f"🛡️ Safety • {len(grants)} grants active\n"
+                )
+
+            if len(args) < 2:
+                return f"⚠️ Parameter `category` diperlukan untuk {action}, Darling."
+
+            category = args[1]
+
+            if action == "grant":
+                grants.add(category)
+                _save_grants(r, grants)
+                logger.info("consent_granted", extra={"category": category})
+
+                return (
+                    "# 🔒 Consent Manager\n\n"
+                    f"Consent `{category}` sudah di-grant, Darling.\n\n"
+                    "---\n\n"
+                    f"| Field | Value |\n|---|---|\n"
+                    f"| 📋 Category | `{category}` |\n"
+                    f"| ✅ Status | Granted |\n"
+                )
+
+            if action == "revoke":
+                grants.discard(category)
+                _save_grants(r, grants)
+                logger.info("consent_revoked", extra={"category": category})
+
+                return (
+                    "# 🔒 Consent Manager\n\n"
+                    f"Consent `{category}` sudah di-revoke, Darling.\n\n"
+                    "---\n\n"
+                    f"| Field | Value |\n|---|---|\n"
+                    f"| 📋 Category | `{category}` |\n"
+                    f"| ❌ Status | Revoked |\n"
+                )
+
+            return "# 🔒 Consent Manager\n\nAction tidak dikenali, Darling."
+
+        except Exception:
+            logger.exception("consent_command_failed")
+            return "⚠️ Consent manager is temporarily unavailable."
+
+
+__all__ = ["register"]
+
+# src\hermes_plugins\commands_system\deny.py
+"""Hermes command plugin — /deny. Deny a pending MCP tool request.
+
+Integrates with the MCP auth module's DESTRUCTIVE_APPROVAL workflow.
+Calls ``src.mcp.auth.deny(tool_name)`` to signal denial of a pending
+tool invocation.
+
+Usage:
+    /deny <tool_name>
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+
+def register(ctx: Any) -> None:
+    """Register the /deny command with Hermes."""
+
+    @ctx.register_command("deny", description="Deny a pending Guinevere action.")
+    async def handle(context: Any) -> str:
+        try:
+            args: list[str] = getattr(context, "args", [])
+            if not args:
+                return "⚠️ Parameter `tool_name` diperlukan, Darling."
+
+            tool_name = args[0]
+
+            from src.mcp.auth import _pending_approvals, deny
+
+            if tool_name not in _pending_approvals:
+                return (
+                    f"⚠️ Tidak ada pending approval untuk `{tool_name}`."
+                )
+
+            deny(tool_name)
+            logger.info("tool_denied", extra={"tool_name": tool_name})
+
+            return (
+                "# ❌ Tool Denied\n\n"
+                "Tool sudah di-deny, Darling.\n\n"
+                "---\n\n"
+                f"| Field | Value |\n|---|---|\n"
+                f"| 🔧 Tool | `{tool_name}` |\n"
+                f"| ❌ Status | Denied |\n"
+            )
+
+        except Exception:
+            logger.exception("deny_command_failed")
+            return "⚠️ Deny failed. Try again."
+
+
+__all__ = ["register"]
+
+# src\hermes_plugins\commands_system\punishment.py
+"""Hermes command plugin — /punishment. Set bounded punishment level (L1-L5).
+
+Integrates with guinevere_safety plugin's StateManager for Redis DB5
+state persistence. Bounded punishment FSM: L1-L5 only.
+
+SAFETY:
+    - L1-L5 accepted
+    - L6+ PROHIBITED — hard-rejected with safety log
+    - Y4 baseline, Y5 ceiling, Y6 PROHIBITED
+    - No state bypass of guinevere_safety plugin
+
+Usage:
+    /punishment <level: L1-L5> [note: str]
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+VALID_LEVELS: frozenset[str] = frozenset({"L1", "L2", "L3", "L4", "L5"})
+
+LEVEL_DESC: dict[str, str] = {
+    "L1": "Silent note — minor correction recorded.",
+    "L2": "Verbal reminder — gentle nudge.",
+    "L3": "Formal warning — behavior logged.",
+    "L4": "Temporary restriction — reduced persona intensity.",
+    "L5": "Maximum safe level — heightened boundary enforcement.",
+}
+
+
+def register(ctx: Any) -> None:
+    """Register the /punishment command with Hermes."""
+
+    @ctx.register_command(
+        "punishment", description="Record or show the bounded punishment state."
+    )
+    async def handle(context: Any) -> str:
+        try:
+            args: list[str] = getattr(context, "args", [])
+
+            if not args:
+                from guinevere_safety.state_manager import PUNISHMENT_DESCRIPTIONS, StateManager
+
+                sm = StateManager()
+                state = sm.get_state()
+                pun_level: int = state["punishment_level"]
+                desc = PUNISHMENT_DESCRIPTIONS.get(pun_level, "Unknown")
+
+                return (
+                    "# ⚠️ Punishment Status\n\n"
+                    f"Current punishment: `L{pun_level}` — {desc}\n"
+                )
+
+            level_raw = args[0].upper()
+            level = level_raw
+
+            note = args[1] if len(args) > 1 else ""
+
+            if level not in VALID_LEVELS:
+                logger.warning(
+                    "punishment_rejected", extra={"attempted_level": level}
+                )
+                return (
+                    "# 🛑 Punishment Rejected\n\n"
+                    "Level di atas L5 tidak diizinkan, Darling. "
+                    "Safety boundary Mommy: Y4 baseline, Y5 ceiling.\n\n"
+                    "---\n\n"
+                    f"| Field | Value |\n|---|---|\n"
+                    f"| 🛑 Rejected Level | `{level or 'empty'}` |\n"
+                    f"| 🛡️ Boundary | Y4 baseline, Y5 ceiling, Y6 PROHIBITED |\n"
+                )
+
+            level_num = int(level[1])
+
+            from guinevere_safety.state_manager import PUNISHMENT_DESCRIPTIONS, StateManager
+
+            sm = StateManager()
+            ok = sm.set_punishment(level_num)
+
+            if not ok:
+                return "⚠️ Failed to set punishment level (Redis unavailable)."
+
+            logger.info("punishment_recorded", extra={"level": level})
+
+            desc = LEVEL_DESC.get(level, PUNISHMENT_DESCRIPTIONS.get(level_num, "Unknown"))
+
+            lines: list[str] = [
+                "# ⚠️ Punishment Recorded",
+                "",
+                "Punishment sudah dicatat, Darling. Mommy ingat.",
+                "",
+                "---",
+                "",
+                f"| Field | Value |",
+                f"|---|---|",
+                f"| Level | `{level}` |",
+                f"| Description | {desc} |",
+            ]
+
+            if note:
+                lines.append(f"| 📝 Note | {note} |")
+
+            lines.extend([
+                "",
+                "---",
+                "🛡️ Safety • Y4 baseline • Y5 ceiling • Y6 PROHIBITED",
+            ])
+
+            return "\n".join(lines)
+
+        except Exception:
+            logger.exception("punishment_command_failed")
+            return "⚠️ Punishment recording failed."
+
+
+__all__ = ["register"]
+
+# src\hermes_plugins\commands_system\reward.py
+"""Hermes command plugin — /reward. Record a reward event with reason.
+
+Integrates with guinevere_safety plugin's StateManager for Redis DB5
+state persistence. Reward tiers T1-T5 only.
+
+SAFETY:
+    - T1-T5 accepted
+    - T6+ REJECTED
+    - Always permitted (reward is positive-only)
+    - Y4-Y5 safe range
+
+Usage:
+    /reward <reason: str>
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+
+def register(ctx: Any) -> None:
+    """Register the /reward command with Hermes."""
+
+    @ctx.register_command("reward", description="Record or show the bounded reward state.")
+    async def handle(context: Any) -> str:
+        try:
+            args: list[str] = getattr(context, "args", [])
+
+            if not args:
+                from guinevere_safety.state_manager import REWARD_DESCRIPTIONS, StateManager
+
+                sm = StateManager()
+                state = sm.get_state()
+                rew_tier: int = state["reward_tier"]
+                desc = REWARD_DESCRIPTIONS.get(rew_tier, "Unknown")
+
+                return (
+                    "# 🎁 Reward Status\n\n"
+                    f"Current reward: `T{rew_tier}` — {desc}\n"
+                )
+
+            reason = " ".join(args)
+
+            # Reward is always positive — increment tier by 1, capped at T5
+            from guinevere_safety.state_manager import REWARD_DESCRIPTIONS, StateManager
+
+            sm = StateManager()
+            state = sm.get_state()
+            current_tier: int = state["reward_tier"]
+            new_tier = min(current_tier + 1, 5)
+
+            ok = sm.set_reward(new_tier)
+            if not ok:
+                return "⚠️ Failed to set reward tier (Redis unavailable)."
+
+            desc = REWARD_DESCRIPTIONS.get(new_tier, "Unknown")
+            logger.info("reward_recorded", extra={"tier": new_tier, "reason": reason[:50]})
+
+            return (
+                "# 🎁 Reward Recorded\n\n"
+                "Reward sudah dicatat, Darling. Mommy senang~\n\n"
+                "---\n\n"
+                f"| Field | Value |\n|---|---|\n"
+                f"| Tier | T{new_tier} — {desc} |\n"
+                f"| 🎁 Reason | {reason} |\n"
+                f"| 🛡️ Boundary | Y4-Y5 safe range |\n"
+            )
+
+        except Exception:
+            logger.exception("reward_command_failed")
+            return "⚠️ Reward recording failed."
+
+
+__all__ = ["register"]
+
+# src\hermes_plugins\commands_admin\__init__.py
+"""Hermes plugin — commands_admin. Admin command group (S3.7).
+
+Provides /restart-service, /backup-now, /health-check commands for
+system-level operations routed through the DESTRUCTIVE_APPROVAL auth gate.
+"""
+
+from __future__ import annotations
+
+__all__: list[str] = []
+
+# src\hermes_plugins\commands_admin\backup_now.py
+"""Hermes command plugin — /backup-now. Request an immediate backup run.
+
+Triggers the PostgreSQL dump pipeline via ``scripts/guinevere-backup.sh daily``.
+Output is uploaded to idcloudhost destination per ADR-032 (backup storage strategy).
+
+SAFETY:
+    - Rated DESTRUCTIVE_APPROVAL in the auth matrix
+    - Uses ``asyncio.create_subprocess_exec`` with explicit command + args
+    - No shell injection: shell script path is hardcoded, args are fixed
+    - Backup destination is idcloudhost S3 per ADR-025/ADR-032
+
+Usage:
+    /backup-now
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+# DESTRUCTIVE_APPROVAL — per ADR-035 auth matrix §4-level auth
+# Backup operations require operator confirmation through the approval gate.
+_AUTH_LEVEL: str = "DESTRUCTIVE_APPROVAL"
+
+BACKUP_SCRIPT: str = "scripts/guinevere-backup.sh"
+
+
+def register(ctx: Any) -> None:
+    """Register the /backup-now command with Hermes."""
+
+    @ctx.register_command(
+        "backup-now", description="Request an immediate Guinevere backup run."
+    )
+    async def handle(context: Any) -> str:
+        try:
+            logger.info("backup_now_starting")
+            start = time.monotonic()
+
+            proc = await asyncio.create_subprocess_exec(
+                "bash",
+                BACKUP_SCRIPT,
+                "daily",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+            elapsed = time.monotonic() - start
+            exit_code = proc.returncode
+
+            if exit_code == 0:
+                output_preview = stdout.decode("utf-8", errors="replace")[:300]
+                logger.info(
+                    "backup_now_success", extra={"duration_s": round(elapsed, 1)}
+                )
+                return (
+                    "# ✅ Backup Complete\n\n"
+                    "Backup harian selesai, Darling.\n\n"
+                    "---\n\n"
+                    f"| Field | Value |\n|---|---|\n"
+                    f"| Status | ✅ Success |\n"
+                    f"| Duration | {elapsed:.1f}s |\n"
+                    f"| Output | `{output_preview}` |\n\n"
+                    "---\n\n"
+                    f"💾 Backup • idcloudhost S3 • {_AUTH_LEVEL}\n"
+                )
+
+            err_msg = stderr.decode("utf-8", errors="replace")[:500]
+            logger.error(
+                "backup_now_failed", extra={"exit_code": exit_code}
+            )
+            return (
+                "# ❌ Backup Failed\n\n"
+                "Backup gagal, Darling.\n\n"
+                "---\n\n"
+                f"| Field | Value |\n|---|---|\n"
+                f"| Status | ❌ Failed |\n"
+                f"| Exit Code | {exit_code} |\n"
+                f"| Error | `{err_msg}` |\n\n"
+                "---\n\n"
+                f"💾 Backup • idcloudhost S3 • {_AUTH_LEVEL}\n"
+            )
+
+        except Exception:
+            logger.exception("backup_now_command_failed")
+            return "⚠️ Backup is temporarily unavailable."
+
+
+__all__ = ["register"]
+
+# src\hermes_plugins\commands_admin\health_check.py
+"""Hermes command plugin — /health-check. Run Guinevere service health checks.
+
+Probes the Hermes health endpoint (``http://localhost:8000/health/detailed``)
+and formats component statuses as a markdown report with pass/fail indicators.
+
+Checks include:
+    - Hermes Agent health
+    - PostgreSQL connectivity
+    - Redis (DB0-DB5) connectivity
+    - 9Router reachability
+
+Usage:
+    /health-check
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+import httpx
+
+logger = logging.getLogger(__name__)
+
+HEALTH_URL: str = "http://localhost:8000/health/detailed"
+TIMEOUT_S: float = 10.0
+
+
+async def _fetch_health() -> dict[str, Any] | None:
+    """Fetch detailed health from the Hermes API.
+
+    Returns:
+        Parsed JSON dict or None on failure.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT_S) as client:
+            response = await client.get(HEALTH_URL)
+            response.raise_for_status()
+            return response.json()
+    except Exception as exc:
+        logger.error("health_check_fetch_failed", extra={"error": str(exc)})
+        return None
+
+
+def _status_emoji(status: str) -> str:
+    """Return ✅ for healthy/ok/up, ❌ otherwise."""
+    return "✅" if status in ("healthy", "ok", "up", "True") else "❌"
+
+
+def _build_report(health: dict[str, Any] | None) -> str:
+    """Build markdown health report from API response."""
+    if health is None:
+        return (
+            "# ❌ Health Check Unavailable\n\n"
+            "API tidak bisa dijangkau, Darling.\n\n"
+            "---\n\n"
+            "| Component | Status |\n|---|---|\n"
+            "| ❌ API | Unreachable |\n\n"
+            "---\n\n"
+            "🏥 Health • Guinevere de Baroque\n"
+        )
+
+    components = health.get("components", health.get("checks", {}))
+    overall = str(health.get("status", "unknown"))
+    overall_emoji = "✅" if overall in ("healthy", "ok") else "❌"
+
+    lines: list[str] = [
+        "# 🏥 Health Check",
+        "",
+        "Status kesehatan sistem Guinevere.",
+        "",
+        "---",
+        "",
+        "| Component | Status |",
+        "|---|---|",
+        f"| Overall | {overall_emoji} {overall} |",
+    ]
+
+    if isinstance(components, dict):
+        for name, status in sorted(components.items()):
+            if isinstance(status, dict):
+                comp_status = str(status.get("status", "unknown"))
+            else:
+                comp_status = str(status)
+            emoji = _status_emoji(comp_status)
+            lines.append(f"| {name} | {emoji} {comp_status} |")
+
+    elif isinstance(components, list):
+        for item in components:
+            if isinstance(item, dict):
+                name = str(item.get("name", "unknown"))
+                comp_status = str(item.get("status", "unknown"))
+                emoji = _status_emoji(comp_status)
+                lines.append(f"| {name} | {emoji} {comp_status} |")
+
+    lines.extend([
+        "",
+        "---",
+        "🏥 Health • Guinevere de Baroque",
+    ])
+
+    return "\n".join(lines)
+
+
+def register(ctx: Any) -> None:
+    """Register the /health-check command with Hermes."""
+
+    @ctx.register_command(
+        "health-check", description="Run Guinevere service health checks."
+    )
+    async def handle(context: Any) -> str:
+        try:
+            health = await _fetch_health()
+            return _build_report(health)
+        except Exception:
+            logger.exception("health_check_command_failed")
+            return "⚠️ Health check is temporarily unavailable."
+
+
+__all__ = ["register"]
+
+# src\hermes_plugins\commands_admin\restart_service.py
+"""Hermes command plugin — /restart-service. Guarded service restart.
+
+Restarts a whitelisted guinevere-* systemd service via ``sudo systemctl``.
+All operations are rated DESTRUCTIVE_APPROVAL in the auth matrix.
+
+SAFETY:
+    - Only ``guinevere-*`` service names are whitelisted
+    - Arbitrary service names are rejected to prevent privilege escalation
+    - Uses ``asyncio.create_subprocess_exec`` with explicit command args
+    - No shell injection: args are validated against a frozenset whitelist
+
+Usage:
+    /restart-service <service: str>
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+# DESTRUCTIVE_APPROVAL — per ADR-035 auth matrix §4-level auth
+# Service restart requires operator confirmation through the approval gate.
+_AUTH_LEVEL: str = "DESTRUCTIVE_APPROVAL"
+
+ALLOWED_SERVICES: frozenset[str] = frozenset(
+    {
+        "guinevere-core",
+        "guinevere-discord",
+        "guinevere-loops",
+        "guinevere-mcp",
+        "guinevere-scheduler",
+        "guinevere-surveillance",
+        "guinevere-monitoring",
+    }
+)
+
+
+def register(ctx: Any) -> None:
+    """Register the /restart-service command with Hermes."""
+
+    @ctx.register_command(
+        "restart-service", description="Prepare a guarded service restart request."
+    )
+    async def handle(context: Any) -> str:
+        try:
+            args: list[str] = getattr(context, "args", [])
+            if not args:
+                allowed_list = "\n".join(
+                    f"• `{s}`" for s in sorted(ALLOWED_SERVICES)
+                )
+                return (
+                    "# 🔧 Restart Service\n\n"
+                    "Parameter `service` diperlukan, Darling.\n\n"
+                    "---\n\n"
+                    f"## ✅ Allowed Services\n\n"
+                    f"{allowed_list}\n\n"
+                    "---\n\n"
+                    f"🛡️ Auth: {_AUTH_LEVEL}\n"
+                )
+
+            service = args[0].strip()
+
+            # SAFETY: whitelist-only check — no arbitrary service names
+            if service not in ALLOWED_SERVICES:
+                allowed_list = "\n".join(
+                    f"• `{s}`" for s in sorted(ALLOWED_SERVICES)
+                )
+                logger.warning(
+                    "restart_service_rejected", extra={"service": service}
+                )
+                return (
+                    "# 🛑 Service Rejected\n\n"
+                    "Service tidak diizinkan, Darling.\n\n"
+                    "---\n\n"
+                    f"| Field | Value |\n|---|---|\n"
+                    f"| 🛑 Requested | `{service or '(empty)'}` |\n"
+                    f"| ✅ Allowed | {', '.join(sorted(ALLOWED_SERVICES))} |\n\n"
+                    f"## ✅ Allowed Services\n\n{allowed_list}\n\n"
+                    "---\n\n"
+                    f"🛡️ Auth: {_AUTH_LEVEL}\n"
+                )
+
+            logger.info("restart_service_executing", extra={"service": service})
+
+            proc = await asyncio.create_subprocess_exec(
+                "sudo",
+                "systemctl",
+                "restart",
+                service,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+            exit_code = proc.returncode
+
+            if exit_code == 0:
+                logger.info("restart_service_success", extra={"service": service})
+                return (
+                    "# ✅ Service Restarted\n\n"
+                    f"`{service}` berhasil di-restart.\n\n"
+                    "---\n\n"
+                    f"| Field | Value |\n|---|---|\n"
+                    f"| Service | `{service}` |\n"
+                    f"| Status | ✅ Restarted |\n"
+                    f"| Exit Code | {exit_code} |\n\n"
+                    "---\n\n"
+                    f"🛡️ Auth: {_AUTH_LEVEL}\n"
+                )
+
+            err_msg = stderr.decode("utf-8", errors="replace")[:500]
+            logger.error(
+                "restart_service_failed",
+                extra={"service": service, "exit_code": exit_code},
+            )
+            return (
+                "# ❌ Service Restart Failed\n\n"
+                f"`{service}` gagal di-restart.\n\n"
+                "---\n\n"
+                f"| Field | Value |\n|---|---|\n"
+                f"| Service | `{service}` |\n"
+                f"| Status | ❌ Failed |\n"
+                f"| Exit Code | {exit_code} |\n"
+                f"| Error | `{err_msg}` |\n\n"
+                "---\n\n"
+                f"🛡️ Auth: {_AUTH_LEVEL}\n"
+            )
+
+        except Exception:
+            logger.exception("restart_service_command_failed")
+            return "⚠️ Restart-service is temporarily unavailable."
+
+
+__all__ = ["register"]
+

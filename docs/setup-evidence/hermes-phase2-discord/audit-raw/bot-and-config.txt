@@ -1,0 +1,918 @@
+﻿# src/discord/bot.py
+
+"""Guinevere Discord Bot — Main Entrypoint (P2-017).
+
+Provides the overarching GuinevereBot class wrapping ``commands.Bot``,
+HARD STOP guard via ``on_message`` listener, slash command registration,
+and the ``main()`` entrypoint for VPS deployment with systemd.
+
+Token is read from ``os.environ["DISCORD_BOT_TOKEN"]`` — never hardcoded.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import importlib
+import logging
+import os
+from typing import Any, cast, TYPE_CHECKING
+
+import discord
+
+if TYPE_CHECKING:
+    import discord.ext.commands as commands_discord
+    from src.surveillance.safe_mode import SurveillanceSafeModeGuard
+
+from .intents import get_intents
+from src.discord.shadow_pipeline import ShadowPipeline
+
+
+# Dynamically import discord.ext.commands to avoid shadowing by the
+# project-local ``src/discord/`` package.  The conftest pre-caches
+# the real discord module so this importlib call resolves correctly.
+_commands_module: Any = importlib.import_module("discord.ext.commands")
+commands = _commands_module  # alias for class-definition access
+_BotBase: type = commands.Bot  # type: ignore[assignment]
+
+logger = logging.getLogger(__name__)
+
+# ── Guild ────────────────────────────────────────────────────────────────────
+
+GUILD_ID: int = 1_510_876_414_671_323_206
+"""Canonical guild ID from ``guild_setup.py``."""
+
+
+# ── Stub Phase Map ───────────────────────────────────────────────────────────
+
+_STUB_PHASE: dict[str, int] = {}
+"""Maps stub command names to their deployment phase."""
+
+
+# ── Stub Callback Factory ────────────────────────────────────────────────────
+
+
+def _make_stub_callback(command_name: str, phase: int) -> Any:
+    """Create a placeholder slash command callback.
+
+    Args:
+        command_name: The slash command name.
+        phase: The deployment phase number.
+
+    Returns:
+        An async callback that replies with a "not yet implemented" message.
+    """
+
+    async def callback(interaction: Any) -> None:
+        """Stub response — not yet implemented."""
+        msg = (
+            f"Command ``{command_name}`` not yet implemented. "
+            f"Coming in Phase {phase}."
+        )
+        await interaction.response.send_message(msg, ephemeral=True)
+
+    return callback
+
+
+# ── Bot Class ────────────────────────────────────────────────────────────────
+
+
+class GuinevereBot(_BotBase):
+    """Main Guinevere Discord bot.
+
+    Wraps ``commands.Bot`` with:
+    - Slash command tree (13 wired + 20 stubs) registered in ``setup_hook``.
+    - HARD STOP guard via ``on_message`` listener.
+    - Startup greeting via ``on_ready`` -> ``startup.on_ready()``.
+    """
+
+    def __init__(self) -> None:
+        """Initialise the bot with canonical intents and prefix."""
+        intents_obj = get_intents()
+        super().__init__(
+            command_prefix="!",
+            intents=cast(discord.Intents, cast(object, intents_obj)),
+        )
+        logger.info("guinevere_bot_init")
+        self._session_factory: object | None = None
+        self._register_hard_stop_listener()
+
+        # S2.1: Shadow pipeline — disabled by default, opt-in via env
+        self.shadow_pipeline: ShadowPipeline = ShadowPipeline(
+            enabled=os.environ.get("SHADOW_ENABLED", "false").lower() == "true",
+            traffic_pct=int(os.environ.get("SHADOW_TRAFFIC_PCT", "0")),
+        )
+
+        # P7.5-C5: Wire surveillance safe mode guard
+        from src.surveillance.safe_mode import SurveillanceSafeModeGuard
+        from .cmd_safeword import _get_handler
+
+        self._surveillance_guard = SurveillanceSafeModeGuard(
+            safety_state_getter=lambda: _get_handler().state
+        )
+
+    # ── Surveillance Guard ───────────────────────────────────────────────────────
+
+    @property
+    def surveillance_guard(self) -> SurveillanceSafeModeGuard:
+        """Return the surveillance safe-mode guard."""
+        return self._surveillance_guard
+
+    # ── HARD STOP Listener ──────────────────────────────────────────────────────
+
+    def _register_hard_stop_listener(self) -> None:
+        """Register the ``on_message`` listener for HARD STOP detection.
+
+        Listeners fire BEFORE the main ``on_message`` event handler,
+        providing the earliest possible intercept for safe-word detection.
+        """
+        self.listen("on_message")(self._on_message_listener)
+
+    async def _on_message_listener(self, message: Any) -> None:
+        """HARD STOP guard — fires BEFORE main ``on_message``.
+
+        Lazy-imports ``cmd_safeword`` to avoid circular imports.
+
+        Args:
+            message: The ``discord.Message`` the bot received.
+        """
+        # Skip bot messages to prevent self-trigger loops
+        author = getattr(message, "author", None)
+        if author is None:
+            return
+        if getattr(author, "bot", False):
+            return
+
+        from .cmd_safeword import handle_safeword_message_async
+
+        consumed = await handle_safeword_message_async(message)
+        if consumed:
+            # Safe word triggered — block further processing
+            return
+
+    # ── setup_hook ──────────────────────────────────────────────────────────────
+
+    async def setup_hook(self) -> None:
+        """Register slash commands and guild-sync the command tree.
+
+        13 wired callbacks (status, mood, help, safeword, memory-search,
+        memory-add, loop-start, loop-stop, surveillance-status,
+        surveillance-pause, surveillance-resume, cost, budget) are imported
+        lazily from their respective modules.  The remaining commands get
+        placeholder stubs.
+        """
+        # ── 13 Original Wired ──────────────────────────────────────────────────
+        from .cmd_status import status_callback
+        from .cmd_mood import mood_callback
+        from .cmd_help import help_callback
+        from .cmd_safeword import safeword_callback
+        from .cmd_memory_search import memory_search_callback
+        from .cmd_memory_add import memory_add_callback
+        from .cmd_loop_start import loop_start_callback
+        from .cmd_loop_stop import loop_stop_callback
+        from .cmd_surveillance_status import surveillance_status_callback
+        from .cmd_surveillance_pause import surveillance_pause_callback
+        from .cmd_surveillance_resume import surveillance_resume_callback
+        from .cmd_cost import cost_callback
+        from .cmd_budget import budget_callback
+
+        # ── 20 Batch D Wired (RG-010..RG-014) ────────────────────────────────
+        from .cmd_memory_forget import memory_forget_callback
+        from .cmd_memory_export import memory_export_callback
+        from .cmd_cost_alert import cost_alert_callback
+        from .cmd_approve import approve_callback
+        from .cmd_deny import deny_callback
+        from .cmd_approve_all import approve_all_callback
+        from .cmd_focus import focus_callback
+        from .cmd_casual import casual_callback
+        from .cmd_consent import consent_callback
+        from .cmd_punishment import punishment_callback
+        from .cmd_reward import reward_callback
+        from .cmd_restart_service import restart_service_callback
+        from .cmd_backup_now import backup_now_callback
+        from .cmd_health_check import health_check_callback
+        from .cmd_clear_cache import clear_cache_callback
+        from .cmd_loop_pause import loop_pause_callback
+        from .cmd_loop_resume import loop_resume_callback
+        from .cmd_loops import loops_callback
+        from .cmd_evidence import evidence_callback
+        from .cmd_loop_priority import loop_priority_callback
+
+        # ── Hermes Phase 1: Conversation Session Commands ────────────────
+        from .cmd_new_session import new_session_callback
+        from .cmd_history import history_callback
+
+        # Lazy import commands module for spec iteration
+        from . import commands as cmds
+
+        # Register wired callbacks
+        self.tree.command(
+            name="status",
+            description="Show Mommy's current system, loop, and safety status.",
+            guild=discord.Object(id=GUILD_ID),
+        )(status_callback)
+        self.tree.command(
+            name="mood",
+            description="Show or update Guinevere's current mood state.",
+            guild=discord.Object(id=GUILD_ID),
+        )(mood_callback)
+        self.tree.command(
+            name="help",
+            description="Show the Guinevere command guide.",
+            guild=discord.Object(id=GUILD_ID),
+        )(help_callback)
+        self.tree.command(
+            name="safeword",
+            description="Trigger the configured safety boundary workflow.",
+            guild=discord.Object(id=GUILD_ID),
+        )(safeword_callback)
+        self.tree.command(
+            name="memory-search",
+            description="Search Guinevere's memories by query.",
+            guild=discord.Object(id=GUILD_ID),
+        )(memory_search_callback)
+        self.tree.command(
+            name="memory-add",
+            description="Manually add a memory note to Guinevere's store.",
+            guild=discord.Object(id=GUILD_ID),
+        )(memory_add_callback)
+        self.tree.command(
+            name="loop-start",
+            description="Start a supervised Guinevere work loop.",
+            guild=discord.Object(id=GUILD_ID),
+        )(loop_start_callback)
+        self.tree.command(
+            name="loop-stop",
+            description="Stop the active Guinevere work loop safely.",
+            guild=discord.Object(id=GUILD_ID),
+        )(loop_stop_callback)
+        self.tree.command(
+            name="surveillance-status",
+            description="Show surveillance system status and consent state.",
+            guild=discord.Object(id=GUILD_ID),
+        )(surveillance_status_callback)
+        self.tree.command(
+            name="surveillance-pause",
+            description="Pause surveillance data collection.",
+            guild=discord.Object(id=GUILD_ID),
+        )(surveillance_pause_callback)
+        self.tree.command(
+            name="surveillance-resume",
+            description="Resume surveillance data collection.",
+            guild=discord.Object(id=GUILD_ID),
+        )(surveillance_resume_callback)
+        self.tree.command(
+            name="cost",
+            description="Show Guinevere cost usage for a given period.",
+            guild=discord.Object(id=GUILD_ID),
+        )(cost_callback)
+        self.tree.command(
+            name="budget",
+            description="Show or update budget cap and current spend.",
+            guild=discord.Object(id=GUILD_ID),
+        )(budget_callback)
+
+        # ── RG-010: Memory Commands ─────────────────────────────────────────
+        self.tree.command(
+            name="memory-forget",
+            description="Request deletion of a Guinevere memory item.",
+            guild=discord.Object(id=GUILD_ID),
+        )(memory_forget_callback)
+        self.tree.command(
+            name="memory-export",
+            description="Export approved Guinevere memory metadata.",
+            guild=discord.Object(id=GUILD_ID),
+        )(memory_export_callback)
+
+        # ── RG-011: Finance Command ─────────────────────────────────────────
+        self.tree.command(
+            name="cost-alert",
+            description="Show or update Guinevere cost alert thresholds.",
+            guild=discord.Object(id=GUILD_ID),
+        )(cost_alert_callback)
+
+        # ── RG-012: System Commands ─────────────────────────────────────────
+        self.tree.command(
+            name="approve",
+            description="Approve a pending Guinevere action.",
+            guild=discord.Object(id=GUILD_ID),
+        )(approve_callback)
+        self.tree.command(
+            name="deny",
+            description="Deny a pending Guinevere action.",
+            guild=discord.Object(id=GUILD_ID),
+        )(deny_callback)
+        self.tree.command(
+            name="approve-all",
+            description="Approve all safe pending Guinevere actions.",
+            guild=discord.Object(id=GUILD_ID),
+        )(approve_all_callback)
+        self.tree.command(
+            name="focus",
+            description="Switch Guinevere into focused engineering mode.",
+            guild=discord.Object(id=GUILD_ID),
+        )(focus_callback)
+        self.tree.command(
+            name="casual",
+            description="Switch Guinevere into lighter casual mode.",
+            guild=discord.Object(id=GUILD_ID),
+        )(casual_callback)
+        self.tree.command(
+            name="consent",
+            description="Show or update consent boundaries.",
+            guild=discord.Object(id=GUILD_ID),
+        )(consent_callback)
+        self.tree.command(
+            name="punishment",
+            description="Record or show the bounded punishment state.",
+            guild=discord.Object(id=GUILD_ID),
+        )(punishment_callback)
+        self.tree.command(
+            name="reward",
+            description="Record or show the bounded reward state.",
+            guild=discord.Object(id=GUILD_ID),
+        )(reward_callback)
+
+        # ── RG-013: Admin Commands ──────────────────────────────────────────
+        self.tree.command(
+            name="restart-service",
+            description="Prepare a guarded service restart request.",
+            guild=discord.Object(id=GUILD_ID),
+        )(restart_service_callback)
+        self.tree.command(
+            name="backup-now",
+            description="Request an immediate Guinevere backup run.",
+            guild=discord.Object(id=GUILD_ID),
+        )(backup_now_callback)
+        self.tree.command(
+            name="health-check",
+            description="Run Guinevere service health checks.",
+            guild=discord.Object(id=GUILD_ID),
+        )(health_check_callback)
+        self.tree.command(
+            name="clear-cache",
+            description="Request a guarded cache clear operation.",
+            guild=discord.Object(id=GUILD_ID),
+        )(clear_cache_callback)
+
+        # ── RG-014: Loop Commands ───────────────────────────────────────────
+        self.tree.command(
+            name="loop-pause",
+            description="Pause the active Guinevere work loop.",
+            guild=discord.Object(id=GUILD_ID),
+        )(loop_pause_callback)
+        self.tree.command(
+            name="loop-resume",
+            description="Resume a paused Guinevere work loop.",
+            guild=discord.Object(id=GUILD_ID),
+        )(loop_resume_callback)
+        self.tree.command(
+            name="loops",
+            description="List current and recent Guinevere work loops.",
+            guild=discord.Object(id=GUILD_ID),
+        )(loops_callback)
+        self.tree.command(
+            name="evidence",
+            description="Fetch evidence for a step or active work loop.",
+            guild=discord.Object(id=GUILD_ID),
+        )(evidence_callback)
+        self.tree.command(
+            name="loop-priority",
+            description="Set the priority for a Guinevere work loop.",
+            guild=discord.Object(id=GUILD_ID),
+        )(loop_priority_callback)
+
+        # ── Hermes Phase 1: Conversation Session Commands ────────────────
+        self.tree.command(
+            name="new",
+            description="Reset conversation history and start fresh.",
+            guild=discord.Object(id=GUILD_ID),
+        )(new_session_callback)
+        self.tree.command(
+            name="history",
+            description="Show recent conversation turns with Mommy.",
+            guild=discord.Object(id=GUILD_ID),
+        )(history_callback)
+
+        # ── Stubs (none remaining — all wired) ────────────────────────────
+        core_names: tuple[str, ...] = (
+            # Original 13
+            "status", "mood", "help", "safeword",
+            "memory-search", "memory-add",
+            "loop-start", "loop-stop",
+            "surveillance-status", "surveillance-pause", "surveillance-resume",
+            "cost", "budget",
+            # RG-010: Memory
+            "memory-forget", "memory-export",
+            # RG-011: Finance
+            "cost-alert",
+            # RG-012: System
+            "approve", "deny", "approve-all",
+            "focus", "casual", "consent", "punishment", "reward",
+            # RG-013: Admin
+            "restart-service", "backup-now", "health-check", "clear-cache",
+            # RG-014: Loop
+            "loop-pause", "loop-resume", "loops", "evidence", "loop-priority",
+            # Hermes Phase 1: Conversation session
+            "new", "history",
+        )
+        for spec in cmds.COMMAND_SPECS:
+            if spec.name in core_names:
+                continue  # Already wired above
+            phase = _STUB_PHASE.get(spec.name, 4)
+            cb = _make_stub_callback(spec.name, phase)
+            self.tree.command(name=spec.name, description=spec.description, guild=discord.Object(id=GUILD_ID))(cb)
+
+        # ── Guild-Scoped Sync ────────────────────────────────────────────────
+        guild = discord.Object(id=GUILD_ID)
+        synced = await self.tree.sync(guild=guild)
+        logger.info(
+            "commands_synced",
+            extra={"count": len(synced)},
+        )
+
+    # ── Graceful Shutdown ──────────────────────────────────────────────────────
+
+    async def close(self) -> None:
+        """Graceful shutdown."""
+        await super().close()
+
+    # ── Session Factory ───────────────────────────────────────────────────────
+
+    def get_session_factory(self) -> object:
+        """Return an async SQLAlchemy session factory, creating lazily if needed.
+
+        Returns a callable that produces AsyncSession instances.
+        Requires DATABASE_URL environment variable.
+
+        Returns:
+            An async session factory, or None if DATABASE_URL is not set.
+        """
+        if self._session_factory is None:
+            database_url = os.environ.get("DATABASE_URL", "")
+            if not database_url:
+                logger.warning("session_factory_no_database_url")
+                return None
+
+            from sqlalchemy.ext.asyncio import (
+                AsyncSession as _AsyncSession,
+                async_sessionmaker as _async_sessionmaker,
+                create_async_engine as _create_async_engine,
+            )
+
+            engine = _create_async_engine(
+                database_url, echo=False, pool_pre_ping=True,
+            )
+            self._session_factory = _async_sessionmaker(
+                engine,
+                class_=_AsyncSession,
+                expire_on_commit=False,
+            )
+            logger.info("session_factory_initialized")
+
+        return self._session_factory
+
+    # ── on_ready ────────────────────────────────────────────────────────────────
+
+    async def on_ready(self) -> None:
+        """Log readiness and call the startup greeting handler.
+
+        Logs ``bot_ready`` with user, guild count, and latency.
+        Delegates greeting + presence to ``startup.on_ready()``.
+        """
+        logger.info(
+            "bot_ready",
+            extra={
+                "user": str(self.user) if self.user else "unknown",
+                "guild_count": len(self.guilds),
+                "latency_ms": round(self.latency * 1000, 2),
+            },
+        )
+
+        from .startup import on_ready as startup_on_ready
+
+        await startup_on_ready(self)
+
+    # ── on_message ──────────────────────────────────────────────────────────────
+
+    async def on_message(self, message: Any) -> None:
+        """Process commands ONLY if not in HARD STOP safe mode.
+
+        The ``_on_message_listener`` (registered via ``@bot.listen``) fires
+        first and handles safe-word trigger detection.  This method runs
+        afterwards and checks whether safe mode is active before forwarding
+        to ``process_commands``.  Non-recovery messages are blocked while
+        in safe mode.
+
+        After the safe-mode check, the conversational handler is tried for
+        messages in ``#guinevere-chat``.  If the conversational handler
+        absorbs the message, command processing is skipped.
+
+        Args:
+            message: The ``discord.Message`` the bot received.
+        """
+        if message.author.bot:
+            return
+
+        from .cmd_safeword import _get_handler
+
+        handler = _get_handler()
+        if handler.is_safe:
+            # Safe mode active — check for recovery, block non-recovery messages
+            handler.check_recovery(message.content)
+            return
+
+        # Try conversational handler first (only for #guinevere-chat)
+        from .conversational_handler import handle_conversation
+
+        handled = await handle_conversation(self, message)
+        if handled:
+            return
+
+        await self.process_commands(message)
+
+
+# ── Entrypoint ────────────────────────────────────────────────────────────────
+
+
+async def main() -> None:
+    """Read the bot token from environment and start the gateway connection.
+
+    Raises:
+        RuntimeError: If ``DISCORD_BOT_TOKEN`` is not set or empty.
+    """
+    token = os.environ.get("DISCORD_BOT_TOKEN")
+    if not token:
+        raise RuntimeError(
+            "DISCORD_BOT_TOKEN environment variable is required"
+        )
+
+    bot = GuinevereBot()
+    try:
+        async with bot:
+            await bot.start(token)
+    except AttributeError:
+        # Fallback for discord.py versions that do not support
+        # the async context manager pattern.
+        await bot.start(token)
+
+
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(name)s [%(levelname)s] %(message)s",
+    )
+    asyncio.run(main())
+
+# hermes-config/config.yaml
+
+# ==============================================================================
+# Guinevere Hermes Agent — Gateway Configuration
+# ==============================================================================
+# File: ~/.hermes/config.yaml
+# Deployed on VPS Ubuntu alongside ~/.hermes/.env
+# See ADR-035 for full architectural context
+# ==============================================================================
+
+# ==============================================================================
+# Discord Gateway Configuration
+# ==============================================================================
+discord:
+  # Allowed users (comma-separated IDs in .env, mapped here as list)
+  allowed_users:
+    - "<faiz-discord-user-id>"
+  
+  # Allowed channels — bot only responds in these channels
+  allowed_channels:
+    - "1510914600777023659"  # #guinevere-chat
+  
+  # Require @mention to trigger (false = respond to all messages in allowed channels)
+  require_mention: false
+  
+  # Channels where @mention is NOT required (even if require_mention is true)
+  free_response_channels:
+    - "1510914600777023659"
+  
+  # Auto-thread for @mentions (false = respond inline in the channel)
+  auto_thread: false
+  
+  # Session isolation: each user gets independent conversation in shared channels
+  group_sessions_per_user: true
+  
+  # Text batching for Discord message limits
+  text_batch_delay_seconds: 0.6
+  text_batch_split_delay_seconds: 0.1
+  
+  # History backfill on @mention
+  history_backfill: true
+
+# ==============================================================================
+# LLM Configuration (9Router proxy)
+# ==============================================================================
+llm:
+  provider: custom
+  model: gpt-5.5
+  base_url: http://localhost:20128/v1
+  api_key_env: NINEROUTER_API_KEY
+  max_tokens: 16384
+  temperature: 0.7
+  api_max_retries: 3
+  
+  # Fallback configuration
+  fallback:
+    enabled: true
+    model: deepseek-v4-flash
+    strategy: sequential
+  
+  # Monthly budget tracking
+  budget:
+    monthly_limit: 30.00
+    alert_threshold: 0.80
+    block_threshold: 1.00
+    currency: USD
+
+# ==============================================================================
+# Agent Runtime Configuration
+# ==============================================================================
+agent:
+  # CRITICAL: 15 iterations for Discord Q&A (not 90 — too high for interactive use)
+  max_iterations: 15
+  
+  # Agent identity
+  name: Guinevere
+  role: autonomous-ai-companion
+  
+  # Per-invocation settings
+  new_instance_per_invocation: true  # AIAgent is NOT thread-safe
+
+# ==============================================================================
+# Memory Configuration
+# ==============================================================================
+memory:
+  # Compression settings (aggressive safe)
+  compression:
+    enabled: true
+    threshold: 0.7    # Start compressing at 70% token usage
+    target: 0.2       # Target 20% after compression
+    protect_last: 20  # Keep last 20 messages uncompressed
+  
+  # Session search (FTS5 for full-text search within sessions)
+  session_search:
+    enabled: true
+    backend: fts5
+  
+  # File mirroring for external access
+  mirrors:
+    enabled: true
+    sync_interval_messages: 5
+  
+  # External memory providers (all memory is PostgreSQL — no external)
+  external:
+    enabled: false
+
+# ==============================================================================
+# Safety Hooks Configuration
+# ==============================================================================
+# Note: Hook scripts are deployed separately (Agent C — S1.3)
+# This config section references them; actual scripts live in ~/.hermes/hooks/
+
+hooks:
+  # Layer 1: HARD STOP intercept — 50ms, absolute block
+  pre_prompt:
+    event: pre_prompt
+    command: python3 ~/.hermes/hooks/hard_stop.py
+    timeout_ms: 50
+    on_failure: block
+    priority: 100
+    sandbox:
+      read_only_fs: true
+      memory_limit_mb: 64
+      network: none
+
+  # Drift detection — 100ms, warn on failure
+  post_prompt:
+    event: post_prompt
+    command: python3 ~/.hermes/hooks/drift_check.py
+    timeout_ms: 100
+    on_failure: warn
+    priority: 80
+    sandbox:
+      memory_limit_mb: 128
+
+  # Consent gate — 200ms, block, needs Redis + PG access
+  pre_tool_call:
+    event: pre_tool_call
+    command: python3 ~/.hermes/hooks/consent_gate.py
+    timeout_ms: 200
+    on_failure: block
+    priority: 90
+    sandbox:
+      allowed_network:
+        - "localhost:6380"  # Redis
+        - "localhost:5433"  # PostgreSQL
+
+  # DNR filter — 50ms, block
+  post_tool_call:
+    event: post_tool_call
+    command: python3 ~/.hermes/hooks/dnr_filter.py
+    timeout_ms: 50
+    on_failure: block
+    priority: 70
+    sandbox:
+      memory_limit_mb: 64
+
+  # Safety scan — 100ms, block
+  post_response:
+    event: post_response
+    command: python3 ~/.hermes/hooks/safety_scan.py
+    timeout_ms: 100
+    on_failure: block
+    priority: 60
+    sandbox:
+      memory_limit_mb: 128
+
+  # Error classifier — 50ms, warn only
+  on_error:
+    event: on_error
+    command: python3 ~/.hermes/hooks/error_classifier.py
+    timeout_ms: 50
+    on_failure: warn
+    priority: 10
+    sandbox:
+      memory_limit_mb: 64
+
+# ==============================================================================
+# MCP Server Configuration
+# ==============================================================================
+mcp_servers:
+  # Web search and fetch tools
+  web:
+    enabled: true
+    tools:
+      - brave_search
+      - exa_search
+      - fetch_url
+      - websearch
+  
+  # Filesystem access — restricted to guinevere repo root
+  filesystem:
+    enabled: true
+    root_path: /home/guinevere/code/guinevere
+    allowed_paths:
+      - /home/guinevere/code/guinevere
+    blocked_paths:
+      - /etc
+      - /root
+      - /home/guinevere/.ssh
+  
+  # Terminal/Shell — whitelist-only commands
+  terminal:
+    enabled: true
+    allowed_commands:
+      - "ls,cat,head,tail,grep,find,wc,sort,uniq"
+      - "python,pip,pytest"
+      - "git,gh"
+    blocked_commands:
+      - "rm,dd,mkfs,shutdown,reboot,poweroff"
+      - "iptables,ufw,systemctl"
+    timeout_seconds: 30
+  
+  # Git operations — blocked: force-push, hard-reset
+  git:
+    enabled: true
+    allowed_operations:
+      - status
+      - diff
+      - log
+      - branch
+      - checkout
+      - add
+      - commit
+      - push
+      - pull
+    blocked_operations:
+      - "push --force"
+      - "reset --hard"
+      - "clean -fd"
+  
+  # HTTP fetch — 30s timeout, 10MB max
+  fetch:
+    enabled: true
+    timeout_seconds: 30
+    max_response_size_mb: 10
+
+# ==============================================================================
+# Cron Jobs — Rituals + System Maintenance
+# ==============================================================================
+cron:
+  # === System Health & Maintenance ===
+  - name: daily_health_check
+    schedule: "0 6 * * *"
+    command: "hermes doctor --report"
+    enabled: true
+  
+  - name: weekly_backup
+    schedule: "0 2 * * 0"
+    command: "hermes backup --full --destination idcloudhost"
+    enabled: true
+  
+  - name: monthly_security_scan
+    schedule: "0 3 1 * *"
+    command: "hermes security --report"
+    enabled: true
+  
+  # === Persona Rituals (5 daily check-ins) ===
+  - name: ritual_morning
+    schedule: "0 8 * * *"
+    command: "hermes plugin trigger guinevere_safety ritual morning"
+    enabled: true
+  
+  - name: ritual_midday
+    schedule: "0 12 * * *"
+    command: "hermes plugin trigger guinevere_safety ritual midday"
+    enabled: true
+  
+  - name: ritual_afternoon
+    schedule: "0 16 * * *"
+    command: "hermes plugin trigger guinevere_safety ritual afternoon"
+    enabled: true
+  
+  - name: ritual_evening
+    schedule: "0 20 * * *"
+    command: "hermes plugin trigger guinevere_safety ritual evening"
+    enabled: true
+  
+  - name: ritual_midnight
+    schedule: "0 0 * * *"
+    command: "hermes plugin trigger guinevere_safety ritual midnight"
+    enabled: true
+
+# ==============================================================================
+# Observability
+# ==============================================================================
+observability:
+  prometheus:
+    enabled: true
+    metrics_port: 9191
+  
+  logging:
+    level: info
+    format: json
+    output: both  # stdout + loki
+  
+  insights:
+    enabled: true
+    cost_tracking: true
+    latency_tracking: true
+
+# ==============================================================================
+# Auth Matrix — Tool-level Authorization
+# ==============================================================================
+# 4-Level Auth: READ_AUTO | WRITE_NOTIFY | DESTRUCTIVE_APPROVAL | FORBIDDEN
+auth_matrix:
+  web:
+    brave_search: READ_AUTO
+    exa_search: READ_AUTO
+    websearch: READ_AUTO
+    fetch: READ_AUTO
+  
+  filesystem:
+    read: READ_AUTO
+    write: WRITE_NOTIFY
+    delete: DESTRUCTIVE_APPROVAL
+    create_directory: WRITE_NOTIFY
+  
+  terminal:
+    read_commands: READ_AUTO
+    write_commands: WRITE_NOTIFY
+    destructive_commands: DESTRUCTIVE_APPROVAL
+    forbidden_commands: FORBIDDEN
+  
+  git:
+    read: READ_AUTO
+    write: WRITE_NOTIFY
+    destructive: DESTRUCTIVE_APPROVAL
+  
+  fetch:
+    get: READ_AUTO
+    post: WRITE_NOTIFY
+    upload: DESTRUCTIVE_APPROVAL
+
+# ==============================================================================
+# Approval Webhook (for DESTRUCTIVE_APPROVAL operations)
+# ==============================================================================
+approval:
+  discord_webhook_url_env: DISCORD_APPROVAL_WEBHOOK
+  timeout_ms: 300000  # 5 minutes
+  retry_count: 2
+  retry_delay_ms: 30000
+  fallback_on_timeout: deny  # FAIL-CLOSED: timeout = deny
+
+# ==============================================================================
+# Audit Configuration
+# ==============================================================================
+audit:
+  log_all_destructive: true
+  log_all_forbidden_attempts: true
+  log_write_notify: false
+  retention_days: 90
+  alert_on_forbidden_attempt: true

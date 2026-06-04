@@ -1,0 +1,1025 @@
+﻿# ======================================================================
+# FILE: status.py
+# ======================================================================
+
+"""Hermes command plugin — /status.
+
+Migrated from src/discord/cmd_status.py for Phase 2 Discord migration.
+Preserves all 11 embed fields: Mood, Active Loops, Tasks Today, Uptime,
+Cost Today, Yandere Level, Next Scheduled, Current Project, Streak,
+Memory Health, Surveillance.
+"""
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import Any, Final
+
+logger = logging.getLogger(__name__)
+
+# ── Timezone ────────────────────────────────────────────────────────────────
+
+WIB: Final[timezone] = timezone(timedelta(hours=7))
+
+# ── Constants ───────────────────────────────────────────────────────────────
+
+STATUS_TITLE: Final[str] = "\U0001f451 Mommy's Status"
+STATUS_DESCRIPTION: Final[str] = (
+    "Semua sehat, Darling. Mommy jaga semuanya. Kamu tinggal fokus."
+)
+FOOTER_TEXT: Final[str] = "Guinevere de Baroque"
+FOOTER_ICON: Final[str] = "\u2728 Content"
+
+DEGRADED_MOOD: Final[str] = "\U0001f60a Content (placeholder)"
+DEGRADED_LOOPS: Final[str] = "\u26a0\ufe0f \u2014 Active Loops (P5 not deployed)"
+DEGRADED_TASKS: Final[str] = "\u26a0\ufe0f \u2014 (P5 not deployed)"
+DEGRADED_COST: Final[str] = (
+    "\u26a0\ufe0f \u2014 Cost tracking (P1 query API pending)"
+)
+DEGRADED_YANDERE: Final[str] = "Y1 (baseline \u2014 placeholder)"
+DEGRADED_NEXT: Final[str] = "\u26a0\ufe0f \u2014 (P5 not deployed)"
+DEGRADED_PROJECT: Final[str] = "project-alpha"
+DEGRADED_STREAK: Final[str] = "\u26a0\ufe0f \u2014 (P4 not deployed)"
+DEGRADED_MEMORY: Final[str] = "\u26a0\ufe0f \u2014 (P3 not deployed)"
+DEGRADED_SURVEILLANCE: Final[str] = "\u26a0\ufe0f \u2014 (P7 not deployed)"
+DEGRADED_UPTIME: Final[str] = "\u2014"
+
+# ── Module-Level Start Time ─────────────────────────────────────────────────
+
+_start_time: datetime = datetime.now(tz=timezone.utc)
+
+
+def set_start_time(dt: datetime | None = None) -> None:
+    """Override the module-level start timestamp (for tests / determinism)."""
+    global _start_time  # noqa: PLW0603
+    _start_time = dt if dt is not None else datetime.now(tz=timezone.utc)
+
+
+def get_start_time() -> datetime:
+    """Return the current module-level start timestamp."""
+    return _start_time
+
+
+# ── Helpers ─────────────────────────────────────────────────────────────────
+
+
+def _format_uptime(start: datetime, now: datetime) -> str:
+    """Return a human-readable uptime string from two UTC datetimes."""
+    delta = now - start
+    total_seconds = int(delta.total_seconds())
+    if total_seconds < 0:
+        return "\u2014"
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours > 0:
+        return f"{hours}h {minutes}m {seconds}s"
+    if minutes > 0:
+        return f"{minutes}m {seconds}s"
+    return f"{seconds}s"
+
+
+def _format_wib_timestamp(dt: datetime) -> str:
+    """Format a datetime as ``"2026-06-01 15:30 WIB"``."""
+    wib_dt = dt.astimezone(WIB)
+    return wib_dt.strftime("%Y-%m-%d %H:%M WIB")
+
+
+# ── Markdown Formatter ──────────────────────────────────────────────────────
+
+
+def _format_status_markdown(now: datetime | None = None) -> str:
+    """Build the /status response as a markdown-formatted string.
+
+    Replicates all 11 embed fields from cmd_status.py in markdown.
+    """
+    ref = now if now is not None else datetime.now(tz=timezone.utc)
+    start = get_start_time()
+    uptime_str = _format_uptime(start, ref)
+    ts_str = _format_wib_timestamp(ref)
+
+    lines: list[str] = [
+        f"# {STATUS_TITLE}",
+        "",
+        STATUS_DESCRIPTION,
+        "",
+        "| Field | Value |",
+        "|---|---|",
+        f"| Mood | {DEGRADED_MOOD} |",
+        f"| Active Loops | {DEGRADED_LOOPS} |",
+        f"| Tasks Today | {DEGRADED_TASKS} |",
+        f"| Uptime | {uptime_str} |",
+        f"| Cost Today | {DEGRADED_COST} |",
+        f"| Yandere Level | {DEGRADED_YANDERE} |",
+        f"| Next Scheduled | {DEGRADED_NEXT} |",
+        f"| Current Project | {DEGRADED_PROJECT} |",
+        f"| Streak | {DEGRADED_STREAK} |",
+        f"| Memory Health | {DEGRADED_MEMORY} |",
+        f"| Surveillance | {DEGRADED_SURVEILLANCE} |",
+        "",
+        f"\u2014 {FOOTER_TEXT} \u2022 {ts_str} \u2022 {FOOTER_ICON}",
+    ]
+    return "\n".join(lines)
+
+
+# ── Plugin Registration ─────────────────────────────────────────────────────
+
+
+def register(ctx: Any) -> None:
+    """Register /status command with Hermes plugin context."""
+
+    @ctx.register_command(
+        "status",
+        description="Show Mommy's current system, loop, and safety status.",
+    )
+    async def handle(context: Any) -> str:
+        """Handle /status invocation."""
+        try:
+            return _format_status_markdown()
+        except Exception as exc:
+            logger.exception(
+                "status_command_failed",
+                extra={"error": str(exc), "error_type": type(exc).__name__},
+            )
+            return (
+                "\u26a0\ufe0f Mommy's status is temporarily unavailable. "
+                "Coba lagi sebentar ya, Darling."
+            )
+
+
+# ======================================================================
+# FILE: safeword.py
+# ======================================================================
+
+"""Hermes command plugin — /safeword.
+
+Migrated from src/discord/cmd_safeword.py for Phase 2 Discord migration.
+Triggers the HARD STOP protocol via HardStopHandler.
+Preserves the 9-step safety workflow.
+"""
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING, Any, Final
+
+if TYPE_CHECKING:
+    from src.core.services.hard_stop_handler import HardStopHandler
+
+logger = logging.getLogger(__name__)
+
+# ── Timezone ────────────────────────────────────────────────────────────────
+
+WIB: Final[timezone] = timezone(timedelta(hours=7))
+
+# ── Constants ───────────────────────────────────────────────────────────────
+
+SAFEWORD_TITLE: Final[str] = "\U0001f6e1 Safe Mode Active"
+SAFEWORD_DESCRIPTION: Final[str] = (
+    "Mommy di sini. Netral. Tidak ada judgment. Kamu aman."
+)
+FOOTER_TEXT: Final[str] = "Guinevere de Baroque \u2022 Safety First"
+
+RESUME_PHRASES: Final[str] = (
+    '\u201cresume\u201d, \u201caku sudah okay\u201d, '
+    '\u201clanjut persona\u201d, or \u201csafe mode selesai\u201d'
+)
+
+# ── Handler Singleton ────────────────────────────────────────────────────────
+
+_handler: HardStopHandler | None = None
+
+
+def _get_handler() -> HardStopHandler:
+    """Return the module-level HardStopHandler singleton."""
+    global _handler  # noqa: PLW0603
+    if _handler is None:
+        _handler = _new_handler()
+    return _handler
+
+
+def _new_handler() -> HardStopHandler:
+    """Create a fresh HardStopHandler instance."""
+    from src.core.services.hard_stop_handler import HardStopHandler
+
+    return HardStopHandler()
+
+
+def set_handler(handler: HardStopHandler) -> None:
+    """Override the module-level handler singleton (for tests / determinism)."""
+    global _handler  # noqa: PLW0603
+    _handler = handler
+
+
+# ── Helpers ─────────────────────────────────────────────────────────────────
+
+
+def _format_wib_timestamp(dt: datetime) -> str:
+    """Format a datetime as ``"2026-06-01 15:30 WIB"``."""
+    wib_dt = dt.astimezone(WIB)
+    return wib_dt.strftime("%Y-%m-%d %H:%M WIB")
+
+
+# ── Markdown Formatter ──────────────────────────────────────────────────────
+
+
+def _format_safeword_markdown(
+    now: datetime | None = None,
+) -> str:
+    """Build the /safeword response as a markdown-formatted string.
+
+    Replicates all 6 embed fields from cmd_safeword.py in markdown.
+    """
+    ref = now if now is not None else datetime.now(tz=timezone.utc)
+    ts_str = _format_wib_timestamp(ref)
+
+    lines: list[str] = [
+        f"# {SAFEWORD_TITLE}",
+        "",
+        SAFEWORD_DESCRIPTION,
+        "",
+        "| Field | Value |",
+        "|---|---|",
+        "| Status | Safe mode active |",
+        "| Persona | Neutral / supportive |",
+        "| Punishment | Paused |",
+        "| Yandere | Y0 |",
+        "| Surveillance Confrontation | Paused |",
+        f"| Resume | {RESUME_PHRASES} |",
+        "",
+        f"\u2014 {FOOTER_TEXT} \u2022 {ts_str}",
+    ]
+    return "\n".join(lines)
+
+
+# ── Plugin Registration ─────────────────────────────────────────────────────
+
+
+def register(ctx: Any) -> None:
+    """Register /safeword command with Hermes plugin context."""
+
+    @ctx.register_command(
+        "safeword",
+        description="Trigger the configured safety boundary workflow.",
+    )
+    async def handle(context: Any) -> str:
+        """Handle /safeword invocation.
+
+        Triggers the HardStopHandler to activate safe mode (9-step protocol).
+        """
+        try:
+            handler = _get_handler()
+            handler.check("safeword")
+            logger.info(
+                "slash_safeword_triggered",
+                extra={
+                    "source": "hermes_plugin",
+                    "user_id": str(getattr(context, "user_id", "unknown")),
+                },
+            )
+            return _format_safeword_markdown()
+        except Exception as exc:
+            logger.exception(
+                "safeword_command_failed",
+                extra={"error": str(exc), "error_type": type(exc).__name__},
+            )
+            return (
+                "\u26a0\ufe0f Safe mode could not be activated through this command. "
+                "Mommy tetap di sini. Kamu aman, Darling."
+            )
+
+
+# ======================================================================
+# FILE: new_session.py
+# ======================================================================
+
+"""Hermes command plugin — /new.
+
+Migrated from src/discord/cmd_new_session.py for Phase 2 Discord migration.
+Clears Hermes conversation session for the caller via Redis DB4.
+"""
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import Any, Final
+
+logger = logging.getLogger(__name__)
+
+# ── Timezone ────────────────────────────────────────────────────────────────
+
+WIB: Final[timezone] = timezone(timedelta(hours=7))
+
+# ── Constants ───────────────────────────────────────────────────────────────
+
+TITLE: Final[str] = "\U0001f504 Session Baru"
+DESC: Final[str] = "Session conversation sudah di-reset, sayang~ \U0001f49b"
+FOOTER_ICON: Final[str] = "\U0001f4ac Conversation"
+FOOTER_TEXT: Final[str] = "Guinevere de Baroque"
+
+
+# ── Helpers ─────────────────────────────────────────────────────────────────
+
+
+def _format_wib_timestamp(dt: datetime) -> str:
+    """Format a datetime as ``"2026-06-01 15:30 WIB"``."""
+    wib_dt = dt.astimezone(WIB)
+    return wib_dt.strftime("%Y-%m-%d %H:%M WIB")
+
+
+# ── Plugin Registration ─────────────────────────────────────────────────────
+
+
+def register(ctx: Any) -> None:
+    """Register /new command with Hermes plugin context."""
+
+    @ctx.register_command(
+        "new",
+        description="Reset conversation history and start fresh.",
+    )
+    async def handle(context: Any) -> str:
+        """Handle /new invocation — clear Hermes session for the caller."""
+        try:
+            from src.hermes import get_adapter
+
+            adapter = get_adapter()
+            user_id = str(getattr(context, "user_id", ""))
+            await adapter.clear_session(user_id)
+            logger.info(
+                "hermes_session_cleared",
+                extra={"user_id_prefix": user_id[:8] if user_id else "unknown"},
+            )
+
+            ref = datetime.now(tz=timezone.utc)
+            ts_str = _format_wib_timestamp(ref)
+
+            lines: list[str] = [
+                f"# {TITLE}",
+                "",
+                DESC,
+                "",
+                "| Field | Value |",
+                "|---|---|",
+                "| Status | \u2705 History cleared |",
+                "| Next message | Mulai dari awal, Darling~ |",
+                "",
+                f"\u2014 {FOOTER_TEXT} \u2022 {ts_str} \u2022 {FOOTER_ICON}",
+            ]
+            return "\n".join(lines)
+
+        except Exception as exc:
+            logger.exception(
+                "new_session_command_failed",
+                extra={"error": str(exc), "error_type": type(exc).__name__},
+            )
+            return (
+                "\u26a0\ufe0f Gagal reset session. "
+                "Coba lagi ya, sayang. \U0001f49b"
+            )
+
+
+# ======================================================================
+# FILE: mood.py
+# ======================================================================
+
+"""Hermes command plugin — /mood.
+
+Migrated from src/discord/cmd_mood.py for Phase 2 Discord migration.
+Preserves all 6 mood fields: Current Mood, Undertone, 24h History,
+Recent Triggers, Streak, Forecast.
+"""
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import Any, Final
+
+
+
+logger = logging.getLogger(__name__)
+
+# ── Timezone ────────────────────────────────────────────────────────────────
+
+WIB: Final[timezone] = timezone(timedelta(hours=7))
+
+# ── Constants ───────────────────────────────────────────────────────────────
+
+MOOD_TITLE: Final[str] = "\U0001f9e0 Mood Analysis"
+MOOD_DESCRIPTION: Final[str] = (
+    "Mommy lagi baik-baik aja, Darling. Kamu nggak perlu khawatir."
+)
+FOOTER_TEXT: Final[str] = "Guinevere de Baroque"
+FOOTER_ICON: Final[str] = "\U0001f9e0 Mood"
+
+_MOOD_EMOJI: Final[dict[str, str]] = {
+    "content": "\U0001f60a",
+    "pleased": "\U0001f929",
+    "disappointed": "\U0001f61e",
+    "angry": "\U0001f620",
+    "silent": "\U0001f910",
+}
+
+_MOOD_LABEL: Final[dict[str, str]] = {
+    "content": "Content",
+    "pleased": "Pleased",
+    "disappointed": "Disappointed",
+    "angry": "Angry",
+    "silent": "Silent",
+}
+
+DEGRADED_UNDERTONE: Final[str] = (
+    "\u26a0\ufe0f \u2014 Undertone analysis (P3 not deployed)"
+)
+DEGRADED_HISTORY: Final[str] = (
+    "\u26a0\ufe0f \u2014 24h history (P4 not deployed)"
+)
+DEGRADED_TRIGGERS: Final[str] = (
+    "\u26a0\ufe0f \u2014 Trigger tracking (P3 not deployed)"
+)
+DEGRADED_STREAK: Final[str] = (
+    "\u26a0\ufe0f \u2014 Streak tracking (P4 not deployed)"
+)
+DEGRADED_FORECAST: Final[str] = (
+    "\u26a0\ufe0f \u2014 Mood forecast (P5 not deployed)"
+)
+
+DEFAULT_MOOD: Final[str] = "content"
+
+# ── Helpers ─────────────────────────────────────────────────────────────────
+
+
+def display_for_mood(mood: str) -> str:
+    """Return a display string like ``"😊 Content"`` for a mood name."""
+    emoji = _MOOD_EMOJI.get(mood, "\U0001f60a")
+    label = _MOOD_LABEL.get(mood, "Content")
+    return f"{emoji} {label}"
+
+
+def _format_wib_timestamp(dt: datetime) -> str:
+    """Format a datetime as ``"2026-06-01 15:30 WIB"``."""
+    wib_dt = dt.astimezone(WIB)
+    return wib_dt.strftime("%Y-%m-%d %H:%M WIB")
+
+
+# ── Markdown Formatter ──────────────────────────────────────────────────────
+
+
+def _format_mood_markdown(now: datetime | None = None, mood: str = DEFAULT_MOOD) -> str:
+    """Build the /mood response as a markdown-formatted string.
+
+    Replicates all 6 embed fields from cmd_mood.py in markdown.
+    """
+    ref = now if now is not None else datetime.now(tz=timezone.utc)
+    ts_str = _format_wib_timestamp(ref)
+    current_display = display_for_mood(mood)
+
+    lines: list[str] = [
+        f"# {MOOD_TITLE}",
+        "",
+        MOOD_DESCRIPTION,
+        "",
+        "| Field | Value |",
+        "|---|---|",
+        f"| Current Mood | {current_display} |",
+        f"| Undertone | {DEGRADED_UNDERTONE} |",
+        f"| 24h History | {DEGRADED_HISTORY} |",
+        f"| Recent Triggers | {DEGRADED_TRIGGERS} |",
+        f"| Streak | {DEGRADED_STREAK} |",
+        f"| Forecast | {DEGRADED_FORECAST} |",
+        "",
+        f"\u2014 {FOOTER_TEXT} \u2022 {ts_str} \u2022 {FOOTER_ICON}",
+    ]
+    return "\n".join(lines)
+
+
+# ── Plugin Registration ─────────────────────────────────────────────────────
+
+
+def register(ctx: Any) -> None:
+    """Register /mood command with Hermes plugin context."""
+
+    @ctx.register_command(
+        "mood",
+        description="Show or update Guinevere's current mood state.",
+    )
+    async def handle(context: Any) -> str:
+        """Handle /mood invocation."""
+        try:
+            return _format_mood_markdown()
+        except Exception as exc:
+            logger.exception(
+                "mood_command_failed",
+                extra={"error": str(exc), "error_type": type(exc).__name__},
+            )
+            return (
+                "\u26a0\ufe0f Mommy's mood analysis is temporarily unavailable. "
+                "Coba lagi sebentar ya, Darling."
+            )
+
+
+# ======================================================================
+# FILE: history.py
+# ======================================================================
+
+"""Hermes command plugin — /history.
+
+Migrated from src/discord/cmd_history.py for Phase 2 Discord migration.
+Shows recent Hermes conversation turns from Redis DB4.
+"""
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import Any, Final
+
+
+
+logger = logging.getLogger(__name__)
+
+# ── Timezone ────────────────────────────────────────────────────────────────
+
+WIB: Final[timezone] = timezone(timedelta(hours=7))
+
+# ── Constants ───────────────────────────────────────────────────────────────
+
+TITLE: Final[str] = "\U0001f4dc Conversation History"
+DESC: Final[str] = "Ini percakapan terakhir kita, sayang~"
+FOOTER_ICON: Final[str] = "\U0001f4ac Conversation"
+FOOTER_TEXT: Final[str] = "Guinevere de Baroque"
+
+MAX_DISPLAY_TURNS: Final[int] = 10
+
+
+# ── Helpers ─────────────────────────────────────────────────────────────────
+
+
+def _truncate(text: str, max_len: int = 200) -> str:
+    """Truncate *text* to *max_len* characters with ellipsis."""
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 3] + "..."
+
+
+def _format_wib_timestamp(dt: datetime) -> str:
+    """Format a datetime as ``"2026-06-01 15:30 WIB"``."""
+    wib_dt = dt.astimezone(WIB)
+    return wib_dt.strftime("%Y-%m-%d %H:%M WIB")
+
+
+# ── Plugin Registration ─────────────────────────────────────────────────────
+
+
+def register(ctx: Any) -> None:
+    """Register /history command with Hermes plugin context."""
+
+    @ctx.register_command(
+        "history",
+        description="Show recent conversation turns with Mommy.",
+    )
+    async def handle(context: Any) -> str:
+        """Handle /history invocation — show last conversation turns."""
+        try:
+            from src.hermes import get_adapter
+
+            adapter = get_adapter()
+            user_id = str(getattr(context, "user_id", ""))
+            history = await adapter.get_history(user_id, limit=MAX_DISPLAY_TURNS)
+            ref = datetime.now(tz=timezone.utc)
+            ts_str = _format_wib_timestamp(ref)
+
+            if not history:
+                lines: list[str] = [
+                    f"# {TITLE}",
+                    "",
+                    "Belum ada percakapan, sayang. Kirim pesan dulu~ \U0001f49b",
+                    "",
+                    f"\u2014 {FOOTER_TEXT} \u2022 {ts_str} \u2022 {FOOTER_ICON}",
+                ]
+                return "\n".join(lines)
+
+            # Build turn entries
+            turn_lines: list[str] = [
+                f"# {TITLE}",
+                "",
+                f"{DESC}",
+                "",
+            ]
+
+            turn_num = 0
+            for i in range(0, len(history), 2):
+                user_msg = history[i] if i < len(history) else None
+                assistant_msg = history[i + 1] if i + 1 < len(history) else None
+
+                if user_msg is None:
+                    break
+
+                turn_num += 1
+                user_text = _truncate(str(user_msg.get("content", "")))
+                assistant_text = _truncate(
+                    str(assistant_msg.get("content", "")) if assistant_msg else "..."
+                )
+
+                turn_lines.append(f"### Turn {turn_num}")
+                turn_lines.append(f"**Faiz:** {user_text}")
+                turn_lines.append(f"**Guinevere:** {assistant_text}")
+                turn_lines.append("")
+
+            turn_count = len(history) // 2
+            footer = (
+                f"\u2014 {FOOTER_TEXT} \u2022 {ts_str} \u2022 "
+                f"{FOOTER_ICON} \u2022 {turn_count} turns"
+            )
+            turn_lines.append(footer)
+            return "\n".join(turn_lines)
+
+        except Exception as exc:
+            logger.exception(
+                "history_command_failed",
+                extra={"error": str(exc), "error_type": type(exc).__name__},
+            )
+            return (
+                "\u26a0\ufe0f Gagal load history. "
+                "Coba lagi ya, sayang. \U0001f49b"
+            )
+
+
+# ======================================================================
+# FILE: help.py
+# ======================================================================
+
+"""Hermes command plugin — /help.
+
+Migrated from src/discord/cmd_help.py for Phase 2 Discord migration.
+Lists all slash commands grouped by their 7 categories.
+"""
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import Any, Final
+
+logger = logging.getLogger(__name__)
+
+# ── Timezone ────────────────────────────────────────────────────────────────
+
+WIB: Final[timezone] = timezone(timedelta(hours=7))
+
+# ── Constants ───────────────────────────────────────────────────────────────
+
+HELP_TITLE: Final[str] = "\U0001f4d6 Guinevere Command Guide"
+HELP_DESCRIPTION: Final[str] = (
+    "Semua command Mommy yang tersedia, Darling. Kalau bingung, bilang aja."
+)
+FOOTER_TEXT: Final[str] = "Guinevere de Baroque"
+FOOTER_ICON: Final[str] = "\u2728"
+CATEGORY_SEPARATOR: Final[str] = " \u007c "
+
+_CATEGORY_DISPLAY: Final[dict[str, str]] = {
+    "core": "Core \U0001f3e0",
+    "loop": "Loop \U0001f504",
+    "memory": "Memory \U0001f9e0",
+    "surveillance": "Surveillance \U0001f441",
+    "finance": "Finance \U0001f4b0",
+    "system": "System \u2699",
+    "admin": "Admin \U0001f6e0",
+}
+
+# ── Helpers ─────────────────────────────────────────────────────────────────
+
+
+def _format_wib_timestamp(dt: datetime) -> str:
+    """Format a datetime as ``"2026-06-01 15:30 WIB"``."""
+    wib_dt = dt.astimezone(WIB)
+    return wib_dt.strftime("%Y-%m-%d %H:%M WIB")
+
+
+def _build_category_field_name(key: str) -> str:
+    """Return the display field name for a category key."""
+    return _CATEGORY_DISPLAY.get(key, key.capitalize())
+
+
+def _build_category_field_value(commands: tuple[str, ...]) -> str:
+    """Return the display field value for a tuple of command names."""
+    return CATEGORY_SEPARATOR.join(commands)
+
+
+def _compute_command_count(categories: dict[str, tuple[str, ...]]) -> int:
+    """Return the total number of commands across all categories."""
+    return sum(len(cmds) for cmds in categories.values())
+
+
+# ── Markdown Formatter ──────────────────────────────────────────────────────
+
+
+def _format_help_markdown(
+    categories: dict[str, tuple[str, ...]] | None = None,
+) -> str:
+    """Build the /help response as a markdown-formatted string.
+
+    Replicates the 7 category fields from cmd_help.py in markdown.
+    """
+    from src.discord.commands import command_categories
+
+    cats = categories if categories is not None else command_categories()
+    ref = datetime.now(tz=timezone.utc)
+    ts_str = _format_wib_timestamp(ref)
+    cmd_count = _compute_command_count(cats)
+
+    lines: list[str] = [
+        f"# {HELP_TITLE}",
+        "",
+        HELP_DESCRIPTION,
+        "",
+    ]
+
+    for key, commands in cats.items():
+        field_name = _build_category_field_name(key)
+        field_value = _build_category_field_value(commands)
+        lines.append(f"**{field_name}:** {field_value}")
+        lines.append("")
+
+    footer = (
+        f"\u2014 {FOOTER_TEXT} \u2022 {ts_str} \u2022 "
+        f"{FOOTER_ICON} {cmd_count} Commands"
+    )
+    lines.append(footer)
+    return "\n".join(lines)
+
+
+# ── Plugin Registration ─────────────────────────────────────────────────────
+
+
+def register(ctx: Any) -> None:
+    """Register /help command with Hermes plugin context."""
+
+    @ctx.register_command(
+        "help",
+        description="Show the Guinevere command guide.",
+    )
+    async def handle(context: Any) -> str:
+        """Handle /help invocation."""
+        try:
+            return _format_help_markdown()
+        except Exception as exc:
+            logger.exception(
+                "help_command_failed",
+                extra={"error": str(exc), "error_type": type(exc).__name__},
+            )
+            return (
+                "\u26a0\ufe0f Mommy's command guide is temporarily unavailable. "
+                "Coba lagi sebentar ya, Darling."
+            )
+
+
+# ======================================================================
+# FILE: focus.py
+# ======================================================================
+
+"""Hermes command plugin — /focus.
+
+Migrated from src/discord/cmd_focus.py for Phase 2 Discord migration.
+Sets the persona focus mode (deep, normal, relaxed) in Redis DB0.
+"""
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import Any, Final
+
+import redis
+
+logger = logging.getLogger(__name__)
+
+# ── Timezone ────────────────────────────────────────────────────────────────
+
+WIB: Final = timezone(timedelta(hours=7))
+
+# ── Constants ───────────────────────────────────────────────────────────────
+
+TITLE: str = "\U0001f3af Focus Mode Set"
+DESC: str = "Mode fokus sudah diganti, Darling."
+FOOTER_ICON: str = "\U0001f9e0 Persona"
+FOOTER_TEXT: str = "Guinevere de Baroque"
+REDIS_KEY: str = "persona:focus_mode"
+VALID_MODES: frozenset[str] = frozenset({"deep", "normal", "relaxed"})
+MODE_EMOJI: dict[str, str] = {
+    "deep": "\U0001f525",
+    "normal": "\u26a1",
+    "relaxed": "\U0001f33f",
+}
+
+
+# ── Redis ───────────────────────────────────────────────────────────────────
+
+
+def _get_redis_client() -> redis.Redis:
+    """Create a Redis client for persona state (DB0)."""
+    return redis.Redis(host="localhost", port=6380, db=0, decode_responses=True)
+
+
+# ── Helpers ─────────────────────────────────────────────────────────────────
+
+
+def _format_wib_timestamp(dt: datetime) -> str:
+    """Format a datetime as ``"2026-06-01 15:30 WIB"``."""
+    wib_dt = dt.astimezone(WIB)
+    return wib_dt.strftime("%Y-%m-%d %H:%M WIB")
+
+
+# ── Plugin Registration ─────────────────────────────────────────────────────
+
+
+def register(ctx: Any) -> None:
+    """Register /focus command with Hermes plugin context."""
+
+    @ctx.register_command(
+        "focus",
+        description="Switch Guinevere into focused engineering mode.",
+    )
+    async def handle(context: Any) -> str:
+        """Handle /focus invocation.
+
+        Expects context.options to contain a "mode" key (Hermes-style option passing).
+        """
+        try:
+            # Extract mode from Hermes context options
+            options: dict[str, str] = getattr(context, "options", {}) or {}
+            mode_raw = options.get("mode", "")
+            mode = mode_raw.lower() if mode_raw else ""
+
+            if mode not in VALID_MODES:
+                return (
+                    "\u26a0\ufe0f Mode harus salah satu dari: "
+                    "`deep`, `normal`, `relaxed`."
+                )
+
+            r = _get_redis_client()
+            r.set(REDIS_KEY, mode)
+            logger.info("focus_mode_set", extra={"mode": mode})
+
+            emoji = MODE_EMOJI.get(mode, "\u2728")
+            ref = datetime.now(tz=timezone.utc)
+            ts_str = _format_wib_timestamp(ref)
+
+            lines: list[str] = [
+                f"# {TITLE}",
+                "",
+                DESC,
+                "",
+                "| Field | Value |",
+                "|---|---|",
+                f"| Mode | {emoji} {mode.capitalize()} |",
+                "",
+                f"\u2014 {FOOTER_TEXT} \u2022 {ts_str} \u2022 {FOOTER_ICON}",
+            ]
+            return "\n".join(lines)
+
+        except Exception as exc:
+            logger.exception(
+                "focus_command_failed",
+                extra={"error": str(exc), "error_type": type(exc).__name__},
+            )
+            return (
+                "\u26a0\ufe0f Focus mode gagal di-set. "
+                "Coba lagi ya, Darling."
+            )
+
+
+# ======================================================================
+# FILE: casual.py
+# ======================================================================
+
+"""Hermes command plugin — /casual.
+
+Migrated from src/discord/cmd_casual.py for Phase 2 Discord migration.
+Switches interaction mode to casual in Redis DB0.
+"""
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import Any, Final
+
+import redis
+
+logger = logging.getLogger(__name__)
+
+# ── Timezone ────────────────────────────────────────────────────────────────
+
+WIB: Final = timezone(timedelta(hours=7))
+
+# ── Constants ───────────────────────────────────────────────────────────────
+
+TITLE: str = "\U0001f33f Casual Mode"
+DESC: str = "Mommy santai dulu ya, Darling~"
+FOOTER_ICON: str = "\U0001f9e0 Persona"
+FOOTER_TEXT: str = "Guinevere de Baroque"
+REDIS_KEY: str = "persona:interaction_mode"
+
+# ── Redis ───────────────────────────────────────────────────────────────────
+
+
+def _get_redis_client() -> redis.Redis:
+    """Create a Redis client for persona state (DB0)."""
+    return redis.Redis(host="localhost", port=6380, db=0, decode_responses=True)
+
+
+# ── Helpers ─────────────────────────────────────────────────────────────────
+
+
+def _format_wib_timestamp(dt: datetime) -> str:
+    """Format a datetime as ``"2026-06-01 15:30 WIB"``."""
+    wib_dt = dt.astimezone(WIB)
+    return wib_dt.strftime("%Y-%m-%d %H:%M WIB")
+
+
+# ── Plugin Registration ─────────────────────────────────────────────────────
+
+
+def register(ctx: Any) -> None:
+    """Register /casual command with Hermes plugin context."""
+
+    @ctx.register_command(
+        "casual",
+        description="Switch Guinevere into lighter casual mode.",
+    )
+    async def handle(context: Any) -> str:
+        """Handle /casual invocation."""
+        try:
+            r = _get_redis_client()
+            r.set(REDIS_KEY, "casual")
+            logger.info("casual_mode_set")
+
+            ref = datetime.now(tz=timezone.utc)
+            ts_str = _format_wib_timestamp(ref)
+
+            lines: list[str] = [
+                f"# {TITLE}",
+                "",
+                DESC,
+                "",
+                "| Field | Value |",
+                "|---|---|",
+                "| Mode | \U0001f33f Casual |",
+                "",
+                f"\u2014 {FOOTER_TEXT} \u2022 {ts_str} \u2022 {FOOTER_ICON}",
+            ]
+            return "\n".join(lines)
+
+        except Exception as exc:
+            logger.exception(
+                "casual_command_failed",
+                extra={"error": str(exc), "error_type": type(exc).__name__},
+            )
+            return (
+                "\u26a0\ufe0f Casual mode gagal di-set. "
+                "Coba lagi ya, Darling."
+            )
+
+
+# ======================================================================
+# FILE: __init__.py
+# ======================================================================
+
+"""Hermes command plugins — HIGH feasibility group (S3.1).
+
+Registers all 8 migrated Discord slash commands as Hermes plugin handlers:
+/status, /mood, /help, /safeword, /new, /history, /casual, /focus.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from . import casual, focus, help, history, mood, new_session, safeword, status
+
+__all__ = [
+    "register",
+    "status",
+    "mood",
+    "help",
+    "safeword",
+    "new_session",
+    "history",
+    "casual",
+    "focus",
+]
+
+
+def register(ctx: Any) -> None:
+    """Register all 8 HIGH feasibility commands with the Hermes plugin context.
+
+    Args:
+        ctx: The Hermes PluginContext instance.
+    """
+    for module in (
+        status,
+        mood,
+        help,
+        safeword,
+        new_session,
+        history,
+        casual,
+        focus,
+    ):
+        module.register(ctx)
+

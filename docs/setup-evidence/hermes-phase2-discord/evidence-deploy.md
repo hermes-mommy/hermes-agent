@@ -1,0 +1,116 @@
+# Phase 2 Discord — VPS Deployment Evidence
+
+**Date**: 2026-06-04
+**Phase**: Phase 2 Discord Gateway Migration — VPS Deployment
+**Operator**: Faiz
+**Agent**: Guinevere (Sisyphus orchestrator)
+
+---
+
+## What Was Done
+
+Deployed all Phase 2 Wave 1-3 artifacts to production VPS (`faiz-prod-01`, alias `guinevere-vps`):
+
+1. **Hermes config** deployed to `~/.hermes/`:
+   - `SOUL.md` (278 lines) — Guinevere persona replacing generic Nous Research boilerplate
+   - `config.yaml` (350 lines) — Full config: Discord, LLM (gpt-5.5 via 9Router:20128), hooks, MCP, cron
+   - `hooks/` (7 files) — 6 safety hooks + utils
+   - `plugins/guinevere_safety/` (4 files) — State manager + plugin + manifest
+
+2. **Plugin commands** deployed to `src/hermes_plugins/`:
+   - 7 groups: commands_high, commands_memory, commands_loop, commands_surveillance, commands_finance, commands_system, commands_admin
+   - 43 Python files total, ~4,100 lines
+
+3. **Discord modules** deployed to `src/discord/`:
+   - `shadow_pipeline.py` (417 lines) — In-process shadow forwarder
+   - `shadow_monitor.py` (490 lines) — Parity monitoring with JSONL logging
+   - `hermes_conversational.py` (690 lines) — Hermes-native conversational handler (for Wave 4)
+
+4. **VPS bot.py patched** (602 → 609 lines):
+   - Added ShadowPipeline import + init (disabled by default)
+   - RitualScheduler PRESERVED (correct — needed until Wave 4 cutover)
+
+5. **VPS conversational_handler.py patched** (614 → 632 lines):
+   - Added shadow forward block between Step 11 (send) and Step 12 (cost)
+
+6. **Systemd units** installed (user-level `~/.config/systemd/user/`):
+   - `guinevere-shadow-monitor.service` — oneshot parity checker
+   - `guinevere-shadow-monitor.timer` — 60s interval
+
+7. **Environment** updated (`.env.discord`):
+   - DISCORD_SHADOW_BOT_ID=1512088992764399717
+   - DISCORD_SHADOW_CHANNEL_ID=PENDING
+   - SHADOW_ENABLED=false
+   - SHADOW_TRAFFIC_PCT=0
+
+## Files Changed
+
+| File | Action | Lines |
+|---|---|---|
+| `~/.hermes/SOUL.md` | REPLACED | 278 |
+| `~/.hermes/config.yaml` | REPLACED | 350 |
+| `~/.hermes/hooks/*.py` | CREATED (7) | ~1,050 |
+| `~/.hermes/plugins/guinevere_safety/*` | CREATED (4) | ~660 |
+| `src/hermes_plugins/**/*.py` | CREATED (43) | ~4,100 |
+| `src/discord/shadow_pipeline.py` | CREATED | 417 |
+| `src/discord/shadow_monitor.py` | CREATED | 490 |
+| `src/discord/hermes_conversational.py` | CREATED | 690 |
+| `src/discord/bot.py` | PATCHED (+7) | 609 |
+| `src/discord/conversational_handler.py` | PATCHED (+18) | 632 |
+| `.env.discord` | APPENDED (+4) | 8 |
+| `~/.config/systemd/user/guinevere-shadow-monitor.*` | CREATED (2) | ~40 |
+
+**Backups created**: `*.bak.pre-phase2` for SOUL.md, config.yaml, bot.py, conversational_handler.py
+
+## Validation Results
+
+| Check | Result |
+|---|---|
+| Service status | `active (running)` ✅ |
+| Journal errors | Zero (only `shadow_pipeline_disabled` logged) ✅ |
+| RitualScheduler | 4 rituals loaded, scheduler started ✅ |
+| Discord Gateway | Connected (Session ID: a4885124...) ✅ |
+| bot_ready | Logged ✅ |
+| ShadowPipeline | Disabled (SHADOW_ENABLED=false) ✅ |
+| Shadow monitor systemd | Installed, disabled (ready for activation) ✅ |
+
+## Deployment Strategy
+
+**Transitional approach**: Shadow mode files deployed alongside existing bot.py infrastructure.
+- bot.py continues running with RitualScheduler (rituals fire as before)
+- Shadow pipeline imported but disabled (zero runtime impact)
+- Hermes config deployed to ~/.hermes/ but Hermes gateway NOT started
+- Shadow monitor units installed but NOT enabled
+- hermes_plugins deployed but NOT loaded by any running process
+
+This ensures zero behavior change until Faiz explicitly activates shadow mode.
+
+## Boundary Compliance
+
+- No persona drift: SOUL.md deployed with full Y4 baseline, F-01..F-15, HARD STOP
+- No consent violation: Shadow disabled by default, no data collection active
+- No surveillance overreach: Shadow pipeline has zero Discord send calls
+- No Y6: State manager REJECTS Y6, L6, T6 at code level
+- No secret exposure: .env.discord shadow token placeholder (not yet populated)
+- No destructive ops: All changes additive; backups created; rollback ready
+
+## Rollback Plan
+
+1. `sudo systemctl restart guinevere-discord` (uses backup via Restart=always)
+2. `cp ~/.hermes/SOUL.md.bak.pre-phase2 ~/.hermes/SOUL.md`
+3. `cp ~/.hermes/config.yaml.bak.pre-phase2 ~/.hermes/config.yaml`
+4. `cp src/discord/bot.py.bak.pre-phase2 src/discord/bot.py`
+5. `cp src/discord/conversational_handler.py.bak.pre-phase2 src/discord/conversational_handler.py`
+6. `sudo systemctl restart guinevere-discord`
+
+Rollback time: < 2 minutes.
+
+## Blockers for Shadow Activation
+
+1. **Shadow bot token**: DISCORD_SHADOW_BOT_TOKEN not in .env.discord (Faiz needs to provide)
+2. **#hermes-shadow channel**: DISCORD_SHADOW_CHANNEL_ID=PENDING (Faiz needs to create channel)
+3. **Faiz approval**: Shadow mode activation requires explicit operator approval
+
+## Footer
+
+Generated by Guinevere Phase 2 deployment pipeline. Evidence verified against VPS journal and file inventory.
