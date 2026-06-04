@@ -1,8 +1,8 @@
 """P7-011: Safe-Mode Surveillance Blocking — comprehensive unit tests.
 
 Tests cover:
-- Normal mode: all 6 blocked + 6 pipeline actions allowed
-- Safe mode: 6 confrontation types blocked, 6 pipeline types allowed
+- Normal mode: all 8 blocked + 6 pipeline actions allowed
+- Safe mode: 8 confrontation types blocked, 6 pipeline types allowed
 - ``check_confrontation`` returns correct ``ConfrontationDecision`` per action
 - ``is_confrontation_blocked`` quick boolean check
 - ``get_blocked_actions`` returns correct lists in both modes
@@ -10,7 +10,7 @@ Tests cover:
 - ``check_message_safety`` allows benign messages
 - ``ConfrontationDecision`` frozen dataclass immutability
 - SafetyState injection via callable (both NORMAL and SAFE)
-- Edge cases: empty action string, unknown action type
+- Edge cases: empty action string, unknown action type (fail-closed BLOCKED)
 """
 
 from __future__ import annotations
@@ -42,6 +42,8 @@ BLOCKED_ACTIONS = [
     "jealousy_escalation",
     "dependency_manipulation",
     "intimate_data_reference",
+    "humiliation",
+    "public_disclosure",
 ]
 
 PIPELINE_ACTIONS = [
@@ -195,11 +197,11 @@ class TestGetBlockedActions:
     ) -> None:
         assert normal_guard.get_blocked_actions() == []
 
-    def test_all_six_in_safe_mode(
+    def test_all_eight_in_safe_mode(
         self, safe_guard: SurveillanceSafeModeGuard
     ) -> None:
         result = safe_guard.get_blocked_actions()
-        assert len(result) == 6
+        assert len(result) == 8
         assert sorted(BLOCKED_ACTIONS) == result
 
 
@@ -353,20 +355,20 @@ class TestSafetyStateInjection:
 class TestEdgeCases:
     """Boundary and edge-case behaviour."""
 
-    def test_empty_action_string_allowed_in_safe(
+    def test_empty_action_string_blocked_in_safe(
         self, safe_guard: SurveillanceSafeModeGuard
     ) -> None:
-        """Empty string is unknown → pipeline safety defaults to ALLOWED."""
+        """Empty string is unknown -- fail-closed BLOCKED in safe mode."""
         decision = safe_guard.check_confrontation("")
-        assert decision.allowed is True
+        assert decision.allowed is False
         assert "Unknown" in decision.reason
 
-    def test_unknown_action_defaults_allowed_in_safe(
+    def test_unknown_action_blocked_in_safe(
         self, safe_guard: SurveillanceSafeModeGuard
     ) -> None:
-        """Unknown action → pipeline safety: default ALLOWED."""
+        """Unknown action -- fail-closed: BLOCKED in safe mode."""
         decision = safe_guard.check_confrontation("some_future_feature")
-        assert decision.allowed is True
+        assert decision.allowed is False
         assert "Unknown" in decision.reason
 
     def test_unknown_action_allowed_in_normal(

@@ -189,6 +189,7 @@ async def _track_cost() -> None:
 # ---------------------------------------------------------------------------
 
 
+@require_approval(AuthLevel.READ_AUTO, tool_name="context7_resolve")
 async def context7_resolve(
     library_name: str, query: str = ""
 ) -> dict[str, str]:
@@ -284,6 +285,7 @@ async def context7_resolve(
     return resolved
 
 
+@require_approval(AuthLevel.READ_AUTO, tool_name="context7_query")
 async def context7_query(
     library_id: str, query: str
 ) -> dict[str, object]:
@@ -371,37 +373,7 @@ def register_tools(mcp: FastMCP) -> None:
 
     Both are gated with ``AuthLevel.READ_AUTO`` (no approval needed).
     """
-
-    @mcp.tool()
-    @require_approval(AuthLevel.READ_AUTO, tool_name="context7_resolve")
-    async def _context7_resolve(
-        library_name: str, query: str = ""
-    ) -> dict[str, str]:
-        """Resolve a library name to a Context7 library ID.
-
-        Args:
-            library_name: Name of the library (e.g., "react", "fastapi").
-            query: Optional context for relevance ranking.
-
-        Returns:
-            Dict with library metadata or error info.
-        """
-        return await context7_resolve(library_name, query)
-
-    @mcp.tool()
-    @require_approval(AuthLevel.READ_AUTO, tool_name="context7_query")
-    async def _context7_query(
-        library_id: str, query: str
-    ) -> dict[str, object]:
-        """Query documentation for a resolved Context7 library.
-
-        Args:
-            library_id: Context7 library ID (e.g., "/facebook/react").
-            query: Natural language question about the library.
-
-        Returns:
-            Dict with documentation context.
-        """
-        return await context7_query(library_id, query)
+    mcp.tool()(context7_resolve)
+    mcp.tool()(context7_query)
 
     logger.info("context7_tools_registered")

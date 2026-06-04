@@ -114,6 +114,7 @@ _state = _BrowserState()
 # ---------------------------------------------------------------------------
 
 
+@require_approval(AuthLevel.READ_AUTO, tool_name="obscura_navigate")
 async def obscura_navigate(url: str) -> dict[str, str]:
     """Navigate to *url* and return the page title and URL.
 
@@ -137,6 +138,7 @@ async def obscura_navigate(url: str) -> dict[str, str]:
     return {"url": url, "title": title}
 
 
+@require_approval(AuthLevel.READ_AUTO, tool_name="obscura_get_markdown")
 async def obscura_get_markdown(url: str) -> str:
     """Navigate to *url* and return the page content as Markdown.
 
@@ -158,6 +160,7 @@ async def obscura_get_markdown(url: str) -> str:
     return md_text
 
 
+@require_approval(AuthLevel.WRITE_NOTIFY, tool_name="obscura_fill_form")
 async def obscura_fill_form(url: str, selectors: dict[str, str]) -> dict[str, str]:
     """Navigate to *url* and fill form fields from *selectors* mapping.
 
@@ -185,6 +188,7 @@ async def obscura_fill_form(url: str, selectors: dict[str, str]) -> dict[str, st
     return {"status": "ok", "filled_count": str(len(filled)), "selectors": ",".join(filled)}
 
 
+@require_approval(AuthLevel.WRITE_NOTIFY, tool_name="obscura_click")
 async def obscura_click(selector: str) -> dict[str, str]:
     """Click the element matching *selector* on the current page.
 
@@ -223,25 +227,9 @@ def register_tools(mcp: FastMCP) -> None:
       - ``obscura_fill_form`` — WRITE_NOTIFY
       - ``obscura_click`` — WRITE_NOTIFY
     """
-
-    @mcp.tool()
-    @require_approval(AuthLevel.READ_AUTO, tool_name="obscura_navigate")
-    async def _obscura_navigate(url: str) -> dict[str, str]:
-        return await obscura_navigate(url)
-
-    @mcp.tool()
-    @require_approval(AuthLevel.READ_AUTO, tool_name="obscura_get_markdown")
-    async def _obscura_get_markdown(url: str) -> str:
-        return await obscura_get_markdown(url)
-
-    @mcp.tool()
-    @require_approval(AuthLevel.WRITE_NOTIFY, tool_name="obscura_fill_form")
-    async def _obscura_fill_form(url: str, selectors: dict[str, str]) -> dict[str, str]:
-        return await obscura_fill_form(url, selectors)
-
-    @mcp.tool()
-    @require_approval(AuthLevel.WRITE_NOTIFY, tool_name="obscura_click")
-    async def _obscura_click(selector: str) -> dict[str, str]:
-        return await obscura_click(selector)
+    mcp.tool(name="obscura_navigate")(obscura_navigate)
+    mcp.tool(name="obscura_get_markdown")(obscura_get_markdown)
+    mcp.tool(name="obscura_fill_form")(obscura_fill_form)
+    mcp.tool(name="obscura_click")(obscura_click)
 
     logger.info("obscura_cdp_tools_registered")

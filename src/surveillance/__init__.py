@@ -31,6 +31,18 @@ from src.surveillance.router import surveillance_router
 from src.surveillance.safe_mode import ConfrontationDecision, SurveillanceSafeModeGuard
 from src.surveillance.secret_scanner import ScanResult, redact_secrets, scan_text
 from src.surveillance.secrets import get_hmac_secret
+from src.surveillance.retention import (
+    CHUNK_INTERVAL_DAYS,
+    COMPRESSION_AFTER_DAYS,
+    RETENTION_AGGREGATED_DAYS,
+    RETENTION_RAW_DAYS,
+    RETENTION_SUMMARY_DAYS,
+    RetentionTier,
+    calculate_retention_until,
+    get_retention_policy_summary,
+)
+from src.surveillance.retention import get_retention_days as get_tier_retention_days
+from src.surveillance.timescale import IngestionResult, TimescaleIngester
 
 __all__ = [
     "ClassificationResult",
@@ -40,21 +52,32 @@ __all__ = [
     "DataClassification",
     "ErrorResponse",
     "HMACVerification",
+    "IngestionResult",
     "RedisSurveillanceBuffer",
+    "RetentionTier",
     "ScanResult",
     "SurveillanceBuffer",
     "SurveillanceConsumer",
     "SurveillanceEventRequest",
     "SurveillanceEventResponse",
     "SurveillanceSafeModeGuard",
+    "TimescaleIngester",
     "check_consent",
     "check_nonce",
+    "CHUNK_INTERVAL_DAYS",
     "classify_event",
+    "COMPRESSION_AFTER_DAYS",
     "create_buffer",
+    "calculate_retention_until",
     "get_hmac_secret",
     "get_retention_days",
+    "get_retention_policy_summary",
+    "get_tier_retention_days",
     "invalidate_cache",
     "redact_secrets",
+    "RETENTION_AGGREGATED_DAYS",
+    "RETENTION_RAW_DAYS",
+    "RETENTION_SUMMARY_DAYS",
     "scan_text",
     "surveillance_router",
     "validate_timestamp",

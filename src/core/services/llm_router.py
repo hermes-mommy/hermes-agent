@@ -1,4 +1,7 @@
 """LLM Router - Routes requests to appropriate models based on task type."""
+import json
+import re
+
 import httpx
 import structlog
 from enum import Enum
@@ -22,8 +25,10 @@ class ModelConfig:
     cost_per_1k_output: float
 
 MODELS = {
+    # 9Router uses namespaced model IDs: cx/ (OpenAI Codex), ds/ (DeepSeek), etc.
+    # ``guinevere`` is the 9Router combo model (no namespace prefix).
     TaskType.CORE_REASONING: ModelConfig(
-        name="gpt-5.5",
+        name="cx/gpt-5.5",
         base_url="http://localhost:20128/v1",
         max_tokens=16384,
         temperature=0.7,
@@ -31,8 +36,10 @@ MODELS = {
         cost_per_1k_output=0.01,
     ),
     TaskType.SUB_AGENT: ModelConfig(
-        name="deepseek-v4-flash",
+        name="ds/deepseek-v4-flash",
         base_url="http://localhost:20128/v1",
+        # DeepSeek V4 allocates a chunk of max_tokens for reasoning tokens,
+        # so a small max_tokens leaves zero budget for actual content.
         max_tokens=8192,
         temperature=0.5,
         cost_per_1k_input=0.0001,
@@ -76,8 +83,12 @@ class LLMRouter:
                     }
                 )
                 response.raise_for_status()
-                result = response.json()
-                logger.info("llm_request", model=config.name, 
+                # 9Router v0.4.66 appends SSE termination marker to
+                # non-streaming responses — strip it before JSON parse.
+                raw = response.text
+                raw = re.sub(r"data: \[DONE\]\s*$", "", raw)
+                result = json.loads(raw)
+                logger.info("llm_request", model=config.name,
                            tokens=result.get("usage", {}).get("total_tokens", 0))
                 return result
             except Exception as e:

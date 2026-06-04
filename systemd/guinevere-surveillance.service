@@ -11,12 +11,12 @@ WorkingDirectory=/home/guinevere/code/guinevere
 Environment=PYTHONPATH=/home/guinevere/code/guinevere
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=VIRTUAL_ENV=/home/guinevere/code/guinevere/.venv
-Environment=REDIS_PASSWORD=%E/REDIS_PASSWORD
-Environment=GUINEVERE_DB_PASSWORD=%E/GUINEVERE_DB_PASSWORD
-Environment=DATABASE_URL=postgresql+asyncpg://guinevere:%E/GUINEVERE_DB_PASSWORD@localhost:5433/guinevere
+EnvironmentFile=/home/guinevere/code/guinevere/.env.surveillance
 ExecStart=/home/guinevere/code/guinevere/.venv/bin/python -m src.surveillance.consumer
 Restart=always
 RestartSec=10
+StartLimitBurst=5
+StartLimitIntervalSec=300
 StandardOutput=journal
 StandardError=journal
 Slice=guinevere.slice

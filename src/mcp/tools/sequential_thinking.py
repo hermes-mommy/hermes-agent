@@ -304,6 +304,7 @@ def finalize_session(session_id: str, conclusion: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+@require_approval(AuthLevel.READ_AUTO, tool_name="sequential_thinking")
 async def sequential_think(
     thought: str,
     thought_number: int,
@@ -393,28 +394,6 @@ def register_tools(mcp: FastMCP) -> None:
     Adds a single tool ``sequential_thinking`` gated with
     ``AuthLevel.READ_AUTO`` (pure computation, no side effects).
     """
-
-    @mcp.tool()
-    @require_approval(AuthLevel.READ_AUTO, tool_name="sequential_thinking")
-    async def _sequential_think(
-        thought: str,
-        thought_number: int,
-        total_thoughts: int,
-        next_thought_needed: bool = True,
-        is_revision: bool = False,
-        revises_thought: int | None = None,
-        branch_from_thought: int | None = None,
-        branch_id: str | None = None,
-    ) -> dict[str, object]:
-        return await sequential_think(
-            thought=thought,
-            thought_number=thought_number,
-            total_thoughts=total_thoughts,
-            next_thought_needed=next_thought_needed,
-            is_revision=is_revision,
-            revises_thought=revises_thought,
-            branch_from_thought=branch_from_thought,
-            branch_id=branch_id,
-        )
+    mcp.tool(name="sequential_thinking")(sequential_think)
 
     logger.info("sequential_thinking_tool_registered")

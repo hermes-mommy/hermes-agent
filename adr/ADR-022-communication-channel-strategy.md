@@ -1,7 +1,7 @@
 ---
 adr: 022
 title: "Communication Channel Strategy"
-status: "Accepted with notes"
+status: "Accepted with notes (Revised 2026-06-03)"
 date: "2026-05-30"
 deciders:
   - "Faiz (Owner, solo developer Indonesia)"
@@ -23,7 +23,7 @@ related_documents:
 
 ## Status
 
-Accepted with notes
+Accepted with notes (Revised 2026-06-03)
 
 ## Date
 
@@ -72,7 +72,7 @@ This ADR is part of the first Guinevere technical-core ADR batch and inherits th
 - Autonomous SDLC uses exactly 7 phases: Research; Plan & Delegate; Delegate; Execute; Validate & Audit; Update Documents; Setup Evidence.
 - Guinevere MCP native fully replaces OpenCode/opencode for the project coding substrate.
 - Prometheus + Grafana run on the primary VPS first.
-- Wearable integrations are post-MVP and must not be treated as active dependencies.
+- Wearable integrations are Expansion and must not be treated as active dependencies.
 - Browser automation uses obscura as primary and Playwright as fallback.
 
 ## Decision Drivers
@@ -115,7 +115,7 @@ Use Discord as the primary control/chat interface, with WhatsApp/email/notificat
 ## Implementation Notes
 
 - Implementation must update the relevant v2.0 source documents or future superseding specs if this ADR changes state.
-- Accepted ADRs must not be edited in-place for material decision changes; create a superseding ADR instead.
+- Accepted ADRs must not be edited in-place for material decision changes; create a superseding ADR instead. (Exception: this ADR was revised in-place on 2026-06-03 per Faiz explicit instruction, with full revision history appended.)
 - Proposed ADRs require Faiz approval before they become binding runtime policy.
 - Any sub-agent research, implementation summary, audit, or verification used for this ADR must be written to markdown evidence, not returned only inline.
 
@@ -128,16 +128,23 @@ Use Discord as the primary control/chat interface, with WhatsApp/email/notificat
 - **Notes:**
   - **Channel stack (exact):**
     - **Primary:** Discord (control/chat interface, auth via Discord OAuth2/bot token).
-    - **WhatsApp:** via Baileys (WhatsApp Web MD protocol). Document session persistence (file-based or Redis-backed), rate limits, and WhatsApp TOS/ban/deaf-session caveat.
+    - **WhatsApp:** via Neonize (pure Python, wraps whatsmeow via CGo). Session persistence via PostgreSQL (neonize_postgres backend). Rate limits per WhatsApp TOS. Ban risk <2%/year for reactive-only usage. Protocol breaks every 2-8 weeks; monitor upstream releases.
     - **Email:** Gmail API (OAuth2, read + send scopes) + Resend (transactional outbound fallback).
     - **Push notifications:** Gotify as self-hosted backup notification channel.
   - **Per-channel contract:** Each channel must define purpose, authentication mechanism, logging scope, consent/disclosure boundary, rate limits, failure behavior, and fallback chain before production use.
   - **Identity binding:** Cross-channel identity binding must be documented: how Faiz authenticates across Discord/WhatsApp/Email/Gotify (shared identity token or per-channel).
   - **Disclosure governance:** Reference ADR-024 (Data Governance & Classification) for message content classification. Reference ADR-029 (Consent & Revocation — backlog) for consent flows.
   - **Safe word across channels:** ADR-002 safe word must work identically across all channels. Safe-word activation pauses persona escalation on every channel simultaneously.
-  - **Baileys caveats:** v7 is RC as of May 2026; pin specific RC version. Document deaf-session bug workaround (health monitor force-reconnect after N minutes silence). Session state file-based or Redis-backed; multi-process requires Redis.
+  - **Neonize caveats:** v0.3.18.post0 (May 2026, Apache 2.0); pin version in requirements.txt. Pure Python asyncio-native (NewAClient). 45 event types, 49 exception classes. No reconnection tuning exposed to Python — implement exponential backoff wrapper (3 retries, 1s/2s/4s). FFmpeg required for media handling. Session storage: PostgreSQL only (no Redis support). Single Python process — eliminates Node.js bridge entirely.
   - **Gmail/Resend caveats:** Gmail push notifications expire every 7 days; cron/systemd timer must re-establish watch. Gmail 429 errors can persist for hours; implement exponential backoff. Resend rate limit: 5 req/sec default; bounce rate must stay under 4%; spam rate under 0.08%.
   - **Gotify caveats:** Self-hosted; operator handles updates, backups (Docker volumes), TLS termination. No iOS native app; web push on iOS limited.
+
+## Revision History
+
+| Version | Date | Author | Changes |
+|---|---|---|---|
+| 1.0 | 2026-05-30 | Faiz + Guinevere | Initial ADR — WhatsApp via Baileys (Node.js, WhatsApp Web MD protocol), separate systemd unit, Node.js bridge. |
+| 1.1 | 2026-06-03 | Faiz + Guinevere | Revised WhatsApp implementation from Baileys (Node.js) to Neonize (pure Python, wraps whatsmeow via CGo). Rationale: eliminates Node.js subprocess bridge, single Python process, native asyncio, pip-installable. Session storage corrected from Redis to PostgreSQL (Neonize has no Redis backend). Consequences: positive — reduced process count, no bridge latency, native async; negative — smaller community (399★ vs 8K+), less battle-tested. Rollback: Baileys remains viable fallback via Evolution API (8.4K★, Docker sidecar). |
 
 ## Links
 

@@ -291,6 +291,7 @@ async def _docker_inspect_raw(container: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+@require_approval(AuthLevel.READ_AUTO)
 async def docker_ps(all: bool = False) -> list[dict[str, str]]:
     """List containers on the guinevere-net network.
 
@@ -312,17 +313,19 @@ async def docker_ps(all: bool = False) -> list[dict[str, str]]:
     return _parse_json_lines(str(result["stdout"]))
 
 
+@require_approval(AuthLevel.READ_AUTO)
 async def docker_logs(container: str, tail: int = 100) -> str:
     """Get container logs from stdout/stderr.
 
     Args:
-        container: Container name or ID.
+        container: Container name or ID. Must be on guinevere-net.
         tail: Number of lines to return from the end (default 100).
 
     Returns:
         Log text as a single string.
     """
     _validate_container_name(container)
+    await _check_guinevere_network(container)
 
     result = await _run_docker(["logs", "--tail", str(tail), container])
     if result["exit_code"] != 0:
@@ -339,21 +342,27 @@ async def docker_logs(container: str, tail: int = 100) -> str:
     return str(result["stdout"])
 
 
+@require_approval(AuthLevel.READ_AUTO)
 async def docker_inspect(container: str) -> dict[str, Any]:
     """Inspect container details.
 
     Args:
-        container: Container name or ID.
+        container: Container name or ID. Must be on guinevere-net.
 
     Returns:
         Full container inspection dict (ID, Created, State, Config, etc.).
     """
     _validate_container_name(container)
+    await _check_guinevere_network(container)
     return await _docker_inspect_raw(container)
 
 
+@require_approval(AuthLevel.READ_AUTO)
 async def docker_images(all: bool = False) -> list[dict[str, str]]:
     """List docker images.
+
+    NOTE: This shows ALL images on the host, not just guinevere-related images.
+    Filtering is advisory-only; review output before acting on non-guinevere images.
 
     Args:
         all: If ``True``, include intermediate image layers (``-a`` flag).
@@ -382,6 +391,7 @@ async def docker_images(all: bool = False) -> list[dict[str, str]]:
 # ---------------------------------------------------------------------------
 
 
+@require_approval(AuthLevel.WRITE_NOTIFY)
 async def docker_start(container: str) -> dict[str, str]:
     """Start a stopped container.
 
@@ -404,6 +414,7 @@ async def docker_start(container: str) -> dict[str, str]:
     return {"status": "ok", "container": container, "message": f"Container {container} started."}
 
 
+@require_approval(AuthLevel.WRITE_NOTIFY)
 async def docker_stop(container: str) -> dict[str, str]:
     """Stop a running container.
 
@@ -426,6 +437,7 @@ async def docker_stop(container: str) -> dict[str, str]:
     return {"status": "ok", "container": container, "message": f"Container {container} stopped."}
 
 
+@require_approval(AuthLevel.WRITE_NOTIFY)
 async def docker_restart(container: str) -> dict[str, str]:
     """Restart a container.
 
@@ -453,6 +465,7 @@ async def docker_restart(container: str) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
+@require_approval(AuthLevel.DESTRUCTIVE_APPROVAL)
 async def docker_rm(container: str, force: bool = False) -> dict[str, str]:
     """Remove a container.
 
@@ -481,17 +494,29 @@ async def docker_rm(container: str, force: bool = False) -> dict[str, str]:
     return {"status": "ok", "container": container, "message": f"Container {container} removed."}
 
 
+@require_approval(AuthLevel.DESTRUCTIVE_APPROVAL)
 async def docker_rmi(image: str, force: bool = False) -> dict[str, str]:
     """Remove a docker image.
 
+    Only images whose name starts with ``"guinevere"`` can be removed.
+    Non-guinevere images are rejected with a ``DockerError``.
+
     Args:
-        image: Image name or ID.
+        image: Image name or ID (must start with ``"guinevere"``).
         force: If ``True``, force removal (``docker rmi -f``).
 
     Returns:
         Dict with ``status``, ``image``, and ``message`` keys.
     """
     _validate_image_name(image)
+
+    # Aizanta isolation: reject images not tagged with guinevere prefix.
+    if not image.startswith("guinevere"):
+        logger.warning("docker_rmi_image_not_guinevere", image=image)
+        raise DockerError(
+            f"image_not_guinevere: Image '{image}' is not a guinevere image. "
+            "Only images prefixed with 'guinevere' can be removed by this tool."
+        )
 
     args = ["rmi"]
     if force:
@@ -513,6 +538,7 @@ async def docker_rmi(image: str, force: bool = False) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
+@require_approval(AuthLevel.FORBIDDEN)
 async def docker_system_prune() -> dict[str, str]:
     """FORBIDDEN: docker system prune is too dangerous.
 
@@ -523,6 +549,7 @@ async def docker_system_prune() -> dict[str, str]:
     raise ForbiddenOperationError("docker system prune -a is permanently forbidden.")
 
 
+@require_approval(AuthLevel.FORBIDDEN)
 async def docker_rm_all() -> dict[str, str]:
     """FORBIDDEN: mass container/image deletion is too dangerous.
 
@@ -541,6 +568,9 @@ async def docker_rm_all() -> dict[str, str]:
 def register_tools(mcp: FastMCP) -> None:
     """Register all Docker management tools on the MCP server.
 
+    Auth decorators are applied directly on the tool functions.
+    Tool names match the function names (no ``_mcp`` suffix).
+
     Four auth tiers:
         - READ_AUTO: ps, logs, inspect, images
         - WRITE_NOTIFY: start, stop, restart
@@ -549,66 +579,22 @@ def register_tools(mcp: FastMCP) -> None:
     """
 
     # -- READ_AUTO -----------------------------------------------------------
-
-    @mcp.tool()
-    @require_approval(AuthLevel.READ_AUTO, tool_name="docker_ps")
-    async def docker_ps_mcp(all: bool = False) -> list[dict[str, str]]:
-        return await docker_ps(all=all)
-
-    @mcp.tool()
-    @require_approval(AuthLevel.READ_AUTO, tool_name="docker_logs")
-    async def docker_logs_mcp(container: str, tail: int = 100) -> str:
-        return await docker_logs(container, tail=tail)
-
-    @mcp.tool()
-    @require_approval(AuthLevel.READ_AUTO, tool_name="docker_inspect")
-    async def docker_inspect_mcp(container: str) -> dict[str, Any]:
-        return await docker_inspect(container)
-
-    @mcp.tool()
-    @require_approval(AuthLevel.READ_AUTO, tool_name="docker_images")
-    async def docker_images_mcp(all: bool = False) -> list[dict[str, str]]:
-        return await docker_images(all=all)
+    mcp.tool()(docker_ps)
+    mcp.tool()(docker_logs)
+    mcp.tool()(docker_inspect)
+    mcp.tool()(docker_images)
 
     # -- WRITE_NOTIFY --------------------------------------------------------
-
-    @mcp.tool()
-    @require_approval(AuthLevel.WRITE_NOTIFY, tool_name="docker_start")
-    async def docker_start_mcp(container: str) -> dict[str, str]:
-        return await docker_start(container)
-
-    @mcp.tool()
-    @require_approval(AuthLevel.WRITE_NOTIFY, tool_name="docker_stop")
-    async def docker_stop_mcp(container: str) -> dict[str, str]:
-        return await docker_stop(container)
-
-    @mcp.tool()
-    @require_approval(AuthLevel.WRITE_NOTIFY, tool_name="docker_restart")
-    async def docker_restart_mcp(container: str) -> dict[str, str]:
-        return await docker_restart(container)
+    mcp.tool()(docker_start)
+    mcp.tool()(docker_stop)
+    mcp.tool()(docker_restart)
 
     # -- DESTRUCTIVE_APPROVAL ------------------------------------------------
-
-    @mcp.tool()
-    @require_approval(AuthLevel.DESTRUCTIVE_APPROVAL, tool_name="docker_rm")
-    async def docker_rm_mcp(container: str, force: bool = False) -> dict[str, str]:
-        return await docker_rm(container, force=force)
-
-    @mcp.tool()
-    @require_approval(AuthLevel.DESTRUCTIVE_APPROVAL, tool_name="docker_rmi")
-    async def docker_rmi_mcp(image: str, force: bool = False) -> dict[str, str]:
-        return await docker_rmi(image, force=force)
+    mcp.tool()(docker_rm)
+    mcp.tool()(docker_rmi)
 
     # -- FORBIDDEN -----------------------------------------------------------
-
-    @mcp.tool()
-    @require_approval(AuthLevel.FORBIDDEN, tool_name="docker_system_prune")
-    async def docker_system_prune_mcp() -> dict[str, str]:
-        return await docker_system_prune()
-
-    @mcp.tool()
-    @require_approval(AuthLevel.FORBIDDEN, tool_name="docker_rm_all")
-    async def docker_rm_all_mcp() -> dict[str, str]:
-        return await docker_rm_all()
+    mcp.tool()(docker_system_prune)
+    mcp.tool()(docker_rm_all)
 
     logger.info("docker_tools_registered", count=11)

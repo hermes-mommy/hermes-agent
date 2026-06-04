@@ -3,14 +3,14 @@
 | Field | Value |
 |-------|-------|
 | **Project** | Guinevere — Autonomous AI Companion & Engineering System |
-| **Status** | ✅ P0+P1+P2+P3+P4+P5+P5.5+P6 Complete — P6 MCP Tools 21/21 PASS (791 tests, 0 failed) |
-| **Last Updated** | 2026-06-03 (P6-001..P6-021 MCP Tools full batch PASS — 16 tools, 4-level auth, cost tracking, budget enforcement) |
+| **Status** | ✅ P0+P1+P2+P3+P4+P5+P5.5+P6+P7+P7.5+P8 Complete — MVP Infrastructure Complete. Production deployment pending. |
+| **Last Updated** | 2026-06-04 (ADR-035 Hermes NousResearch Migration Architecture — Proposed. 16 research reports + MASTER-RESTRUCTURE-PLAN + 2,315-line ADR complete. Pending Faiz approval.) |
 | **Budget** | $30/month hard cap |
 | **Infrastructure** | Shared VPS (hostdata.id 4C/16GB Ubuntu 24.04) |
 | **Critical Path** | P0 → P1 → P3 → P5 |
 | **Total Phases** | 23 phases (P0-P22) |
-| **Total Steps** | 202 MVP + 31 Stabilization + TBD Expansion |
-| **Completed** | 158 / 233+ (67.8% of known steps) |
+| **Total Steps** | 202 MVP + 34 Stabilization + 107 Expansion (P11-P14) |
+| **Completed** | 203 / 343+ (59.2% of known steps) |
 | **Source** | `audit-reports/2026-05-31-implementation-synthesis.md` |
 
 ## Quick Start — What To Do First
@@ -31,15 +31,15 @@
 | P3 | Memory System | ✅ | 19/19 | $2 | 38-76h | P1 | None |
 | P4 | Persona Engine | ✅ | 23/23 | $1 | 38-76h | P3 | None |
 | P5 | Agent Loop | ✅ | 23/23 | $3 | 46-92h | P1+P3 | None |
-| P6 | MCP Tools | ✅ | 21/21 | $1 | 42-84h | P5 | None |
-| P7 | Surveillance | ⏳ | 0/22 | $1 | 44-88h | P0 | Consent gate |
-| P8 | Observability | ⏳ | 0/23 | $4 | 46-92h | P0-P7 | None |
-| P9 | Financial Tracking | ⏳ | 0/12 | $1 | 12-24h | P8 (MVP) | None |
-| P10 | Production Hardening | ⏳ | 0/19 | $1 | 18-36h | P8 (MVP) | None |
-| P11 | WhatsApp Integration | ⏳ | TBD | TBD | TBD | P5+P8 | None |
-| P12 | Gmail/Email Integration | ⏳ | TBD | TBD | TBD | P5+P8 | None |
-| P13 | X Auto Poster | ⏳ | TBD | TBD | TBD | P5+P6+P7+P8 | None |
-| P14 | Wearable/Xiaomi Watch | ⏳ | TBD | TBD | TBD | P7+P8 | None |
+| P6 | MCP Tools | ✅ PASS (Remediation) | 21/21 | $1 | 42-84h | P5 | None |
+| P7 | Surveillance | ✅ | 22/22 | $1 | 44-88h | P0 | Consent gate |
+| P8 | Observability | ✅ | 23/23 | $4 | 46-92h | P0-P7 | None |
+| P9 | Financial Tracking | ⏳ | 0/13 | $1 | 12-24h | P8 (MVP) | None |
+| P10 | Production Hardening | ⏳ | 0/21 | $1 | 18-36h | P8 (MVP) | None |
+| P11 | WhatsApp Integration | ⏳ | 0/23 | $0 | TBD | P5+P8 | None |
+| P12 | Gmail/Email Integration | ⏳ | 0/29 | $0 | TBD | P5+P8 | None |
+| P13 | X Auto Poster | ⏳ | 0/28 | TBD | TBD | P5+P6+P7+P8 | None |
+| P14 | Wearable/Xiaomi Watch | ⏳ | 0/27 | $0/mo | TBD | P7+P8 | None |
 | P15 | Windows Daemon + WebSocket | ⏳ | TBD | TBD | TBD | P5+P8 | None |
 | P16 | Knowledge Graph | ⏳ | TBD | TBD | TBD | P3+P5+P8 | None |
 | P17 | Cross-Device Sync | ⏳ | TBD | TBD | TBD | P15+P8 | None |
@@ -48,7 +48,7 @@
 | P20 | Self-Improvement Loop | ⏳ | TBD | TBD | TBD | P5+P8 | None |
 | P21 | Voice Interface | ⏳ | TBD | TBD | TBD | P2+P8 | None |
 | P22 | Additional Integrations TBD | ⏳ | TBD | TBD | TBD | P8 | None |
-| **Total** | | | **158/233+** | **$30+** | **475-952h+** | | |
+| **Total** | | | **203/343+** | **$29+** | **503-1008h+** | | |
 
 ## P0: Infrastructure Foundation (29 steps)
 *ADRs: ADR-014, ADR-015, ADR-019, ADR-026, ADR-027, ADR-030, ADR-032 | Cost: $0 | Deps: None*
@@ -287,60 +287,84 @@
 
 **P6 Implementation Artifacts** (2026-06-03): 17 source files (`src/mcp/`), 17 test files (`tests/mcp/`), 2 systemd services, 22 planner/evidence files. 791 tests passed, 0 failed, 3 skipped (Windows symlinks). Batch plan: `docs/setup-evidence/P6/batch-plan-001-021.md`.
 
-## P7: Surveillance (22 steps)
+**P6 Remediation** (2026-06-03): 13-dimension audit found 4 CRITICAL issues. All 7 pre-P7 fixes applied: (1) Aizanta isolation hardened — postgres port/db/user hardcoded, docker network checks, shell/filesystem blocked paths, (2) auth @require_approval migrated to bare functions for all 16 tools, (3) git bypass vectors closed (force-with-lease, case-insensitive, refspec), (4) 6 stub tests replaced, (5) brave_search Redis TTL added, (6) 5 ruff errors fixed, (7) StepPrompts.md status updated. Audit: `audit-reports/P6/P6-FINAL-AUDIT.md`. Remediation audit: `audit-reports/P6/P6-REMEDIATION-AUDIT.md`. Deferred to P8: MCP client bridge, ToolCostTracker wiring.
+
+## P7: Surveillance (22 steps) ✅
 *ADRs: ADR-022, ADR-023, ConsentRevocationPolicy | Cost: $1/mo | Deps: P0 complete*
+*Completed: 2026-06-03 | 472 tests pass | 14 source modules | Consent gate verified*
 
-- [ ] **P7-001** FastAPI surveillance receiver (`POST /surveillance/events`)
-- [ ] **P7-002** HMAC authentication (shared secret)
-- [ ] **P7-003** Replay protection (nonce + timestamp)
-- [ ] **P7-004** SSL/TLS surveillance endpoint
-- [ ] **P7-005** Redis DB2 buffer (5-min TTL)
-- [ ] **P7-006** Async consumer (background worker)
-- [ ] **P7-007** TimescaleDB ingestion (Redis → hypertables)
-- [ ] **P7-008** Data classification (Internal/Confidential/Restricted)
-- [ ] **P7-009** Clipboard secret scanner
-- [ ] **P7-010** Consent verification gate
-- [ ] **P7-011** Safe-mode surveillance blocking
-- [ ] **P7-012** Android Tasker setup guide
-- [ ] **P7-013** Tasker app usage profile (per ADR-023)
-- [ ] **P7-014** Tasker location profile (GPS, geofencing)
-- [ ] **P7-015** Tasker notification profile
-- [ ] **P7-016** Tasker clipboard profile
-- [ ] **P7-017** HMAC signing in Tasker
-- [ ] **P7-018** `guinevere-surveillance.service` creation
-- [ ] **P7-019** `/surveillance-status` test
-- [ ] **P7-020** `/surveillance-pause` test
-- [ ] **P7-021** Surveillance E2E (Tasker → API → Redis → PG → Discord)
-- [ ] **P7-022** Data retention verification (7d raw, 90d agg, 1y summaries)
+- [x] **P7-001** FastAPI surveillance receiver (`POST /surveillance/events`)
+- [x] **P7-002** HMAC authentication (shared secret)
+- [x] **P7-003** Replay protection (nonce + timestamp)
+- [x] **P7-004** SSL/TLS surveillance endpoint
+- [x] **P7-005** Redis DB2 buffer (5-min TTL)
+- [x] **P7-006** Async consumer (background worker)
+- [x] **P7-007** TimescaleDB ingestion (Redis → hypertables)
+- [x] **P7-008** Data classification (Internal/Confidential/Restricted)
+- [x] **P7-009** Clipboard secret scanner
+- [x] **P7-010** Consent verification gate
+- [x] **P7-011** Safe-mode surveillance blocking
+- [x] **P7-012** Android Tasker setup guide
+- [x] **P7-013** Tasker app usage profile (per ADR-023)
+- [x] **P7-014** Tasker location profile (GPS, geofencing)
+- [x] **P7-015** Tasker notification profile
+- [x] **P7-016** Tasker clipboard profile
+- [x] **P7-017** HMAC signing in Tasker
+- [x] **P7-018** `guinevere-surveillance.service` creation
+- [x] **P7-019** `/surveillance-status` test
+- [x] **P7-020** `/surveillance-pause` test
+- [x] **P7-021** Surveillance E2E (Tasker → API → Redis → PG → Discord)
+- [x] **P7-022** Data retention verification (7d raw, 90d agg, 1y summaries)
 
-## P8: Observability (23 steps)
+### P7.5 Remediation (9 fixes) - 2026-06-03
+
+14-dimension audit found 5 CRITICAL + 4 HIGH findings. All 9 fixed via 7 parallel agents, re-audited by 4 independent dimension auditors. D14 verdict: **P8 READY**.
+
+| Fix | Severity | Description | Status |
+|-----|----------|-------------|--------|
+| C1 | CRITICAL | Router pushes events to Redis DB2 buffer after HMAC/auth | PASS |
+| C2 | CRITICAL | consumer.main() async SQLAlchemy session factory (port 5433) | PASS |
+| C3 | CRITICAL | DataClassification CRITICAL tier + 12 event types remapped to policy | PASS |
+| C4 | CRITICAL | invalidate_cache() wired in pause command (4 scopes, asyncio.gather) | PASS |
+| C5 | CRITICAL | SurveillanceSafeModeGuard instantiated in bot.py with HardStopHandler | PASS |
+| H1 | HIGH | _BLOCKED_ACTIONS expanded 6 to 8 (humiliation + public_disclosure) | PASS |
+| H2 | HIGH | P7-012 signing string newlines to colons (Tasker HMAC compat) | PASS |
+| H3 | HIGH | Unknown SAFE-mode actions fail-closed (BLOCKED, not ALLOWED) | PASS |
+| H4 | HIGH | systemd StartLimitBurst=5 + StartLimitIntervalSec=300 | PASS |
+
+**Tests**: 495 passed, 10 skipped (E2E gated), 0 failed
+**LSP**: 0 new errors (all pre-existing)
+**Re-audit reports**: `audit-reports/P7.5/D04-safety-recheck.md`, `D05-consent-recheck.md`, `D08-architecture-recheck.md`, `D14-p8-readiness-recheck.md`
+
+## P8: Observability (23 steps) ✅
 *ADRs: ADR-017, ADR-032 | Cost: $4/mo | Deps: P0-P7 complete*
+*Completed: 2026-06-03 | 19 PASS, 2 DEFERRED-VPS, 1 PASS (DOC), Faiz approved*
 
-- [ ] **P8-001** Prometheus Docker setup (per ADR-017)
-- [ ] **P8-002** node_exporter setup
-- [ ] **P8-003** postgres_exporter setup
-- [ ] **P8-004** redis_exporter setup
-- [ ] **P8-005** Scrape configs (15s intervals)
-- [ ] **P8-006** Grafana Docker setup (localhost:3000)
-- [ ] **P8-007** Datasource provisioning (Prometheus + Loki + PG)
-- [ ] **P8-008** Dashboard provisioning (infra, DB, memory, loops, surveillance, cost)
-- [ ] **P8-009** Loki Docker setup (log aggregation)
-- [ ] **P8-010** Promtail setup (journalctl → Loki)
-- [ ] **P8-011** Log pipeline test (systemd → Loki → Grafana)
-- [ ] **P8-012** Sentry SDK integration
-- [ ] **P8-013** Sentry scrubber (remove PII)
-- [ ] **P8-014** Alert rules (`alertmanager.yml`)
-- [ ] **P8-015** SEV0-SEV4 routing matrix
-- [ ] **P8-016** Alert test (all SEV levels)
-- [ ] **P8-017** `/cost` command
-- [ ] **P8-018** `/budget` command
-- [ ] **P8-019** Monthly cost report automation
-- [ ] **P8-020** Backup monitoring (per ADR-032)
-- [ ] **P8-021** `guinevere-monitoring.service` creation
-- [ ] **P8-022** MVP acceptance criteria full run
-- [ ] **P8-023** Faiz sign-off checklist
+- [x] **P8-001** Prometheus Docker setup (per ADR-017) — compose.monitoring.yml, 8 services
+- [x] **P8-002** node_exporter setup — textfile/backup_status.prom
+- [x] **P8-003** postgres_exporter setup — postgres_exporter_role.sql (pg_monitor)
+- [x] **P8-004** redis_exporter setup — setup_redis_exporter_acl.py (minimal ACL)
+- [x] **P8-005** Scrape configs (15s interval) — 7 jobs (prometheus, node, pg, redis, fastapi, loki, alertmanager)
+- [x] **P8-006** Grafana Docker setup (localhost:3000) — verified in compose, Caddy :3443→:3000
+- [x] **P8-007** Datasource provisioning (Prometheus + Loki + PG) — datasources.yml + dashboards.yml
+- [x] **P8-008** Dashboard provisioning (infra, DB, loop, LLM, safety, finops) — 6 JSON dashboards
+- [x] **P8-009** Loki Docker setup (log aggregation) — schema v13+TSDB, retention 720h
+- [x] **P8-010** Promtail setup (journalctl → Loki) — version 3.5.8 CRITICAL, 3 jobs
+- [x] **P8-011** Log pipeline test — ⏸️ DEFERRED-VPS, test script: `scripts/test_log_pipeline.sh`
+- [x] **P8-012** Sentry SDK integration — sentry_integration.py, send_default_pii=False
+- [x] **P8-013** Sentry scrubber (remove PII) — 6 REDACT + 6 DROP patterns
+- [x] **P8-014** Alert rules — guinevere-alerts.yml, 9 rules (SEV0-SEV3)
+- [x] **P8-015** SEV0-SEV4 routing matrix — alertmanager.yml, Discord+Gotify
+- [x] **P8-016** Alert test (all SEV levels) — ⏸️ DEFERRED-VPS, test script: `scripts/test_alert_routing.sh`
+- [x] **P8-017** `/cost` command — cmd_cost.py (662 lines, 5-part pattern)
+- [x] **P8-018** `/budget` command — cmd_budget.py (643 lines, view/set actions)
+- [x] **P8-019** Monthly cost report automation — monthly_report.py (538 lines, APScheduler)
+- [x] **P8-020** Backup monitoring (per ADR-032) — backup-metric-collector.sh + backup alerts
+- [x] **P8-021** `guinevere-monitoring.service` creation — systemd unit, MemoryMax=1G
+- [x] **P8-022** MVP acceptance criteria full run — 19 PASS, 0 FAIL, 49 NOT-RUN, 9 BLOCKED
+- [x] **P8-023** Faiz sign-off checklist — ✅ APPROVED 2026-06-03
 
-## P9: Financial Tracking — Stabilization (12 steps)
+## P9: Financial Tracking — Stabilization (13 steps)
 *ADRs: ADR-009 | Cost: $1/mo | Deps: P8 (MVP) | Category: Stabilization | 1-2h per step*
 
 - [ ] **P9-001** Financial data model (transactions, budgets, categories)
@@ -355,8 +379,9 @@
 - [ ] **P9-010** `/finance report` command
 - [ ] **P9-011** Monthly financial report (PDF generation)
 - [ ] **P9-012** FinOps dashboard (Grafana, per FinOps Model v1.1)
+- [ ] **P9-013** Financial E2E Test — full pipeline: Tasker SMS → classification → budget → report → dashboard
 
-## P10: Production Hardening — Stabilization (19 steps)
+## P10: Production Hardening — Stabilization (21 steps)
 *ADRs: ADR-015, ADR-016, ADR-032 | Cost: $1/mo | Deps: P8 (MVP) | Category: Stabilization | 1-2h per step*
 
 - [ ] **P10-001** Security audit — penetration testing
@@ -377,44 +402,203 @@
 - [ ] **P10-016** Database password rotation
 - [ ] **P10-017** Runbook documentation
 - [ ] **P10-018** Load testing (peak usage simulation)
-- [ ] **P10-019** MVP Acceptance Gate (AC-PHASE-006)
+- [ ] **P10-019** Load Testing (k6) — validate p95 latency under realistic load
+- [ ] **P10-020** Hardening Verification — comprehensive security and operational checklist
+- [ ] **P10-021** MVP Acceptance Gate (AC-PHASE-006)
 
-## P11: WhatsApp Integration — Expansion (TBD steps)
-*Cost: TBD | Deps: P5+P8 | Category: Expansion*
-*Source: Old P11-004 to P11-007 (WhatsApp Baileys, QR auth, message routing, Discord sync bridge)*
+## P11: WhatsApp Integration — Expansion (23 steps)
+*Cost: $0/mo | Deps: P5+P8 | Category: Expansion*
+*Source: Neonize (free Go-based WhatsApp library), WhatsApp Web multi-device protocol*
 
-- [ ] **P11-001** TBD
+- [ ] **P11-001** Neonize Setup + Project Scaffolding
+- [ ] **P11-002** Session Authentication + QR/SOPS Encryption
+- [ ] **P11-003** Neonize Connection Handler + Event Routing
+- [ ] **P11-004** ChannelAdapter Interface + UnifiedMessage
+- [ ] **P11-005** WhatsAppAdapter Implementation
+- [ ] **P11-006** ConversationalAgent Core
+- [ ] **P11-007** Context Manager (10-msg window, shared memory)
+- [ ] **P11-008** Message Routing Pipeline
+- [ ] **P11-009** Natural Language Intent Classifier
+- [ ] **P11-010** Command Handler
+- [ ] **P11-011** Typing Indicator + Response Streaming
+- [ ] **P11-012** Response Formatter (auto-split, markdown→WhatsApp)
+- [ ] **P11-013** Media Acknowledgment Handler
+- [ ] **P11-014** Rate Limiter (8/min, 30/hour, 200/day)
+- [ ] **P11-015** Cross-Channel HARD STOP
+- [ ] **P11-016** Safe Word + Consent Management
+- [ ] **P11-017** Number Whitelist (Faiz-only)
+- [ ] **P11-018** Discord Bridge Mirror
+- [ ] **P11-019** Discord Notifications + Status
+- [ ] **P11-020** Reconnection Handler (3 retry, exponential backoff)
+- [ ] **P11-021** Health Check + Grafana Monitoring
+- [ ] **P11-022** Systemd Unit + Operational Runbook
+- [ ] **P11-023** E2E Integration Test (P11 GATE)
 
-## P12: Gmail/Email Integration — Expansion (TBD steps)
-*Cost: TBD | Deps: P5+P8 | Category: Expansion*
-*Source: Old P11-008 to P11-011 (Gmail OAuth, email parsing)*
+## P12: Gmail/Email Integration — Expansion (29 steps)
+*Cost: $0/mo | Deps: P5+P8 | Category: Expansion*
+*Source: Gmail API + OAuth2 + Resend transactional email*
 
-- [ ] **P12-001** TBD
+- [ ] **P12-001** GCP Project + Gmail API Enable
+- [ ] **P12-002** OAuth2 Credential + SOPS
+- [ ] **P12-003** Resend Transactional Email
+- [ ] **P12-004** Gmail API Client Wrapper
+- [ ] **P12-005** Full/Hybrid Sync Engine
+- [ ] **P12-006** Cloud Pub/Sub Push Pipeline
+- [ ] **P12-007** GmailAdapter (ChannelAdapter)
+- [ ] **P12-008** Conversation Context Manager
+- [ ] **P12-009** Email Classifier Cascade
+- [ ] **P12-010** Priority Scorer
+- [ ] **P12-011** Content Sanitizer + Injection Defense
+- [ ] **P12-012** Secret Scanner + PII Redactor
+- [ ] **P12-013** Memory Store Integration
+- [ ] **P12-014** Financial Email → P9 Bridge
+- [ ] **P12-015** Draft Generator (LLM)
+- [ ] **P12-016** Draft Approval UX (Discord)
+- [ ] **P12-017** Draft Send via Gmail API
+- [ ] **P12-018** Real-Time Notifications
+- [ ] **P12-019** Morning Briefing Generator
+- [ ] **P12-020** !email-digest Command
+- [ ] **P12-021** Consent + Surveillance Policy
+- [ ] **P12-022** Cross-Channel HARD STOP
+- [ ] **P12-023** Surveillance Data Classification
+- [ ] **P12-024** Watch Health + Auto-Refresh
+- [ ] **P12-025** Grafana Dashboard + Metrics
+- [ ] **P12-026** Systemd Service + Runbook
+- [ ] **P12-027** Integration Test (10 Scenarios)
+- [ ] **P12-028** Agent Loop Trigger Detector
+- [ ] **P12-029** TaskContract Email Context
 
-## P13: X Auto Poster — Expansion (TBD steps)
-*Cost: TBD | Deps: P5+P6+P7+P8 | Category: Expansion*
+## P13: X Auto Poster — Expansion (28 steps)
+*ADRs: ADR-033, ADR-032, ADR-016, ADR-027 | Cost: TBD | Deps: P5 + P6 + P7 + P8*
 
-**Spec:**
-- **Browser automation**: Obscura CDP for headless browser control
-- **Screenshot queue**: S3-compatible storage for queued screenshots
-- **Caption generation**: LLM-generated captions from content queue
-- **Posting cadence**: 3h heartbeat posting cycle
-- **Notifications**: Discord notifications for posting failures and successes
-- **State tracking**: PostgreSQL table for post history, queue state, and failure tracking
+**Goal:** Automated X/Twitter posting using manual Windows image drop-folder input, S3 queue lifecycle, Gemini captioning, dedicated Obscura CDP browser automation, Discord controls, PostgreSQL logging, and operational safeguards.
 
-- [ ] **P13-001** TBD
+**Key Components:**
+- **Windows Watchdog:** Local folder watcher uploads JPG/PNG/WEBP + sidecar JSON to `guinevere-assets/x-poster/pending/`.
+- **S3 Queue:** Prefix state machine `/pending/`, `/processing/`, `/posted/`, `/failed/`, `/held/`, `/archived/` with TTL policies.
+- **Gemini Captioning:** Flash primary, Pro fallback, sidecar caption override, alt text generation, content moderation block path.
+- **Obscura CDP:** Dedicated X browser automation on port 9223 with isolated `--storage-dir` and SOPS-encrypted cookies.
+- **Rate Controls:** 3h minimum interval, max 5/day, night hold 23:00-06:00 WIB, immediate override, dry-run mode.
+- **Discord Controls:** `/x-status`, `/x-list`, `/x-cancel`, `/x-hold`, `/x-resume`, `/x-edit`, `/x-delete`, `/x-retry`, `/x-dryrun`.
+- **PostgreSQL State:** Per-post log, retry state, session age, 90-day retention, Prometheus/Grafana reporting.
 
-## P14: Wearable/Xiaomi Watch — Expansion (TBD steps)
-*Cost: TBD | Deps: P7+P8 | Category: Expansion*
-*Source: Old P11-012 (Wearable setup and health data ingestion, per ADR-023)*
+- [ ] **P13-001** S3 Queue Setup
+- [ ] **P13-002** Windows Watchdog Script
+- [ ] **P13-003** Obscura CDP Dedicated Instance
+- [ ] **P13-004** Systemd Service
+- [ ] **P13-005** Queue Polling Loop
+- [ ] **P13-006** Sidecar Parser
+- [ ] **P13-007** Rate Limiter
+- [ ] **P13-008** Cookie Injector
+- [ ] **P13-009** Session Health Check
+- [ ] **P13-010** Session Recovery
+- [ ] **P13-011** Caption Generator
+- [ ] **P13-012** Content Moderation
+- [ ] **P13-013** Tone Controller
+- [ ] **P13-014** Compose Adapter (CDP)
+- [ ] **P13-015** Media Upload (CDP)
+- [ ] **P13-016** Post Action
+- [ ] **P13-017** Dry-Run Mode
+- [ ] **P13-018** Retry Engine
+- [ ] **P13-019** Circuit Breaker
+- [ ] **P13-020** Processing Timeout Handler
+- [ ] **P13-021** Post Notification
+- [ ] **P13-022** Status Commands
+- [ ] **P13-023** Edit Command
+- [ ] **P13-024** Delete Command
+- [ ] **P13-025** Retry Commands
+- [ ] **P13-026** Grafana Dashboard
+- [ ] **P13-027** Daily Summary
+- [ ] **P13-028** Integration Test + P13 GATE
 
-- [ ] **P14-001** TBD
+## Phase 14: Wearable/Xiaomi Watch (Expansion)
 
-## P15: Windows Daemon + WebSocket — Expansion (TBD steps)
-*Cost: TBD | Deps: P5+P8 | Category: Expansion*
+**Goal:** Xiaomi wearable health data ingestion via Gadgetbridge WebDAV sync → VPS pipeline → TimescaleDB → anomaly detection → GHI scoring → persona-adjusted behavior → Discord health commands.
+**Steps:** 27
+**Dependencies:** P7 (Surveillance) + P8 (Observability/MVP Gate)
+**Cost:** $0/month — uses existing VPS, TimescaleDB, Grafana, Discord; no paid API
+**Status:** Pending
+
+### Step List
+
+| Step | Title | Status |
+|------|-------|--------|
+| P14-001 | Device Procurement + Gadgetbridge Setup | ⏳ |
+| P14-002 | WebDAV Server Endpoint | ⏳ |
+| P14-003 | Database Schema Creation (7 hypertables) | ⏳ |
+| P14-004 | HMAC Key Provisioning | ⏳ |
+| P14-005 | Gadgetbridge SQLite Parser | ⏳ |
+| P14-006 | Health Ingestion Endpoint | ⏳ |
+| P14-007 | Consumer Scope Mapping | ⏳ |
+| P14-008 | Mi Fitness Cloud SDK Fallback | ⏳ |
+| P14-009 | Personal Baseline Computation | ⏳ |
+| P14-010 | Anomaly Detection Engine | ⏳ |
+| P14-011 | GHI Composite Score Engine | ⏳ |
+| P14-012 | Daily Summary Pre-computation | ⏳ |
+| P14-013 | Persona State Machine (Health-Aware) | ⏳ |
+| P14-014 | Health Memory Injection | ⏳ |
+| P14-015 | Distress Escalation Logic | ⏳ |
+| P14-016 | /health-status + /ghi-score Commands | ⏳ |
+| P14-017 | /sleep-report + /activity-today Commands | ⏳ |
+| P14-018 | Morning Brief Health Section | ⏳ |
+| P14-019 | Proactive Health Alerts + Night Owl | ⏳ |
+| P14-020 | WAC-001..007 Activation Checklist | ⏳ |
+| P14-021 | Data Export + Deletion | ⏳ |
+| P14-022 | Prometheus Metrics | ⏳ |
+| P14-023 | Grafana Health Dashboard | ⏳ |
+| P14-024 | Stale Data + Battery Alerts | ⏳ |
+| P14-025 | Systemd Service | ⏳ |
+| P14-026 | Mock Health Data Generator | ⏳ |
+| P14-027 | Integration Test + P14 GATE | ⏳ |
+
+### Phase Complete Criteria
+- [ ] All 7 health hypertables created and verified via TimescaleDB
+- [ ] Gadgetbridge WebDAV auto-sync operational
+- [ ] Mi Fitness Cloud SDK fallback tested
+- [ ] Anomaly detection producing correct alerts
+- [ ] GHI composite scoring validated
+- [ ] Persona state machine adjusts Y-level (never confrontation)
+- [ ] 4 Discord commands operational
+- [ ] Morning brief health section rendering
+- [ ] CRITICAL classification enforced, 365d retention
+- [ ] Data export/deletion commands functional
+- [ ] guinevere-health.service running
+- [ ] Grafana health dashboard provisioned
+- [ ] Integration test passes all 20 AC-WEAR criteria
+
+## P15: Windows Daemon + WebSocket — Expansion (15 steps)
+*Cost: $5-15/month | Deps: P5+P8+P12 | Category: Expansion*
 *Source: Old P11-001 to P11-003 (Windows daemon architecture, Python service, WebSocket bridge)*
+*Planner Gate: `docs/setup-evidence/plans/p15-windows-daemon.md`*
 
-- [ ] **P15-001** TBD
+### Wave 1 — Foundation (parallel)
+- [ ] **P15-001** Project Scaffold + Base Tracker ABC
+- [ ] **P15-007** VPS WebSocket Endpoint (FastAPI + ConnectionManager)
+- [ ] **P15-012** TimescaleDB Migration (windows_events hypertable)
+
+### Wave 2 — Client Trackers (sequential, depends on P15-001)
+- [ ] **P15-002** Active Window Tracker (win32gui + psutil)
+- [ ] **P15-003** Idle Tracker (GetLastInputInfo, graduated)
+- [ ] **P15-004** Git Context Tracker (traversal + project mapping)
+
+### Wave 3 — Transport + Commands (parallel, depends on Wave 1+2)
+- [ ] **P15-005** Event Pipeline (MessagePack + EventRouter + WS Client)
+- [ ] **P15-008** Command Protocol (ACK-based, Redis DB4 pub/sub)
+
+### Wave 4 — Service + Safety (parallel, depends on Wave 3)
+- [ ] **P15-006** NSSM Service Wrapper + Config
+- [ ] **P15-009** Consent Gate Integration (belt-and-suspenders) ⚠️ SAFETY-CRITICAL
+
+### Wave 5 — UX + Observability (parallel, depends on Wave 4)
+- [ ] **P15-010** Discord `/pc` Command (status + session override)
+- [ ] **P15-011** Observability (Prometheus metrics + Grafana dashboard + alerting)
+
+### Wave 6 — Quality Gate (sequential, depends on all implementation)
+- [ ] **P15-013** Test Suite (unit + integration)
+- [ ] **P15-014** Integration Test — End-to-End Daemon ↔ VPS
+
+### Wave 7 — Deployment (depends on all tests pass)
+- [ ] **P15-015** Deployment + Smoke Test + README
 
 ## P16: Knowledge Graph — Expansion (TBD steps)
 *Cost: TBD | Deps: P3+P5+P8 | Category: Expansion*
@@ -473,10 +657,10 @@
 | P8 Observability | $4 | $27 | 🔴 Critical |
 | P9 Financial Tracking | $1 | $28 | 🔴 Critical |
 | P10 Production Hardening | $1 | $29 | 🔴 Critical |
-| P11 WhatsApp Integration | TBD | TBD | TBD |
-| P12 Gmail/Email Integration | TBD | TBD | TBD |
+| P11 WhatsApp Integration | $0 | $29 | 🔴 Critical |
+| P12 Gmail/Email Integration | $0 | $29 | 🔴 Critical |
 | P13 X Auto Poster | TBD | TBD | TBD |
-| P14 Wearable/Xiaomi Watch | TBD | TBD | TBD |
+| P14 Wearable/Xiaomi Watch | $0 | $29 | 🟢 Normal |
 | P15 Windows Daemon + WebSocket | TBD | TBD | TBD |
 | P16 Knowledge Graph | TBD | TBD | TBD |
 | P17 Cross-Device Sync | TBD | TBD | TBD |
@@ -522,12 +706,12 @@
 | P6 | 21 | 2-4 | 42 | 84 | 11-21 |
 | P7 | 22 | 2-4 | 44 | 88 | 11-22 |
 | P8 | 23 | 2-4 | 46 | 92 | 12-23 |
-| P9 (Stabilization) | 12 | 1-2 | 12 | 24 | 3-6 |
-| P10 (Stabilization) | 19 | 1-2 | 18 | 36 | 5-9 |
+| P9 (Stabilization) | 13 | 1-2 | 13 | 26 | 4-7 |
+| P10 (Stabilization) | 21 | 1-2 | 21 | 42 | 6-11 |
 | P11 WhatsApp Integration | TBD | TBD | TBD | TBD | TBD |
-| P12 Gmail/Email Integration | TBD | TBD | TBD | TBD | TBD |
-| P13 X Auto Poster | TBD | TBD | TBD | TBD | TBD |
-| P14 Wearable/Xiaomi Watch | TBD | TBD | TBD | TBD | TBD |
+| P12 Gmail/Email Integration | 29 | 1-2 | 29 | 58 | 8-15 |
+| P13 X Auto Poster | 28 | 1-2 | 28 | 56 | 7-14 |
+| P14 Wearable/Xiaomi Watch | 27 | 1-2 | 27 | 54 | 7-14 |
 | P15 Windows Daemon + WebSocket | TBD | TBD | TBD | TBD | TBD |
 | P16 Knowledge Graph | TBD | TBD | TBD | TBD | TBD |
 | P17 Cross-Device Sync | TBD | TBD | TBD | TBD | TBD |
@@ -539,7 +723,7 @@
 
 **Critical path** (P0→P1→P3→P5→P8): 228-456h = 57-114 days at 4h/day
 **With parallels** (P2∥P1, P6∥P3-5, P7∥P1-3, P4∥P5): no added duration
-**Stabilization** (P9-P10): +5-10 days | **Expansion** (P11-P22): TBD | **Total MVP+Stabilization**: 72-133 days
+**Stabilization** (P9-P10): +7-12 days | **Expansion** (P11-P22): TBD | **Total MVP+Stabilization**: 74-136 days
 
 ---
 

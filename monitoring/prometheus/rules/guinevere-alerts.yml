@@ -1,0 +1,120 @@
+# Guinevere Prometheus Alert Rules — P8-014
+# 9 alert rules covering SEV0 through SEV4 from ObsSpec Appendix B.
+# Alert routing configured in P8-015 (alertmanager.yml).
+# Neutral incident-command tone mandatory for all annotations.
+
+groups:
+  - name: guinevere-safety
+    rules:
+      # SEV0: Safe word bypass attempt detected
+      - alert: GuinevereSafeWordBypassAttempt
+        expr: increase(guinevere_safeword_events_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: "critical"
+          sev_level: "SEV0"
+        annotations:
+          summary: "Safe word trigger detected"
+          description: "A safe word trigger was fired, requiring immediate safety review."
+          runbook: "docs/60-persona/60-PersonaSafetyPolicy_v1.0.md"
+
+      # SEV0: Public ingress detected (non-Tailscale access to admin)
+      - alert: GuineverePublicIngressDetected
+        expr: guinevere_public_ingress_detected > 0
+        for: 0m
+        labels:
+          severity: "critical"
+          sev_level: "SEV0"
+        annotations:
+          summary: "Public ingress to admin endpoint detected"
+          description: "Non-Tailscale traffic detected accessing admin endpoints."
+          runbook: "docs/20-security/SecurityPolicy_v1.0.md"
+
+  - name: guinevere-security
+    rules:
+      # SEV1: Log redaction failure
+      - alert: GuinevereLogRedactionFailure
+        expr: increase(guinevere_log_redaction_failures_total[15m]) > 0
+        for: 5m
+        labels:
+          severity: "high"
+          sev_level: "SEV1"
+        annotations:
+          summary: "Log redaction failure detected"
+          description: "Log redaction pipeline failed, potentially exposing sensitive data."
+
+      # SEV1: Secret access outside startup
+      - alert: GuinevereSecretAccessOutsideStartup
+        expr: increase(guinevere_secret_access_total{phase!="startup"}[30m]) > 0
+        for: 5m
+        labels:
+          severity: "high"
+          sev_level: "SEV1"
+        annotations:
+          summary: "Secret accessed outside startup phase"
+          description: "A secret decryption operation occurred outside the startup phase."
+
+      # SEV1: Critical service down
+      - alert: GuinevereCriticalServiceDown
+        expr: up{job=~"fastapi|postgresql|redis"} == 0
+        for: 2m
+        labels:
+          severity: "high"
+          sev_level: "SEV1"
+        annotations:
+          summary: "Critical service {{ $labels.job }} is down"
+          description: "A critical Guinevere service has been unreachable for 2 minutes."
+
+  - name: guinevere-operations
+    rules:
+      # SEV2: Non-critical service down
+      - alert: GuinevereNonCriticalServiceDown
+        expr: up{job=~"node|loki|alertmanager"} == 0
+        for: 5m
+        labels:
+          severity: "warning"
+          sev_level: "SEV2"
+        annotations:
+          summary: "Non-critical service {{ $labels.job }} is down"
+
+      # SEV2: Subagent file output missing sustained
+      - alert: GuinevereSubagentFileOutputMissingSustained
+        expr: increase(guinevere_subagent_file_missing_total[30m]) > 5
+        for: 10m
+        labels:
+          severity: "warning"
+          sev_level: "SEV2"
+        annotations:
+          summary: "Sustained subagent file output missing"
+
+      # SEV2: LLM cost spike
+      - alert: GuinevereLLMCostSpike
+        expr: rate(guinevere_llm_cost_usd_total[1h]) > 0.50
+        for: 15m
+        labels:
+          severity: "warning"
+          sev_level: "SEV2"
+        annotations:
+          summary: "LLM cost spike detected — greater than $0.50/hour"
+
+  - name: guinevere-finops
+    rules:
+      # SEV3: Restore drill overdue
+      - alert: GuinevereRestoreDrillOverdue
+        expr: time() - guinevere_backup_last_restore_drill_timestamp > 604800
+        for: 1h
+        labels:
+          severity: "info"
+          sev_level: "SEV3"
+        annotations:
+          summary: "Restore drill overdue (greater than 7 days)"
+
+      # SEV3: LLM cost spike warning
+      - alert: GuinevereLLMCostSpikeWarning
+        expr: rate(guinevere_llm_cost_usd_total[1h]) > 0.25
+        for: 15m
+        labels:
+          severity: "info"
+          sev_level: "SEV3"
+        annotations:
+          summary: "LLM cost trend warning — greater than $0.25/hour"

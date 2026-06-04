@@ -798,7 +798,11 @@ async def recall_memories(
     # ---- compute query embedding (optional) --------------------------------
     query_vector: list[float] | None = None
     if embedding_service is not None:
-        query_vector = await embedding_service.aembed(query_text_stripped)
+        try:
+            query_vector = await embedding_service.aembed(query_text_stripped)
+        except Exception:
+            _logger.warning("embedding_fallback_keyword", extra={"query_hash": _query_hash})
+            # Graceful fallback: keyword-only search without vector similarity
 
     # ---- resolve classification ceiling ------------------------------------
     ceiling_label = _resolve_ceiling(principal, safe_mode)

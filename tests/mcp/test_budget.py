@@ -537,7 +537,7 @@ def test_no_logging_or_print_in_budget_module() -> None:
     source = inspect.getsource(budget_module)
     assert "import logging" not in source
     # print() should not appear outside comments/docstrings.
-    lines = [l for l in source.splitlines() if "print(" in l and not l.strip().startswith("#")]
+    lines = [line for line in source.splitlines() if "print(" in line and not line.strip().startswith("#")]
     assert len(lines) == 0, f"print() found: {lines}"
 
 

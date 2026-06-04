@@ -1,4 +1,4 @@
-"""P7-008: Data classification module — comprehensive unit tests.
+"""P7-008: Data classification module - comprehensive unit tests.
 
 Tests cover:
 - DataClassification enum values and string representations
@@ -8,7 +8,7 @@ Tests cover:
 - get_retention_days() for all 7 retention classes + unknown
 - EVENT_TYPE_CLASSIFICATION mapping completeness and encryption profiles
 
-All tests use synthetic parameter values — no real surveillance data.
+All tests use synthetic parameter values - no real surveillance data.
 """
 
 from __future__ import annotations
@@ -45,12 +45,12 @@ class TestDataClassificationEnum:
         assert issubclass(DataClassification, str)
         assert issubclass(DataClassification, StrEnum)
 
-    def test_three_values_exist(self) -> None:
-        """Exactly three classification levels must be defined."""
+    def test_four_values_exist(self) -> None:
+        """Exactly four classification levels must be defined."""
         members = list(DataClassification)
-        assert len(members) == 3
+        assert len(members) == 4
         member_names = {m.name for m in members}
-        assert member_names == {"INTERNAL", "CONFIDENTIAL", "RESTRICTED"}
+        assert member_names == {"INTERNAL", "CONFIDENTIAL", "RESTRICTED", "CRITICAL"}
 
     def test_internal_value(self) -> None:
         """INTERNAL must have string value 'Internal'."""
@@ -68,26 +68,32 @@ class TestDataClassificationEnum:
         assert DataClassification.RESTRICTED == "Restricted"
         assert DataClassification.RESTRICTED.value == "Restricted"
 
+    def test_critical_value(self) -> None:
+        """CRITICAL must have string value 'Critical'."""
+        assert DataClassification.CRITICAL == "Critical"
+        assert DataClassification.CRITICAL.value == "Critical"
+        assert str(DataClassification.CRITICAL) == "Critical"
+
 
 # ---------------------------------------------------------------------------
-# TestClassifyEvent — known event types
+# TestClassifyEvent - known event types
 # ---------------------------------------------------------------------------
 
 
 KNOWN_EVENT_TYPES = [
     # (event_type, expected_classification, purpose, retention_class, access_policy, enc_profile)
-    ("app_usage", DataClassification.INTERNAL, "productivity_monitoring", "short_raw", "guinevere_core", "standard"),
-    ("screen_state", DataClassification.INTERNAL, "activity_tracking", "short_raw", "guinevere_core", "standard"),
-    ("active_window", DataClassification.INTERNAL, "productivity_monitoring", "short_raw", "guinevere_core", "standard"),
-    ("idle_time", DataClassification.INTERNAL, "activity_tracking", "short_raw", "guinevere_core", "standard"),
-    ("notification", DataClassification.CONFIDENTIAL, "context_awareness", "short_raw", "guinevere_core+faiz", "standard"),
-    ("browser", DataClassification.CONFIDENTIAL, "productivity_monitoring", "short_raw", "guinevere_core+faiz", "standard"),
-    ("location", DataClassification.CONFIDENTIAL, "safety_geofencing", "short_raw", "guinevere_core+faiz", "enhanced"),
-    ("call_log", DataClassification.CONFIDENTIAL, "context_awareness", "short_raw", "guinevere_core+faiz", "enhanced"),
-    ("health", DataClassification.CONFIDENTIAL, "health_monitoring", "medium_operational", "guinevere_core+faiz", "enhanced"),
-    ("clipboard", DataClassification.RESTRICTED, "secret_protection", "transient", "guinevere_core_only", "high"),
-    ("screenshot", DataClassification.RESTRICTED, "visual_context", "critical_media", "guinevere_core_only", "high"),
-    ("camera", DataClassification.RESTRICTED, "visual_context", "critical_media", "guinevere_core_only", "high"),
+    ("app_usage", DataClassification.RESTRICTED, "productivity_monitoring", "short_raw", "guinevere_core", "high"),
+    ("screen_state", DataClassification.RESTRICTED, "activity_tracking", "short_raw", "guinevere_core", "high"),
+    ("active_window", DataClassification.RESTRICTED, "productivity_monitoring", "short_raw", "guinevere_core", "high"),
+    ("idle_time", DataClassification.RESTRICTED, "activity_tracking", "short_raw", "guinevere_core", "high"),
+    ("notification", DataClassification.CRITICAL, "context_awareness", "short_raw", "guinevere_core+faiz", "double_high"),
+    ("browser", DataClassification.CRITICAL, "productivity_monitoring", "short_raw", "guinevere_core+faiz", "double_high"),
+    ("location", DataClassification.CRITICAL, "safety_geofencing", "short_raw", "guinevere_core+faiz", "double_high"),
+    ("call_log", DataClassification.CRITICAL, "context_awareness", "short_raw", "guinevere_core+faiz", "double_high"),
+    ("health", DataClassification.CRITICAL, "health_monitoring", "medium_operational", "guinevere_core+faiz", "double_high"),
+    ("clipboard", DataClassification.CRITICAL, "secret_protection", "transient", "guinevere_core_only", "double_high"),
+    ("screenshot", DataClassification.CRITICAL, "visual_context", "critical_media", "guinevere_core_only", "double_high"),
+    ("camera", DataClassification.CRITICAL, "visual_context", "critical_media", "guinevere_core_only", "double_high"),
 ]
 
 
@@ -117,18 +123,18 @@ class TestClassifyEvent:
         assert result.encryption_profile == enc_profile
 
     def test_unknown_event_type_fail_closed(self) -> None:
-        """Unknown event types must default to Restricted with transient retention."""
+        """Unknown event types must default to Confidential with transient retention."""
         result = classify_event("unknown_sensor")
-        assert result.classification == DataClassification.RESTRICTED
+        assert result.classification == DataClassification.CONFIDENTIAL
         assert result.purpose == "unknown"
         assert result.retention_class == "transient"
-        assert result.access_policy == "guinevere_core_only"
-        assert result.encryption_profile == "high"
+        assert result.access_policy == "guinevere_core+faiz"
+        assert result.encryption_profile == "enhanced"
 
     def test_unknown_event_type_with_empty_string(self) -> None:
-        """Empty string event type must also fail-closed to Restricted."""
+        """Empty string event type must also fail-closed to Confidential."""
         result = classify_event("")
-        assert result.classification == DataClassification.RESTRICTED
+        assert result.classification == DataClassification.CONFIDENTIAL
 
     def test_classification_result_is_frozen(self) -> None:
         """ClassificationResult must be immutable (frozen=True)."""
@@ -209,32 +215,27 @@ class TestClassificationMapping:
 
     def test_restricted_types_use_high_encryption(self) -> None:
         """All Restricted event types must use 'high' encryption profile."""
-        restricted_types = ["clipboard", "screenshot", "camera"]
+        restricted_types = ["app_usage", "screen_state", "active_window", "idle_time"]
         for event_type in restricted_types:
             result = classify_event(event_type)
             assert result.encryption_profile == "high", (
                 f"{event_type} expected 'high' encryption, got '{result.encryption_profile}'"
             )
 
-    def test_internal_types_use_standard_encryption(self) -> None:
-        """All Internal event types must use 'standard' encryption profile."""
-        internal_types = ["app_usage", "screen_state", "active_window", "idle_time"]
-        for event_type in internal_types:
+    def test_critical_types_use_double_high_encryption(self) -> None:
+        """All Critical event types must use 'double_high' encryption profile."""
+        critical_types = [
+            "notification", "browser", "location", "call_log",
+            "health", "clipboard", "screenshot", "camera",
+        ]
+        for event_type in critical_types:
             result = classify_event(event_type)
-            assert result.encryption_profile == "standard", (
-                f"{event_type} expected 'standard' encryption, got '{result.encryption_profile}'"
+            assert result.classification == DataClassification.CRITICAL, (
+                f"{event_type} expected CRITICAL classification, got '{result.classification}'"
             )
-
-    def test_confidential_health_uses_enhanced_encryption(self) -> None:
-        """Confidential health data must use 'enhanced' encryption."""
-        result = classify_event("health")
-        assert result.classification == DataClassification.CONFIDENTIAL
-        assert result.encryption_profile == "enhanced"
-
-    def test_confidential_location_uses_enhanced_encryption(self) -> None:
-        """Confidential location data must use 'enhanced' encryption."""
-        result = classify_event("location")
-        assert result.encryption_profile == "enhanced"
+            assert result.encryption_profile == "double_high", (
+                f"{event_type} expected 'double_high' encryption, got '{result.encryption_profile}'"
+            )
 
     def test_classification_result_all_fields_populated(self) -> None:
         """Every ClassificationResult must have all five fields non-empty."""

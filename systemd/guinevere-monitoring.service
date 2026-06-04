@@ -1,0 +1,57 @@
+# Guinevere Monitoring Stack — systemd Service Unit — P8-021
+# Manages all monitoring containers via Docker Compose.
+# Follows existing systemd pattern: Type=exec, guinevere.slice, security hardening.
+# ObsSpec §3.1: Monitoring stack on primary VPS, Tailscale-only, no public ports.
+
+[Unit]
+Description=Guinevere Monitoring Stack (Prometheus, Grafana, Loki, Promtail, Alertmanager)
+Documentation=https://github.com/faizz/guinevere
+After=network-online.target docker.service
+Requires=docker.service
+Wants=guinevere-core.service
+
+[Service]
+Type=exec
+User=guinevere
+Group=guinevere
+Slice=guinevere.slice
+WorkingDirectory=/home/guinevere/code/guinevere
+
+# Resource limits — monitoring stack gets 1G of the 8G slice budget
+MemoryHigh=900M
+MemoryMax=1G
+CPUQuota=100%
+
+# Exec commands
+ExecStartPre=/usr/bin/docker compose -f monitoring/compose.monitoring.yml pull --quiet
+ExecStart=/usr/bin/docker compose -f monitoring/compose.monitoring.yml up --remove-orphans
+ExecStop=/usr/bin/docker compose -f monitoring/compose.monitoring.yml down --timeout 30
+ExecReload=/usr/bin/docker compose -f monitoring/compose.monitoring.yml restart
+
+# Restart policy
+Restart=on-failure
+RestartSec=10
+StartLimitBurst=3
+StartLimitIntervalSec=60
+
+# Security hardening — matches existing guinevere-*.service pattern
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/guinevere/code/guinevere/monitoring
+ReadWritePaths=/home/guinevere/data/prometheus
+ReadWritePaths=/home/guinevere/data/grafana
+ReadWritePaths=/home/guinevere/data/loki
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+
+# Logging — stdout/stderr to journald (captured by Promtail)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=guinevere-monitoring
+
+[Install]
+WantedBy=multi-user.target

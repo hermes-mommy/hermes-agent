@@ -110,9 +110,9 @@ AUTH_MATRIX: Final[dict[str, dict[str, AuthLevel]]] = {
     "postgres": {
         "select": AuthLevel.READ_AUTO,
         "explain": AuthLevel.READ_AUTO,
-        "insert": AuthLevel.DESTRUCTIVE_APPROVAL,
-        "update": AuthLevel.DESTRUCTIVE_APPROVAL,
-        "delete_row": AuthLevel.DESTRUCTIVE_APPROVAL,
+        "insert": AuthLevel.FORBIDDEN,
+        "update": AuthLevel.FORBIDDEN,
+        "delete_row": AuthLevel.FORBIDDEN,
         "drop": AuthLevel.FORBIDDEN,
         "truncate": AuthLevel.FORBIDDEN,
     },
@@ -162,6 +162,7 @@ AUTH_MATRIX: Final[dict[str, dict[str, AuthLevel]]] = {
         "rm": AuthLevel.DESTRUCTIVE_APPROVAL,
         "rmi": AuthLevel.DESTRUCTIVE_APPROVAL,
         "system_prune": AuthLevel.FORBIDDEN,
+        "rm_all": AuthLevel.FORBIDDEN,
     },
 }
 

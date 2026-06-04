@@ -1,0 +1,108 @@
+# Guinevere Alertmanager Configuration — P8-015
+# SEV0-SEV4 severity routing to Discord (primary) + Gotify (SEV0/SEV1 backup).
+# Neutral incident-command tone mandatory — no persona/yandere/punishment in alerts.
+# Discord webhook URL and Gotify token via SOPS-decrypted env vars.
+# ObsSpec §11: Discord primary neutral tone, Gotify SEV0/SEV1 urgent backup.
+# Incident Response v1.0: SEV0=immediate+Gotify every 15min, SEV1=≤15min every 30min.
+
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: "discord-default"
+  group_by: ["alertname", "sev_level"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    # SEV0: Critical — Discord + Gotify immediately
+    - match:
+        sev_level: "SEV0"
+      receiver: "discord-critical"
+      repeat_interval: 15m
+      continue: true
+    - match:
+        sev_level: "SEV0"
+      receiver: "gotify-critical"
+      repeat_interval: 15m
+
+    # SEV1: High — Discord + Gotify
+    - match:
+        sev_level: "SEV1"
+      receiver: "discord-critical"
+      repeat_interval: 30m
+      continue: true
+    - match:
+        sev_level: "SEV1"
+      receiver: "gotify-warning"
+      repeat_interval: 30m
+
+    # SEV2: Warning — Discord only
+    - match:
+        sev_level: "SEV2"
+      receiver: "discord-warning"
+      repeat_interval: 4h
+
+    # SEV3: Info — Discord only
+    - match:
+        sev_level: "SEV3"
+      receiver: "discord-info"
+      repeat_interval: 12h
+
+    # SEV4: Low — Discord audit channel
+    - match:
+        sev_level: "SEV4"
+      receiver: "discord-info"
+      repeat_interval: 24h
+
+receivers:
+  # Discord: SEV0/SEV1 critical alerts
+  - name: "discord-critical"
+    webhook_configs:
+      - url: "http://localhost:8000/internal/alertmanager/webhook"
+        send_resolved: true
+        http_config:
+          follow_redirects: true
+
+  # Discord: SEV2 warning alerts
+  - name: "discord-warning"
+    webhook_configs:
+      - url: "http://localhost:8000/internal/alertmanager/webhook"
+        send_resolved: true
+
+  # Discord: SEV3/SEV4 info alerts (default receiver)
+  - name: "discord-info"
+    webhook_configs:
+      - url: "http://localhost:8000/internal/alertmanager/webhook"
+        send_resolved: true
+
+  # Discord: default fallback
+  - name: "discord-default"
+    webhook_configs:
+      - url: "http://localhost:8000/internal/alertmanager/webhook"
+        send_resolved: true
+
+  # Gotify: SEV0 urgent push
+  - name: "gotify-critical"
+    webhook_configs:
+      - url: "http://localhost:8000/internal/alertmanager/webhook"
+        send_resolved: false
+
+  # Gotify: SEV1 warning push
+  - name: "gotify-warning"
+    webhook_configs:
+      - url: "http://localhost:8000/internal/alertmanager/webhook"
+        send_resolved: false
+
+# Inhibit rules: suppress lower-severity alerts when higher-severity fires for same alertname
+inhibit_rules:
+  - source_match:
+      sev_level: "SEV0"
+    target_match:
+      sev_level: "SEV2"
+    equal: ["alertname"]
+  - source_match:
+      sev_level: "SEV1"
+    target_match:
+      sev_level: "SEV3"
+    equal: ["alertname"]

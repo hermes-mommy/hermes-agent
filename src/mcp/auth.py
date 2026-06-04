@@ -170,6 +170,27 @@ def require_approval(
                 level=level.value,
             )
 
+            # RG-008: Validate declared level against AUTH_MATRIX (warn-only)
+            try:
+                from src.mcp.auth_matrix import get_auth_level
+
+                matrix_level = get_auth_level(name, "*")
+                if matrix_level != level:
+                    logger.warning(
+                        "auth_matrix_mismatch",
+                        tool_name=name,
+                        declared_level=level.value,
+                        matrix_level=matrix_level.value,
+                    )
+            except KeyError:
+                logger.warning("auth_matrix_tool_missing", tool_name=name)
+            except Exception as matrix_err:
+                logger.warning(
+                    "auth_matrix_check_failed",
+                    tool_name=name,
+                    error=str(matrix_err),
+                )
+
             if level is AuthLevel.FORBIDDEN:
                 logger.warning("auth_forbidden", tool_name=name)
                 raise ForbiddenOperationError(
@@ -211,6 +232,9 @@ def require_approval(
             logger.info("auth_approved_executing", tool_name=name)
             return await func(*args, **kwargs)
 
+        # Expose the auth level for introspection (auditors, tests).
+        wrapper._auth_level = level  # type: ignore[attr-defined]
+        wrapper._auth_tool_name = name  # type: ignore[attr-defined]
         return wrapper
 
     return decorator

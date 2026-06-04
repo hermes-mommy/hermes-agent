@@ -113,9 +113,9 @@ async def _get_pool() -> asyncpg.Pool:
         return _pool
 
     host = os.environ.get("POSTGRES_HOST", _DEFAULT_HOST)
-    port = int(os.environ.get("POSTGRES_PORT", str(_DEFAULT_PORT)))
-    db = os.environ.get("POSTGRES_DB", _DEFAULT_DB)
-    user = os.environ.get("POSTGRES_READONLY_USER", _DEFAULT_READONLY_USER)
+    port = _DEFAULT_PORT  # 5433 — hardcoded, no env override (Aizanta isolation)
+    db = _DEFAULT_DB  # "guinevere" — hardcoded, no env override
+    user = _DEFAULT_READONLY_USER  # "guinevere_readonly" — hardcoded, no env override
     password = os.environ.get("POSTGRES_PASSWORD", "")
 
     _pool = await asyncpg.create_pool(
@@ -163,6 +163,7 @@ def _validate_params(sql: str, params: Sequence[Any]) -> None:
 # ---------------------------------------------------------------------------
 
 
+@require_approval(AuthLevel.READ_AUTO, tool_name="postgres_query")
 async def postgres_query(
     sql: str,
     params: Sequence[Any] | None = None,
@@ -230,6 +231,7 @@ async def postgres_query(
     return result
 
 
+@require_approval(AuthLevel.READ_AUTO, tool_name="postgres_tables")
 async def postgres_tables(schema: str = "public") -> list[str]:
     """List all user tables in *schema*.
 
@@ -250,6 +252,7 @@ async def postgres_tables(schema: str = "public") -> list[str]:
     return [str(row["table_name"]) for row in rows]
 
 
+@require_approval(AuthLevel.READ_AUTO, tool_name="postgres_describe")
 async def postgres_describe(
     table: str,
     schema: str = "public",
@@ -288,46 +291,6 @@ async def postgres_describe(
 
 def register_tools(mcp: FastMCP) -> None:
     """Register the PostgreSQL tool suite with the FastMCP server."""
-
-    @mcp.tool(name="postgres_query")
-    @require_approval(AuthLevel.READ_AUTO, tool_name="postgres_query")
-    async def _postgres_query_tool(
-        sql: str,
-        params: list[object] | None = None,
-    ) -> list[dict[str, object]]:
-        """Execute a read-only parameterized PostgreSQL query.
-
-        Uses ``$1``, ``$2``, … placeholders.  Only ``SELECT``, ``SHOW``,
-        ``EXPLAIN``, and read-only ``WITH`` statements are permitted.
-        INSERT/UPDATE/DELETE and all DDL/DCL are blocked.
-
-        Args:
-            sql: The SQL query with ``$N`` placeholders.
-            params: Optional positional parameter values.
-        """
-        params_sequence: Sequence[object] = params or []
-        return await postgres_query(sql, params_sequence)
-
-    @mcp.tool(name="postgres_tables")
-    @require_approval(AuthLevel.READ_AUTO, tool_name="postgres_tables")
-    async def _postgres_tables_tool(schema: str = "public") -> list[str]:
-        """List all user tables in the given schema.
-
-        Args:
-            schema: Schema name (default ``"public"``).
-        """
-        return await postgres_tables(schema)
-
-    @mcp.tool(name="postgres_describe")
-    @require_approval(AuthLevel.READ_AUTO, tool_name="postgres_describe")
-    async def _postgres_describe_tool(
-        table: str,
-        schema: str = "public",
-    ) -> list[dict[str, object]]:
-        """Describe columns of a table.
-
-        Args:
-            table: Table name to describe.
-            schema: Schema name (default ``"public"``).
-        """
-        return await postgres_describe(table, schema)
+    mcp.tool(name="postgres_query")(postgres_query)
+    mcp.tool(name="postgres_tables")(postgres_tables)
+    mcp.tool(name="postgres_describe")(postgres_describe)

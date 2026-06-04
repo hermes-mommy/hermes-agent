@@ -12,6 +12,7 @@ from typing import Any
 
 import structlog
 
+from src.loops.cost import LoopCostTracker
 from src.loops.evidence import EvidencePipeline
 from src.loops.guardian import LoopGuardian
 from src.loops.phases import PHASE_REGISTRY, get_phase_handler
@@ -44,6 +45,13 @@ class LoopManager:
         self.guardian = LoopGuardian()
         self.evidence_pipelines: dict[str, EvidencePipeline] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
+
+        # RG-006: Per-loop cost tracking (fail-soft on Redis error)
+        try:
+            self.cost_tracker = LoopCostTracker()
+        except Exception as cost_err:
+            logger.warning("loop_cost_tracker_init_failed", error=str(cost_err))
+            self.cost_tracker = None
 
         logger.info("loop_manager.initialized")
 
@@ -194,6 +202,28 @@ class LoopManager:
                 # Guardian heartbeat + phase advance record.
                 self.guardian.heartbeat(loop_id)
                 self.guardian.record_phase_advance(loop_id)
+
+                # RG-006: Record phase cost if token data available.
+                # Currently phases return static templates; when LLM calls are
+                # wired, artifact_content will include token usage metadata.
+                if self.cost_tracker is not None:
+                    try:
+                        token_meta = getattr(artifact_content, "token_usage", None)
+                        if token_meta is not None:
+                            self.cost_tracker.record_loop_cost(
+                                loop_id=loop_id,
+                                model=token_meta.get("model", "unknown"),
+                                input_tokens=token_meta.get("input_tokens", 0),
+                                output_tokens=token_meta.get("output_tokens", 0),
+                                cost_per_1k_input=token_meta.get("cost_per_1k_input", 0.0),
+                                cost_per_1k_output=token_meta.get("cost_per_1k_output", 0.0),
+                            )
+                    except Exception as cost_err:
+                        logger.warning(
+                            "loop_cost_record_failed",
+                            loop_id=loop_id,
+                            error=str(cost_err),
+                        )
 
                 logger.info(
                     "loop_manager.phase_complete",

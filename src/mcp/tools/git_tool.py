@@ -31,14 +31,13 @@ logger = structlog.get_logger()
 # Git path — searched once at registration time
 # ---------------------------------------------------------------------------
 
-_git_binary: str = "git"
+_git_binary: str = os.environ.get("GIT_BINARY", "git")
 
 
 def _find_git() -> str:
-    """Return the git binary path or raise ``ConfigurationError``."""
-    git = os.environ.get("GIT_BINARY", "git")
-    logger.info("git_binary_configured", binary=git)
-    return git
+    """Return the git binary path — logs the configured binary for diagnostics."""
+    logger.info("git_binary_configured", binary=_git_binary)
+    return _git_binary
 
 
 # ---------------------------------------------------------------------------
@@ -62,46 +61,74 @@ class GitCommandError(GitToolError):
 # Forbidden operation detection
 # ---------------------------------------------------------------------------
 
-_FORBIDDEN_PATTERNS: list[tuple[str, ...]] = [
-    ("push", "--force", "main"),
-    ("push", "--force", "master"),
-    ("push", "-f", "main"),
-    ("push", "-f", "master"),
-]
+_FORCE_FLAGS = frozenset({"--force", "-f", "--force-with-lease"})
+_PROTECTED_BRANCHES = frozenset({"main", "master"})
+
+
+def _extract_refspec_destination(arg: str) -> str | None:
+    """Extract the destination branch from a refspec like ``src:dst``.
+
+    Returns ``None`` if *arg* is not a refspec.  For ``HEAD:refs/heads/main``
+    the destination is ``refs/heads/main``; for ``feature:main`` it is
+    ``main``.
+    """
+    if ":" not in arg:
+        return None
+    _, _, dst = arg.partition(":")
+    return dst or None
+
+
+def _normalise_branch(branch: str) -> str:
+    """Strip ``refs/heads/`` prefix and lower-case the branch name."""
+    b = branch.lower()
+    for prefix in ("refs/heads/", "refs/remotes/origin/"):
+        if b.startswith(prefix):
+            b = b[len(prefix) :]
+            break
+    return b
 
 
 def _is_forbidden(args: list[str], branch: str | None) -> bool:
     """Check whether a git operation is forbidden.
 
-    Returns ``True`` when the command is a force-push to ``main`` or
-    ``master``, regardless of how the branch is passed (positional arg
-    or ``branch`` parameter).
+    Returns ``True`` when the command is a force-push (``--force``,
+    ``-f``, or ``--force-with-lease``) to ``main`` or ``master``,
+    regardless of how the branch is passed (positional arg, ``branch``
+    parameter, or refspec destination).
+
+    Branch comparison is case-insensitive and strips common ref
+    prefixes so that ``MAIN``, ``refs/heads/main``, and
+    ``HEAD:refs/heads/main`` are all detected.
     """
     if len(args) < 3:
         return False
 
     is_push = args[0] == "push"
-    is_force = "--force" in args or "-f" in args
+    has_force = bool(_FORCE_FLAGS & set(args))
 
-    if not (is_push and is_force):
+    if not (is_push and has_force):
         return False
 
-    # The branch may be in the positional args or passed separately.
+    # Collect candidate branch names from positional args and the
+    # explicit *branch* parameter.
     candidate_branches: list[str] = []
 
-    # Positional args after 'push' and flags
     for i in range(1, len(args)):
         arg = args[i]
         if arg.startswith("-"):
             continue
-        candidate_branches.append(arg)
+        # Check for refspec syntax (e.g. HEAD:refs/heads/main)
+        refspec_dst = _extract_refspec_destination(arg)
+        if refspec_dst is not None:
+            candidate_branches.append(refspec_dst)
+        else:
+            candidate_branches.append(arg)
 
     if branch is not None:
         candidate_branches.append(branch)
 
-    protected = {"main", "master"}
     for cb in candidate_branches:
-        if cb in protected:
+        if _normalise_branch(cb) in _PROTECTED_BRANCHES:
             return True
 
     return False
@@ -192,7 +219,8 @@ def _build_env() -> dict[str, str] | None:
 # ---------------------------------------------------------------------------
 
 
-async def _git_status(repo_path: str = ".") -> str:
+@require_approval(AuthLevel.READ_AUTO, tool_name="git_status")
+async def git_status(repo_path: str = ".") -> str:
     """Get git status. Auth: READ_AUTO."""
     code, stdout, stderr = await _run_git("status", "--porcelain", cwd=repo_path)
     _assert_zero(code, stderr, "status")
@@ -200,7 +228,8 @@ async def _git_status(repo_path: str = ".") -> str:
     return stdout if stdout else "No changes."
 
 
-async def _git_log(repo_path: str = ".", count: int = 10) -> str:
+@require_approval(AuthLevel.READ_AUTO, tool_name="git_log")
+async def git_log(repo_path: str = ".", count: int = 10) -> str:
     """Get git log. Auth: READ_AUTO."""
     code, stdout, stderr = await _run_git(
         "log",
@@ -214,7 +243,8 @@ async def _git_log(repo_path: str = ".", count: int = 10) -> str:
     return stdout if stdout else "No commits."
 
 
-async def _git_diff(repo_path: str = ".", staged: bool = False) -> str:
+@require_approval(AuthLevel.READ_AUTO, tool_name="git_diff")
+async def git_diff(repo_path: str = ".", staged: bool = False) -> str:
     """Get git diff. Auth: READ_AUTO."""
     args: list[str] = ["diff"]
     if staged:
@@ -225,7 +255,8 @@ async def _git_diff(repo_path: str = ".", staged: bool = False) -> str:
     return stdout if stdout else "No changes."
 
 
-async def _git_commit(
+@require_approval(AuthLevel.WRITE_NOTIFY, tool_name="git_commit")
+async def git_commit(
     repo_path: str,
     message: str,
     files: list[str] | None = None,
@@ -251,17 +282,43 @@ async def _git_commit(
     return stdout if stdout else "Commit successful."
 
 
-async def _git_push(
+@require_approval(AuthLevel.WRITE_NOTIFY, tool_name="git_push")
+async def git_push(
     repo_path: str = ".",
-    force: bool = False,
     branch: str | None = None,
 ) -> str:
     """Push to remote.
 
+    Auth: WRITE_NOTIFY (normal push).  Force push is gated separately
+    via ``git_push_force`` with DESTRUCTIVE_APPROVAL.
+    """
+    return await _git_push_impl(repo_path, force=False, branch=branch)
+
+
+@require_approval(AuthLevel.DESTRUCTIVE_APPROVAL, tool_name="git_push_force")
+async def git_push_force(
+    repo_path: str = ".",
+    branch: str | None = None,
+) -> str:
+    """Force push to remote.
+
+    Auth: DESTRUCTIVE_APPROVAL.  Additionally, force push to main/master
+    is blocked at run-time with a FORBIDDEN check inside ``_git_push_impl``.
+    """
+    return await _git_push_impl(repo_path, force=True, branch=branch)
+
+
+async def _git_push_impl(
+    repo_path: str = ".",
+    force: bool = False,
+    branch: str | None = None,
+) -> str:
+    """Internal push implementation shared by ``git_push`` and ``git_push_force``.
+
     Auth levels:
-        - Normal push: ``WRITE_NOTIFY``
-        - Force push: ``DESTRUCTIVE_APPROVAL``
-        - Force push to main/master: run-time ``FORBIDDEN``
+        - Normal push: ``WRITE_NOTIFY`` (applied by ``git_push`` decorator)
+        - Force push: ``DESTRUCTIVE_APPROVAL`` (applied by ``git_push_force`` decorator)
+        - Force push to main/master: run-time ``FORBIDDEN`` (checked here)
     """
     args: list[str] = ["push"]
     if force:
@@ -299,6 +356,14 @@ async def _git_push(
     return stdout if stdout else "Push successful."
 
 
+# Backward-compatible aliases (tests import with underscore prefix)
+_git_status = git_status
+_git_log = git_log
+_git_diff = git_diff
+_git_commit = git_commit
+_git_push = _git_push_impl
+
+
 # ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
@@ -307,56 +372,23 @@ async def _git_push(
 def register_tools(mcp: FastMCP) -> None:
     """Register git tools on the MCP server.
 
-    Adds five tools: ``git_status``, ``git_log``, ``git_diff``,
-    ``git_commit``, and ``git_push``, each decorated with the
-    appropriate ``AuthLevel`` gate.
+    Adds six tools: ``git_status``, ``git_log``, ``git_diff``,
+    ``git_commit``, ``git_push``, and ``git_push_force``, each
+    decorated with the appropriate ``AuthLevel`` gate.
 
-    For ``git_push``, two variants are registered:
+    For push, two variants are registered:
         - ``git_push`` (normal) → ``WRITE_NOTIFY``
         - ``git_push_force`` (force) → ``DESTRUCTIVE_APPROVAL``
           with additional run-time ``FORBIDDEN`` check for main/master.
     """
-    global _git_binary  # noqa: PLW0603
-    _git_binary = _find_git()
+    # Log the configured git binary at registration time for diagnostics.
+    _find_git()
 
-    @mcp.tool()
-    @require_approval(AuthLevel.READ_AUTO, tool_name="git_status")
-    async def git_status(repo_path: str = ".") -> str:
-        return await _git_status(repo_path)
-
-    @mcp.tool()
-    @require_approval(AuthLevel.READ_AUTO, tool_name="git_log")
-    async def git_log(repo_path: str = ".", count: int = 10) -> str:
-        return await _git_log(repo_path, count)
-
-    @mcp.tool()
-    @require_approval(AuthLevel.READ_AUTO, tool_name="git_diff")
-    async def git_diff(repo_path: str = ".", staged: bool = False) -> str:
-        return await _git_diff(repo_path, staged)
-
-    @mcp.tool()
-    @require_approval(AuthLevel.WRITE_NOTIFY, tool_name="git_commit")
-    async def git_commit(
-        repo_path: str,
-        message: str,
-        files: list[str] | None = None,
-    ) -> str:
-        return await _git_commit(repo_path, message, files)
-
-    @mcp.tool()
-    @require_approval(AuthLevel.WRITE_NOTIFY, tool_name="git_push")
-    async def git_push(
-        repo_path: str = ".",
-        branch: str | None = None,
-    ) -> str:
-        return await _git_push(repo_path, force=False, branch=branch)
-
-    @mcp.tool()
-    @require_approval(AuthLevel.DESTRUCTIVE_APPROVAL, tool_name="git_push_force")
-    async def git_push_force(
-        repo_path: str = ".",
-        branch: str | None = None,
-    ) -> str:
-        return await _git_push(repo_path, force=True, branch=branch)
+    mcp.tool(name="git_status")(git_status)
+    mcp.tool(name="git_log")(git_log)
+    mcp.tool(name="git_diff")(git_diff)
+    mcp.tool(name="git_commit")(git_commit)
+    mcp.tool(name="git_push")(git_push)
+    mcp.tool(name="git_push_force")(git_push_force)
 
     logger.info("git_tools_registered", binary=_git_binary)

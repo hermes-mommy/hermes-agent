@@ -1,0 +1,21 @@
+# Guinevere Grafana Dashboard Provisioning — P8-007
+# Provisions dashboards from version-controlled JSON files.
+# ObsSpec §9: dashboard-as-code. Manual edits = drift.
+# disableDeletion: true — dashboards cannot be deleted via UI.
+# allowUiUpdates: false — dashboard JSON is source of truth.
+# P8-008 will create the actual dashboard JSON files.
+
+apiVersion: 1
+
+providers:
+  - name: "guinevere-dashboards"
+    orgId: 1
+    folder: "Guinevere"
+    folderUid: "guinevere"
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

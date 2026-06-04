@@ -5,7 +5,7 @@ SAFE state (HARD STOP) while preserving the ingestion pipeline.
 
 Architecture:
 - Injects a ``SafetyState`` getter callable (returns NORMAL or SAFE).
-- When SAFE: blocks 6 confrontation action types, allows 6 pipeline action types.
+- When SAFE: blocks 8 confrontation action types, allows 6 pipeline action types.
 - When NORMAL: all actions pass through.
 - Includes ``check_message_safety()`` for pattern-based detection of prohibited
   surveillance references in generated text (pre-LLM output guard).
@@ -35,6 +35,8 @@ _BLOCKED_ACTIONS: Final[frozenset[str]] = frozenset({
     "jealousy_escalation",
     "dependency_manipulation",
     "intimate_data_reference",
+    "humiliation",
+    "public_disclosure",
 })
 
 _ALLOWED_PIPELINE_ACTIONS: Final[frozenset[str]] = frozenset({
@@ -148,16 +150,16 @@ class SurveillanceSafeModeGuard:
                 blocked_action=None,
             )
 
-        # Unknown action type — pipeline safety: default to ALLOWED.
-        logger.info(
-            "confrontation_unknown_action_default_allowed",
+        # Unknown action type -- fail-closed: BLOCK in safe mode.
+        logger.warning(
+            "confrontation_unknown_action_blocked",
             action=action,
             safety_state=state.value,
         )
         return ConfrontationDecision(
-            allowed=True,
-            reason="Unknown action type — defaulting to ALLOWED for pipeline safety",
-            blocked_action=None,
+            allowed=False,
+            reason=f"Unknown action type -- blocked in safe mode (fail-closed)",
+            blocked_action=action,
         )
 
     def is_confrontation_blocked(self, action: str) -> bool:
@@ -175,7 +177,7 @@ class SurveillanceSafeModeGuard:
         """Return currently blocked action types.
 
         In NORMAL mode this returns an empty list.
-        In SAFE mode this returns all 6 blocked action types.
+        In SAFE mode this returns all 8 blocked action types.
         """
         if self._safety_state_getter() == SafetyState.NORMAL:
             return []

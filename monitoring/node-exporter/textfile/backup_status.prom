@@ -1,0 +1,5 @@
+# HELP guinevere_backup_last_success_timestamp_seconds Timestamp of last successful backup
+# TYPE guinevere_backup_last_success_timestamp_seconds gauge
+# NOTE: This file is updated by scripts/guinevere-backup-monitoring.sh (P8-020)
+# The textfile collector reads this on each scrape
+guinevere_backup_last_success_timestamp_seconds 0

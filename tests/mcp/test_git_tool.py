@@ -14,13 +14,19 @@ _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-from src.mcp.auth import ForbiddenOperationError  # noqa: E402
+from src.mcp.auth import AuthLevel, ForbiddenOperationError  # noqa: E402
 from src.mcp.tools.git_tool import (  # noqa: E402
     ConfigurationError,
     GitCommandError,
     GitToolError,
     _is_forbidden,
     _run_git,
+    git_commit,
+    git_diff,
+    git_log,
+    git_push,
+    git_push_force,
+    git_status,
     register_tools,
 )
 
@@ -202,34 +208,31 @@ class TestRunGit:
 
 
 class TestAuthLevels:
-    """Verify correct auth levels on each registered tool."""
+    """Verify correct auth levels on each registered tool function."""
 
     def test_git_status_is_read_auto(self) -> None:
         """``git_status`` → ``READ_AUTO``."""
-        mock_mcp = MagicMock()
-        register_tools(mock_mcp)
-        assert mock_mcp.tool.call_count == 6
+        assert git_status._auth_level is AuthLevel.READ_AUTO  # type: ignore[attr-defined]
 
     def test_git_log_is_read_auto(self) -> None:
         """``git_log`` → ``READ_AUTO``."""
-        # Verified by register_tools test below
-        pass
+        assert git_log._auth_level is AuthLevel.READ_AUTO  # type: ignore[attr-defined]
 
     def test_git_diff_is_read_auto(self) -> None:
         """``git_diff`` → ``READ_AUTO``."""
-        pass
+        assert git_diff._auth_level is AuthLevel.READ_AUTO  # type: ignore[attr-defined]
 
     def test_git_commit_is_write_notify(self) -> None:
         """``git_commit`` → ``WRITE_NOTIFY``."""
-        pass
+        assert git_commit._auth_level is AuthLevel.WRITE_NOTIFY  # type: ignore[attr-defined]
 
     def test_git_push_is_write_notify(self) -> None:
         """``git_push`` (normal) → ``WRITE_NOTIFY``."""
-        pass
+        assert git_push._auth_level is AuthLevel.WRITE_NOTIFY  # type: ignore[attr-defined]
 
     def test_git_push_force_is_destructive_approval(self) -> None:
         """``git_push_force`` → ``DESTRUCTIVE_APPROVAL``."""
-        pass
+        assert git_push_force._auth_level is AuthLevel.DESTRUCTIVE_APPROVAL  # type: ignore[attr-defined]
 
 
 # ============================================================================
@@ -573,14 +576,33 @@ class TestGitPush:
 class TestAuthLevelEnforcement:
     """Verify auth-level enforcement on the decorated tool functions."""
 
-    def test_force_push_main_blocked_in_decorated(self) -> None:
-        """Decorated git_push_force to main is blocked at auth level.
+    def test_force_push_main_blocked_in_decorated(
+        self, monkeypatch: Any
+    ) -> None:
+        """Force push to main is blocked even after DESTRUCTIVE_APPROVAL.
 
-        Since the auth decorator is applied via register_tools, we verify
-        the internal _git_push function correctly raises
-        ForbiddenOperationError.
+        The decorated ``git_push_force`` carries DESTRUCTIVE_APPROVAL,
+        and the internal ``_git_push_impl`` raises
+        ``ForbiddenOperationError`` when targeting main/master.
+        We mock the approval to resolve instantly so the inner check fires.
         """
-        pass
+        assert git_push_force._auth_level is AuthLevel.DESTRUCTIVE_APPROVAL  # type: ignore[attr-defined]
+
+        # Mock the approval to return True instantly (approved).
+        async def mock_approval(*args: Any, **kwargs: Any) -> bool:
+            return True
+
+        monkeypatch.setattr("src.mcp.auth._wait_for_approval", mock_approval)
+        monkeypatch.setattr(
+            "src.mcp.auth._send_discord_notification",
+            AsyncMock(),
+        )
+
+        with pytest.raises(
+            ForbiddenOperationError,
+            match="Force push to 'main' branch is forbidden",
+        ):
+            asyncio.run(git_push_force(repo_path=".", branch="main"))
 
     def test_forbidden_operation_error_is_auth_import(self) -> None:
         """ForbiddenOperationError is imported from src.mcp.auth."""
@@ -663,3 +685,51 @@ class TestForbiddenPatternsEdgeCases:
     def test_non_push_command_with_force(self) -> None:
         """--force on non-push command is not caught."""
         assert not _is_forbidden(["fetch", "--force"], None)
+
+    def test_force_with_lease_main_is_forbidden(self) -> None:
+        """--force-with-lease to main is forbidden."""
+        assert _is_forbidden(
+            ["push", "--force-with-lease", "origin", "main"], None
+        )
+
+    def test_force_with_lease_feature_branch_ok(self) -> None:
+        """--force-with-lease to feature branch is allowed."""
+        assert not _is_forbidden(
+            ["push", "--force-with-lease", "origin", "feature/x"], None
+        )
+
+    def test_case_insensitive_main_MAIN(self) -> None:
+        """Uppercase MAIN is still detected as forbidden."""
+        assert _is_forbidden(
+            ["push", "--force", "origin", "MAIN"], None
+        )
+
+    def test_case_insensitive_master_Master(self) -> None:
+        """Mixed-case Master is still detected as forbidden."""
+        assert _is_forbidden(
+            ["push", "-f", "origin", "Master"], None
+        )
+
+    def test_refspec_head_refs_heads_main(self) -> None:
+        """HEAD:refs/heads/main refspec is forbidden."""
+        assert _is_forbidden(
+            ["push", "--force", "origin", "HEAD:refs/heads/main"], None
+        )
+
+    def test_refspec_feature_main(self) -> None:
+        """feature:main refspec destination is forbidden."""
+        assert _is_forbidden(
+            ["push", "--force", "origin", "feature:main"], None
+        )
+
+    def test_refspec_feature_branch_ok(self) -> None:
+        """feature:dev refspec destination is allowed."""
+        assert not _is_forbidden(
+            ["push", "--force", "origin", "feature:dev"], None
+        )
+
+    def test_branch_param_case_insensitive(self) -> None:
+        """branch='MAIN' parameter is still forbidden."""
+        assert _is_forbidden(
+            ["push", "--force", "origin"], "MAIN"
+        )

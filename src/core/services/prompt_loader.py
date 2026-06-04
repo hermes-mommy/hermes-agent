@@ -77,7 +77,7 @@ def get_system_prompt_with_context(
         return "\n".join(context_parts)
 
     context_parts = [base_prompt]
-    memory_section = "\n\n## Recalled Memories\n"
+    memory_section = "\n\n[RECENT MEMORIES]\n"
 
     total_tokens = 0
     included = 0
@@ -85,7 +85,10 @@ def get_system_prompt_with_context(
         safe_content = str(r.get("safe_content", ""))
         if not safe_content:
             continue
-        estimated = len(safe_content) // CHARS_PER_TOKEN
+        classification = str(r.get("classification", "Restricted"))
+        # Compact format: (Classification) content
+        line = f"- ({classification}) {safe_content}"
+        estimated = len(line) // CHARS_PER_TOKEN
         if total_tokens + estimated > token_budget:
             logger.info(
                 "prompt_context_truncated",
@@ -99,8 +102,9 @@ def get_system_prompt_with_context(
             break
         total_tokens += estimated
         included += 1
-        memory_section += f"{included}. {safe_content}\n"
+        memory_section += line + "\n"
 
+    memory_section += "[END MEMORIES]"
     context_parts.append(memory_section)
     context_parts.append(f"\n## Current Mood: {mood}")
 

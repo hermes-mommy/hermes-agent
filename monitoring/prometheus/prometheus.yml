@@ -1,0 +1,61 @@
+# Guinevere Prometheus Configuration — P8-005
+# All scrape targets for Guinevere monitoring stack.
+# Binding decisions: 15s interval per ObsSpec §4, exporters use Docker service names.
+# FastAPI uses host.docker.internal (prometheus runs in Docker, host metrics on host).
+# No high-cardinality labels. guinevere_ prefix for custom metrics.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+
+rule_files:
+  - "/etc/prometheus/rules/*.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - "alertmanager:9093"
+
+scrape_configs:
+  # Job 1: Prometheus self-scrape
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Job 2: Node exporter — host CPU/mem/disk/network metrics
+  - job_name: "node"
+    static_configs:
+      - targets: ["node-exporter:9100"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: "guinevere-vps"
+
+  # Job 3: PostgreSQL exporter — connection/query/replication metrics
+  - job_name: "postgresql"
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  # Job 4: Redis exporter — memory/keys/hit-rate/eviction metrics
+  - job_name: "redis"
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+
+  # Job 5: Guinevere FastAPI /metrics endpoint — custom application metrics
+  # Uses host.docker.internal because FastAPI runs on the host, not in Docker.
+  - job_name: "fastapi"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["host.docker.internal:8000"]
+
+  # Job 6: Loki self-scrape — log aggregation health
+  - job_name: "loki"
+    static_configs:
+      - targets: ["loki:3100"]
+
+  # Job 7: Alertmanager self-scrape — alert delivery health
+  - job_name: "alertmanager"
+    static_configs:
+      - targets: ["alertmanager:9093"]

@@ -8,7 +8,7 @@ Redis DB 5.
 from __future__ import annotations
 
 import os
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import httpx
@@ -74,10 +74,19 @@ def _get_redis_client() -> redis.Redis:
 
 
 def _record_cost(client: redis.Redis) -> None:
-    """Increment the daily cost counter in Redis."""
+    """Increment the daily cost counter in Redis.
+
+    Sets ``EXPIREAT`` to end-of-day so keys auto-rotate and do not
+    accumulate indefinitely.
+    """
     today = date.today().isoformat()
     key = f"{_REDIS_KEY_PREFIX}:{today}"
     client.incrbyfloat(key, _COST_PER_SEARCH)
+    # Expire at end of day (23:59:59 local time) — 86400s max TTL
+    end_of_day = datetime.combine(
+        date.today() + timedelta(days=1), datetime.min.time()
+    )
+    client.expireat(key, int(end_of_day.timestamp()))
     logger.debug(
         "brave_search_cost_recorded", key=key, cost=_COST_PER_SEARCH
     )

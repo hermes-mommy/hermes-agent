@@ -1,0 +1,32 @@
+# Guinevere Backup Alert Rules — P8-020
+# Monitors backup freshness via textfile collector metric.
+# Severity: SEV2 — Warning. Backup older than 26h triggers alert.
+# ADR-025: Daily backup is BLOCKING. Restore drill monthly.
+# ObsSpec Appendix B: GuinevereBackupStale alert.
+
+groups:
+  - name: guinevere-backup
+    rules:
+      - alert: GuinevereBackupStale
+        expr: time() - guinevere_backup_last_success_timestamp > 93600
+        for: 5m
+        labels:
+          severity: "warning"
+          sev_level: "SEV2"
+          component: "backup"
+        annotations:
+          summary: "Backup is stale — last success >26 hours ago"
+          description: "The last successful backup was more than 26 hours ago ({{ $value }}s). Backup must run daily per ADR-025."
+          runbook: "docs/40-operations/43-DisasterRecoveryPlan_v1.0.md"
+
+      - alert: GuinevereBackupMissing
+        expr: guinevere_backup_last_success_timestamp == 0
+        for: 5m
+        labels:
+          severity: "warning"
+          sev_level: "SEV2"
+          component: "backup"
+        annotations:
+          summary: "No backup has ever been recorded"
+          description: "Backup sentinel has never been written (timestamp = 0). Either no backup has run or sentinel file is missing."
+          runbook: "docs/40-operations/43-DisasterRecoveryPlan_v1.0.md"

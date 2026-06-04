@@ -98,9 +98,6 @@ _SAMPLE_DESTRUCTIVE: list[tuple[str, str]] = [
     ("github", "delete_repo"),
     ("obscura_cdp", "file_upload"),
     ("git", "force_push"),
-    ("postgres", "insert"),
-    ("postgres", "update"),
-    ("postgres", "delete_row"),
     ("redis", "del"),
     ("redis", "expire"),
     ("redis", "persist"),
@@ -114,6 +111,9 @@ _SAMPLE_FORBIDDEN: list[tuple[str, str]] = [
     ("git", "force_push_main"),
     ("postgres", "drop"),
     ("postgres", "truncate"),
+    ("postgres", "insert"),
+    ("postgres", "update"),
+    ("postgres", "delete_row"),
     ("redis", "flushdb"),
     ("redis", "flushall"),
     ("redis", "config"),
@@ -123,6 +123,7 @@ _SAMPLE_FORBIDDEN: list[tuple[str, str]] = [
     ("shell", "rm_rf_root"),
     ("shell", "sudo_rm_rf"),
     ("docker", "system_prune"),
+    ("docker", "rm_all"),
 ]
 
 

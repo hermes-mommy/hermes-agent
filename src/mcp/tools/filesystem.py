@@ -9,6 +9,10 @@ Path safety is enforced by ``validate_path``, which:
 2. Resolves symlinks with ``Path.resolve()``.
 3. Checks the resolved path against a frozen whitelist using
    separator-enforced prefix matching.
+
+Aizanta isolation is enforced by ``_check_path_isolation``, which
+rejects paths under protected Aizanta directories even if they
+appear in the whitelist.
 """
 
 from __future__ import annotations
@@ -16,7 +20,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 import structlog
 
@@ -62,6 +66,53 @@ class FilesystemConfig:
         else:
             paths = _DEFAULT_ALLOWED
         return cls(allowed_paths=frozenset(paths))
+
+
+# ---------------------------------------------------------------------------
+# Module-level default config — built once at import time
+# ---------------------------------------------------------------------------
+
+_DEFAULT_CONFIG: FilesystemConfig = FilesystemConfig.from_env()
+
+# ---------------------------------------------------------------------------
+# Aizanta isolation — blocked path prefixes
+# ---------------------------------------------------------------------------
+
+_BLOCKED_PATH_PREFIXES: Final[tuple[str, ...]] = (
+    "/home/aizanta",
+    "/etc/aizanta",
+    "/var/lib/aizanta",
+    "/opt/aizanta",
+)
+
+
+def _check_path_isolation(resolved_path: Path) -> None:
+    """Raise ``PathForbiddenError`` if *resolved_path* starts with a blocked prefix.
+
+    This check runs after the whitelist check — even if a path appears
+    in the configured allowed paths, it is rejected if it falls under
+    a protected Aizanta directory.
+    """
+    for blocked in _BLOCKED_PATH_PREFIXES:
+        blocked_resolved = Path(blocked).resolve()
+        if resolved_path == blocked_resolved:
+            logger.warning(
+                "path_blocked_isolation",
+                path=str(resolved_path),
+                blocked=blocked,
+            )
+            raise PathForbiddenError(
+                f"Path is in blocked Aizanta prefix: {resolved_path}"
+            )
+        if str(resolved_path).startswith(str(blocked_resolved) + os.sep):
+            logger.warning(
+                "path_blocked_isolation",
+                path=str(resolved_path),
+                blocked=blocked,
+            )
+            raise PathForbiddenError(
+                f"Path is in blocked Aizanta prefix: {resolved_path}"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -111,14 +162,10 @@ def validate_path(path: str, allowed_paths: frozenset[str]) -> Path:
     for allowed in allowed_paths:
         allowed_resolved = Path(allowed).resolve()
         if resolved == allowed_resolved:
-            logger.debug(
-                "path_validated_exact", path=path, allowed=allowed
-            )
+            logger.debug("path_validated_exact", path=path, allowed=allowed)
             return resolved
         if str(resolved).startswith(str(allowed_resolved) + os.sep):
-            logger.debug(
-                "path_validated_prefix", path=path, allowed=allowed
-            )
+            logger.debug("path_validated_prefix", path=path, allowed=allowed)
             return resolved
 
     logger.warning(
@@ -138,32 +185,48 @@ def validate_path(path: str, allowed_paths: frozenset[str]) -> Path:
 # ---------------------------------------------------------------------------
 
 
-async def fs_read(path: str, _config: FilesystemConfig) -> str:
+@require_approval(AuthLevel.READ_AUTO)
+async def fs_read(
+    path: str, _config: FilesystemConfig = _DEFAULT_CONFIG
+) -> str:
     """Read file contents. Auth: READ_AUTO."""
     validated = validate_path(path, _config.allowed_paths)
+    _check_path_isolation(validated)
     logger.info("fs_read", path=str(validated))
     return validated.read_text(encoding="utf-8")
 
 
-async def fs_write(path: str, content: str, _config: FilesystemConfig) -> dict[str, str]:
+@require_approval(AuthLevel.WRITE_NOTIFY)
+async def fs_write(
+    path: str, content: str, _config: FilesystemConfig = _DEFAULT_CONFIG
+) -> dict[str, str]:
     """Write file contents. Auth: WRITE_NOTIFY."""
     validated = validate_path(path, _config.allowed_paths)
+    _check_path_isolation(validated)
     logger.info("fs_write", path=str(validated))
     validated.write_text(content, encoding="utf-8")
     return {"status": "ok", "path": str(validated)}
 
 
-async def fs_delete(path: str, _config: FilesystemConfig) -> dict[str, str]:
+@require_approval(AuthLevel.DESTRUCTIVE_APPROVAL)
+async def fs_delete(
+    path: str, _config: FilesystemConfig = _DEFAULT_CONFIG
+) -> dict[str, str]:
     """Delete a file. Auth: DESTRUCTIVE_APPROVAL."""
     validated = validate_path(path, _config.allowed_paths)
+    _check_path_isolation(validated)
     logger.info("fs_delete", path=str(validated))
     validated.unlink(missing_ok=False)
     return {"status": "deleted", "path": str(validated)}
 
 
-async def fs_list(path: str, _config: FilesystemConfig) -> list[str]:
+@require_approval(AuthLevel.READ_AUTO)
+async def fs_list(
+    path: str, _config: FilesystemConfig = _DEFAULT_CONFIG
+) -> list[str]:
     """List directory contents. Auth: READ_AUTO."""
     validated = validate_path(path, _config.allowed_paths)
+    _check_path_isolation(validated)
     logger.info("fs_list", path=str(validated))
     return sorted(p.name for p in validated.iterdir())
 
@@ -177,34 +240,17 @@ def register_tools(mcp: FastMCP) -> None:
     """Register filesystem tools on the MCP server.
 
     Adds four tools: ``fs_read``, ``fs_write``, ``fs_delete``, and ``fs_list``,
-    each decorated with the appropriate ``AuthLevel`` gate.
+    each decorated at module level with the appropriate ``AuthLevel`` gate.
 
-    The ``FilesystemConfig`` is built once from the environment at
-    registration time and frozen for the server's lifetime.
+    The ``FilesystemConfig`` is built once at module import time
+    and frozen for the server's lifetime.
     """
-    config = FilesystemConfig.from_env()
-
-    @mcp.tool()
-    @require_approval(AuthLevel.READ_AUTO, tool_name="fs_read")
-    async def _fs_read(path: str) -> str:
-        return await fs_read(path, config)
-
-    @mcp.tool()
-    @require_approval(AuthLevel.WRITE_NOTIFY, tool_name="fs_write")
-    async def _fs_write(path: str, content: str) -> dict[str, str]:
-        return await fs_write(path, content, config)
-
-    @mcp.tool()
-    @require_approval(AuthLevel.DESTRUCTIVE_APPROVAL, tool_name="fs_delete")
-    async def _fs_delete(path: str) -> dict[str, str]:
-        return await fs_delete(path, config)
-
-    @mcp.tool()
-    @require_approval(AuthLevel.READ_AUTO, tool_name="fs_list")
-    async def _fs_list(path: str) -> list[str]:
-        return await fs_list(path, config)
+    mcp.tool()(fs_read)
+    mcp.tool()(fs_write)
+    mcp.tool()(fs_delete)
+    mcp.tool()(fs_list)
 
     logger.info(
         "filesystem_tools_registered",
-        allowed_paths=sorted(config.allowed_paths),
+        allowed_paths=sorted(_DEFAULT_CONFIG.allowed_paths),
     )

@@ -10,7 +10,7 @@ WorkingDirectory=/home/guinevere/code/guinevere
 Environment=PYTHONPATH=/home/guinevere/code/guinevere
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=VIRTUAL_ENV=/home/guinevere/code/guinevere/.venv
-Environment=REDIS_PASSWORD=%E/REDIS_PASSWORD
+EnvironmentFile=/home/guinevere/code/guinevere/.env.scheduler
 ExecStart=/home/guinevere/code/guinevere/.venv/bin/python -m src.loops.scheduler
 Restart=always
 RestartSec=10

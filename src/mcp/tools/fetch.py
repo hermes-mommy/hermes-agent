@@ -95,6 +95,7 @@ def _extract_title(html: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+@require_approval(AuthLevel.READ_AUTO, tool_name="fetch_url")
 async def fetch_url(url: str, format: str = "markdown") -> dict[str, str]:
     """Fetch a URL and return content as Markdown or plain text.
 
@@ -200,14 +201,4 @@ async def fetch_url(url: str, format: str = "markdown") -> dict[str, str]:
 
 def register_tools(mcp: FastMCP) -> None:
     """Register the ``fetch_url`` tool with the FastMCP server."""
-
-    @mcp.tool(name="fetch_url")
-    @require_approval(AuthLevel.READ_AUTO, tool_name="fetch_url")
-    async def _fetch_url_tool(url: str, format: str = "markdown") -> dict[str, str]:
-        """Fetch a URL and return its content as Markdown or plain text.
-
-        Args:
-            url: The URL to fetch (http:// or https:// only).
-            format: Output format — 'markdown' (default) or 'text'.
-        """
-        return await fetch_url(url, format=format)
+    mcp.tool(name="fetch_url")(fetch_url)

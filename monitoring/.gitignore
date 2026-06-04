@@ -1,0 +1,4 @@
+# Monitoring stack gitignore
+.env
+*.enc
+!*.enc.example

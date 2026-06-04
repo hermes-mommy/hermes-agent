@@ -9,6 +9,7 @@ import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -33,15 +34,17 @@ def client() -> TestClient:
     """FastAPI TestClient with the surveillance router mounted.
 
     HMAC auth is overridden via dependency injection so these tests focus
-    on payload validation and response shape.  Auth is covered by
-    ``test_auth.py``.
+    on payload validation and response shape. Auth is covered by
+    ``test_auth.py``. The Redis buffer is mocked to avoid real connections.
     """
     app = FastAPI()
     app.dependency_overrides[verify_hmac] = lambda: HMACVerification(
         nonce="test-nonce", timestamp="1234567890"
     )
     app.include_router(surveillance_router)
-    return TestClient(app)
+    with patch("src.surveillance.router._buffer") as mock_buffer:
+        mock_buffer.push_event = AsyncMock(return_value=True)
+        yield TestClient(app)
 
 
 # ---------------------------------------------------------------------------
@@ -208,3 +211,59 @@ class TestResponseShape:
         response = client.post("/surveillance/events", json=_valid_payload())
         data = response.json()
         assert set(data.keys()) == {"status", "event_id", "received_at"}
+
+
+# ---------------------------------------------------------------------------
+# Buffer push tests (C1 - Redis DB2 integration)
+# ---------------------------------------------------------------------------
+
+
+class TestBufferPush:
+    """Verify that validated events are pushed to the Redis buffer."""
+
+    def test_push_event_called_with_event_data(self, client: TestClient) -> None:
+        """push_event is invoked with the serialized event dict after HMAC validation."""
+        with patch("src.surveillance.router._buffer") as mock_buffer:
+            mock_buffer.push_event = AsyncMock(return_value=True)
+            response = client.post(
+                "/surveillance/events", json=_valid_payload()
+            )
+            assert response.status_code == 202
+            mock_buffer.push_event.assert_called_once()
+            event_data = mock_buffer.push_event.call_args[0][0]
+            assert event_data["device_id"] == "test-device-001"
+            assert event_data["event_type"] == "app_usage"
+            assert "occurred_at" in event_data
+            assert "payload" in event_data
+
+    def test_202_returned_when_push_raises(self, client: TestClient) -> None:
+        """The 202 response is returned even if buffer push raises an exception."""
+        with patch("src.surveillance.router._buffer") as mock_buffer:
+            mock_buffer.push_event = AsyncMock(
+                side_effect=RuntimeError("Redis connection lost")
+            )
+            response = client.post(
+                "/surveillance/events", json=_valid_payload()
+            )
+            assert response.status_code == 202
+            data = response.json()
+            assert data["status"] == "accepted"
+            assert "event_id" in data
+
+    def test_push_event_called_for_every_valid_event(
+        self, client: TestClient, event_type: str
+    ) -> None:
+        """Parametrized: push_event is called for each valid event type."""
+        with patch("src.surveillance.router._buffer") as mock_buffer:
+            mock_buffer.push_event = AsyncMock(return_value=True)
+            payload = _valid_payload(event_type=event_type)
+            response = client.post("/surveillance/events", json=payload)
+            assert response.status_code == 202
+            mock_buffer.push_event.assert_called_once()
+            event_data = mock_buffer.push_event.call_args[0][0]
+            assert event_data["event_type"] == event_type
+
+
+pytest.mark.parametrize("event_type", _VALID_EVENT_TYPES)(
+    TestBufferPush.test_push_event_called_for_every_valid_event
+)

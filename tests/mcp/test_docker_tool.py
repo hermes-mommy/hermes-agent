@@ -289,10 +289,22 @@ class TestDockerLogs:
 
     def test_returns_log_output(self) -> None:
         """Returns stdout from docker logs."""
-        fake = _ok_result(stdout="[INFO] Server started\n[INFO] Listening on :8000")
+        inspect_ok = _ok_result(stdout=_inspect_json(name="guinevere-agent"))
+        logs_ok = _ok_result(
+            stdout="[INFO] Server started\n[INFO] Listening on :8000"
+        )
+
+        async def _side_effect(*args: Any, **kwargs: Any) -> dict[str, object]:
+            joined = " ".join(args[0])
+            if "inspect" in joined:
+                return inspect_ok
+            return logs_ok
 
         async def _run() -> None:
-            with _patch_run_docker(fake):
+            with patch(
+                "src.mcp.tools.docker_tool._run_docker",
+                side_effect=_side_effect,
+            ):
                 result = await docker_logs("guinevere-agent")
             assert "Server started" in result
 
@@ -301,9 +313,13 @@ class TestDockerLogs:
     def test_uses_tail_flag(self) -> None:
         """docker logs is called with --tail N."""
         captured: list[str] = []
+        inspect_ok = _ok_result(stdout=_inspect_json(name="guinevere-agent"))
 
         async def _side_effect(*args: Any, **kwargs: Any) -> dict[str, object]:
-            captured.append(" ".join(args[0]))
+            joined = " ".join(args[0])
+            captured.append(joined)
+            if "inspect" in joined:
+                return inspect_ok
             return _ok_result(stdout="ok")
 
         async def _run() -> None:
@@ -312,7 +328,8 @@ class TestDockerLogs:
                 side_effect=_side_effect,
             ):
                 await docker_logs("guinevere-agent", tail=50)
-            assert "--tail 50" in captured[0]
+            logs_calls = [c for c in captured if "--tail 50" in c]
+            assert len(logs_calls) >= 1
 
         asyncio.run(_run())
 
@@ -327,7 +344,8 @@ class TestDockerLogs:
 
     def test_non_zero_exit_raises(self) -> None:
         """docker logs failure raises DockerContainerError."""
-        fake = {
+        inspect_ok = _ok_result(stdout=_inspect_json(name="guinevere-agent"))
+        logs_fail = {
             "exit_code": 1,
             "stdout": "",
             "stderr": "No such container",
@@ -335,8 +353,17 @@ class TestDockerLogs:
             "duration_ms": 5.0,
         }
 
+        async def _side_effect(*args: Any, **kwargs: Any) -> dict[str, object]:
+            joined = " ".join(args[0])
+            if "inspect" in joined:
+                return inspect_ok
+            return logs_fail
+
         async def _run() -> None:
-            with _patch_run_docker(fake):
+            with patch(
+                "src.mcp.tools.docker_tool._run_docker",
+                side_effect=_side_effect,
+            ):
                 with pytest.raises(DockerContainerError, match="Failed to get logs"):
                     await docker_logs("guinevere-agent")
 
@@ -578,6 +605,8 @@ class TestDockerRm:
             with patch(
                 "src.mcp.tools.docker_tool._run_docker",
                 side_effect=_side_effect,
+            ), patch(
+                "src.mcp.auth._wait_for_approval", return_value=True
             ):
                 result = await docker_rm("guinevere-agent")
             assert result["status"] == "ok"
@@ -601,6 +630,8 @@ class TestDockerRm:
             with patch(
                 "src.mcp.tools.docker_tool._run_docker",
                 side_effect=_side_effect,
+            ), patch(
+                "src.mcp.auth._wait_for_approval", return_value=True
             ):
                 await docker_rm("guinevere-agent", force=True)
             # at least one call should contain "-f"
@@ -622,6 +653,8 @@ class TestDockerRm:
             with patch(
                 "src.mcp.tools.docker_tool._run_docker",
                 side_effect=_side_effect,
+            ), patch(
+                "src.mcp.auth._wait_for_approval", return_value=True
             ):
                 with pytest.raises(DockerNetworkError, match="guinevere-net"):
                     await docker_rm("aizanta-app")
@@ -642,7 +675,9 @@ class TestDockerRmi:
         ok = _ok_result(stdout="Untagged: guinevere:old")
 
         async def _run() -> None:
-            with _patch_run_docker(ok):
+            with _patch_run_docker(ok), patch(
+                "src.mcp.auth._wait_for_approval", return_value=True
+            ):
                 result = await docker_rmi("guinevere:old")
             assert result["status"] == "ok"
             assert result["image"] == "guinevere:old"
@@ -661,6 +696,8 @@ class TestDockerRmi:
             with patch(
                 "src.mcp.tools.docker_tool._run_docker",
                 side_effect=_side_effect,
+            ), patch(
+                "src.mcp.auth._wait_for_approval", return_value=True
             ):
                 await docker_rmi("guinevere:old", force=True)
             rm_calls = [c for c in captured if "rmi" in c and "-f" in c]
@@ -672,8 +709,35 @@ class TestDockerRmi:
         """Image name with shell chars raises DockerContainerError."""
 
         async def _run() -> None:
-            with pytest.raises(DockerContainerError, match="Invalid image name"):
-                await docker_rmi("good;bad")
+            with patch(
+                "src.mcp.auth._wait_for_approval", return_value=True
+            ):
+                with pytest.raises(DockerContainerError, match="Invalid image name"):
+                    await docker_rmi("good;bad")
+
+        asyncio.run(_run())
+    def test_non_guinevere_image_rejected(self) -> None:
+        """Non-guinevere image names are rejected with DockerError."""
+
+        async def _run() -> None:
+            with patch(
+                "src.mcp.auth._wait_for_approval", return_value=True
+            ):
+                with pytest.raises(DockerError, match="image_not_guinevere"):
+                    await docker_rmi("postgres:16")
+
+        asyncio.run(_run())
+
+    def test_guinevere_image_accepted(self) -> None:
+        """Guinevere-prefixed image name passes the prefix check."""
+        ok = _ok_result(stdout="Untagged: guinevere:latest")
+
+        async def _run() -> None:
+            with _patch_run_docker(ok), patch(
+                "src.mcp.auth._wait_for_approval", return_value=True
+            ):
+                result = await docker_rmi("guinevere:latest")
+            assert result["status"] == "ok"
 
         asyncio.run(_run())
 
@@ -690,7 +754,7 @@ class TestDockerSystemPrune:
         """Calling docker_system_prune directly raises ForbiddenOperationError."""
 
         async def _run() -> None:
-            with pytest.raises(ForbiddenOperationError, match="permanently forbidden"):
+            with pytest.raises(ForbiddenOperationError, match="is forbidden"):
                 await docker_system_prune()
 
         asyncio.run(_run())
@@ -708,7 +772,7 @@ class TestDockerRmAll:
         """Calling docker_rm_all directly raises ForbiddenOperationError."""
 
         async def _run() -> None:
-            with pytest.raises(ForbiddenOperationError, match="permanently forbidden"):
+            with pytest.raises(ForbiddenOperationError, match="is forbidden"):
                 await docker_rm_all()
 
         asyncio.run(_run())
@@ -872,17 +936,17 @@ class TestRegisterTools:
         register_tools(fake_mcp)
 
         expected = {
-            "docker_ps_mcp",
-            "docker_logs_mcp",
-            "docker_inspect_mcp",
-            "docker_images_mcp",
-            "docker_start_mcp",
-            "docker_stop_mcp",
-            "docker_restart_mcp",
-            "docker_rm_mcp",
-            "docker_rmi_mcp",
-            "docker_system_prune_mcp",
-            "docker_rm_all_mcp",
+            "docker_ps",
+            "docker_logs",
+            "docker_inspect",
+            "docker_images",
+            "docker_start",
+            "docker_stop",
+            "docker_restart",
+            "docker_rm",
+            "docker_rmi",
+            "docker_system_prune",
+            "docker_rm_all",
         }
         assert len(registered) == 11
         assert set(registered) == expected
@@ -901,10 +965,10 @@ class TestRegisterTools:
 
         fake_mcp: Any = FakeMCP()
         register_tools(fake_mcp)
-        assert "docker_ps_mcp" in registered
-        assert "docker_logs_mcp" in registered
-        assert "docker_inspect_mcp" in registered
-        assert "docker_images_mcp" in registered
+        assert "docker_ps" in registered
+        assert "docker_logs" in registered
+        assert "docker_inspect" in registered
+        assert "docker_images" in registered
 
     def test_write_notify_tools_registered(self) -> None:
         """WRITE_NOTIFY tools are registered."""
@@ -920,9 +984,9 @@ class TestRegisterTools:
 
         fake_mcp: Any = FakeMCP()
         register_tools(fake_mcp)
-        assert "docker_start_mcp" in registered
-        assert "docker_stop_mcp" in registered
-        assert "docker_restart_mcp" in registered
+        assert "docker_start" in registered
+        assert "docker_stop" in registered
+        assert "docker_restart" in registered
 
     def test_destructive_approval_tools_registered(self) -> None:
         """DESTRUCTIVE_APPROVAL tools are registered."""
@@ -938,8 +1002,8 @@ class TestRegisterTools:
 
         fake_mcp: Any = FakeMCP()
         register_tools(fake_mcp)
-        assert "docker_rm_mcp" in registered
-        assert "docker_rmi_mcp" in registered
+        assert "docker_rm" in registered
+        assert "docker_rmi" in registered
 
     def test_forbidden_tools_registered(self) -> None:
         """FORBIDDEN tools are registered."""
@@ -955,8 +1019,8 @@ class TestRegisterTools:
 
         fake_mcp: Any = FakeMCP()
         register_tools(fake_mcp)
-        assert "docker_system_prune_mcp" in registered
-        assert "docker_rm_all_mcp" in registered
+        assert "docker_system_prune" in registered
+        assert "docker_rm_all" in registered
 
 
 # ============================================================================
@@ -1035,9 +1099,45 @@ class TestNetworkIsolation:
 
         asyncio.run(_run())
 
+    def test_logs_rejects_non_guinevere(self) -> None:
+        """docker_logs rejects non-guinevere containers."""
+        inspect_non = _ok_result(
+            stdout=_inspect_json(name="aizanta-app", networks=["bridge"])
+        )
 
-# ============================================================================
-# TestAuthLevelMapping — verify each function's auth level contract
+        async def _side_effect(*args: Any, **kwargs: Any) -> dict[str, object]:
+            return inspect_non
+
+        async def _run() -> None:
+            with patch(
+                "src.mcp.tools.docker_tool._run_docker",
+                side_effect=_side_effect,
+            ):
+                with pytest.raises(DockerNetworkError, match="guinevere-net"):
+                    await docker_logs("aizanta-app")
+
+        asyncio.run(_run())
+
+    def test_inspect_rejects_non_guinevere(self) -> None:
+        """docker_inspect rejects non-guinevere containers."""
+        inspect_non = _ok_result(
+            stdout=_inspect_json(name="aizanta-app", networks=["bridge"])
+        )
+
+        async def _side_effect(*args: Any, **kwargs: Any) -> dict[str, object]:
+            return inspect_non
+
+        async def _run() -> None:
+            with patch(
+                "src.mcp.tools.docker_tool._run_docker",
+                side_effect=_side_effect,
+            ):
+                with pytest.raises(DockerNetworkError, match="guinevere-net"):
+                    await docker_inspect("aizanta-app")
+
+        asyncio.run(_run())
+
+
 # ============================================================================
 
 
@@ -1063,8 +1163,8 @@ class TestAuthLevelMapping:
 
         fake_mcp: Any = FakeMCP()
         register_tools(fake_mcp)
-        # Find docker_ps_mcp wrapper
-        found = [f for name, f in registered if name == "docker_ps_mcp"]
+        # Find docker_ps in registered names (no _mcp suffix).
+        found = [f for name, f in registered if name == "docker_ps"]
         assert len(found) == 1
         # We can't easily introspect the auth level from the decorator,
         # but we can verify the function is callable and decorated.
@@ -1084,7 +1184,7 @@ class TestAuthLevelMapping:
 
         fake_mcp: Any = FakeMCP()
         register_tools(fake_mcp)
-        found = [f for name, f in registered if name == "docker_system_prune_mcp"]
+        found = [f for name, f in registered if name == "docker_system_prune"]
         assert len(found) == 1
         assert callable(found[0])
 

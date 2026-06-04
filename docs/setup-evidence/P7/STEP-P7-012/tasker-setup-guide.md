@@ -1,4 +1,4 @@
-# STEP-P7-012 — Android Tasker Setup Guide for Guinevere Surveillance
+# STEP-P7-012 - Android Tasker Setup Guide for Guinevere Surveillance
 
 ## Overview
 
@@ -168,7 +168,7 @@ After setting all three variables, confirm they are correct:
 
 Each surveillance data type has its own Tasker profile. The profiles are created in subsequent steps (P7-013 through P7-016). This section describes what each profile does.
 
-### 4.1 P7-013 — App Usage Profile
+### 4.1 P7-013 - App Usage Profile
 
 | Field | Value |
 |---|---|
@@ -179,7 +179,7 @@ Each surveillance data type has its own Tasker profile. The profiles are created
 
 The profile uses Android's UsageStatsManager (via Tasker's usage access permission) to determine which app is in the foreground and for how long. It fires on a periodic interval and reports accumulated usage.
 
-### 4.2 P7-014 — Location Profile
+### 4.2 P7-014 - Location Profile
 
 | Field | Value |
 |---|---|
@@ -190,7 +190,7 @@ The profile uses Android's UsageStatsManager (via Tasker's usage access permissi
 
 The profile queries GPS when triggered. For geofencing, it uses Tasker's Location event with enter/exit triggers around defined coordinates. Coordinates are configured per-user based on consent boundaries.
 
-### 4.3 P7-015 — Notification Profile
+### 4.3 P7-015 - Notification Profile
 
 | Field | Value |
 |---|---|
@@ -201,7 +201,7 @@ The profile queries GPS when triggered. For geofencing, it uses Tasker's Locatio
 
 AutoNotification intercepts incoming notifications and passes their content to a Tasker task. The task packages the notification fields into a JSON payload and sends it to the API.
 
-### 4.4 P7-016 — Clipboard Profile
+### 4.4 P7-016 - Clipboard Profile
 
 | Field | Value |
 |---|---|
@@ -223,12 +223,10 @@ Every event sent to the Guinevere API must be signed with HMAC-SHA256. The signi
 The signature covers the following canonical string:
 
 ```
-POST
-/surveillance/events
-{timestamp}
-{nonce}
-{request_body}
+POST:/surveillance/events:{timestamp}:{nonce}:{request_body}
 ```
+
+The signing string uses colon (:) separators between all five components: HTTP method, path, timestamp, nonce, and request body. No newlines or spaces between components.
 
 Where:
 - `{timestamp}` is the Unix epoch in seconds (`X-Timestamp` header)
@@ -386,7 +384,7 @@ If the API returns 401 with a signature mismatch error:
 
 1. Verify `%HMAC_SECRET` is correct (re-decrypt from SOPS and re-enter)
 2. Check that the timestamp is in Unix epoch seconds (not milliseconds)
-3. Confirm the canonical signing string matches exactly: `POST\n/surveillance/events\n{timestamp}\n{nonce}\n{body}`
+3. Confirm the canonical signing string matches exactly: `POST:/surveillance/events:{timestamp}:{nonce}:{body}`
 4. Verify the body JSON is identical to what is transmitted (no extra whitespace or reordering)
 5. Check that the HMAC output is hex-encoded (lowercase), not base64
 

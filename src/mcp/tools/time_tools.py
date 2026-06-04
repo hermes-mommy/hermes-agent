@@ -97,6 +97,7 @@ def _humanise_delta(total_seconds: int) -> str:
 # ---------------------------------------------------------------------------
 
 
+@require_approval(AuthLevel.READ_AUTO, tool_name="time_current_time")
 async def current_time(
     tz_name: str = _DEFAULT_TZ,
     fmt: str = _DEFAULT_FORMAT,
@@ -116,6 +117,7 @@ async def current_time(
     return now.strftime(fmt)
 
 
+@require_approval(AuthLevel.READ_AUTO, tool_name="time_convert_time")
 async def convert_time(
     source_tz: str,
     target_tz: str,
@@ -139,75 +141,79 @@ async def convert_time(
     return converted.strftime(_DATETIME_FMT)
 
 
-async def days_in_month(date_str: str | None = None) -> int:
+@require_approval(AuthLevel.READ_AUTO, tool_name="time_days_in_month")
+async def days_in_month(date: str | None = None) -> int:
     """Return the number of days in the month for the given date.
 
     Args:
-        date_str: Date string in ``YYYY-MM-DD`` format.
+        date: Date string in ``YYYY-MM-DD`` format.
             Defaults to the current UTC date when *None*.
 
     Returns:
         Number of days in that month.
     """
-    if date_str is None:
+    if date is None:
         now = datetime.now(timezone.utc)
         year, month = now.year, now.month
     else:
-        dt = _parse_date(date_str)
+        dt = _parse_date(date)
         year, month = dt.year, dt.month
-    logger.debug("days_in_month", date=date_str)
+    logger.debug("days_in_month", date=date)
     return calendar.monthrange(year, month)[1]
 
 
-async def relative_time(time_str: str) -> str:
+@require_approval(AuthLevel.READ_AUTO, tool_name="time_relative_time")
+async def relative_time(time: str) -> str:
     """Return a human-readable relative time string compared to *now* (UTC).
 
     Args:
-        time_str: Datetime string in ``YYYY-MM-DD HH:MM:SS`` format (UTC).
+        time: Datetime string in ``YYYY-MM-DD HH:MM:SS`` format (UTC).
 
     Returns:
         Relative string such as ``"3 hours ago"`` or ``"in 2 days"``.
     """
-    dt = _parse_datetime(time_str).replace(tzinfo=timezone.utc)
+    dt = _parse_datetime(time).replace(tzinfo=timezone.utc)
     now = datetime.now(timezone.utc)
     delta_seconds = int((now - dt).total_seconds())
     result = _humanise_delta(delta_seconds)
-    logger.debug("relative_time", time=time_str, result=result)
+    logger.debug("relative_time", time=time, result=result)
     return result
 
 
-async def get_timestamp(time_str: str) -> int:
+@require_approval(AuthLevel.READ_AUTO, tool_name="time_get_timestamp")
+async def get_timestamp(time: str) -> int:
     """Return the Unix timestamp (seconds since epoch) for a UTC datetime.
 
     Args:
-        time_str: Datetime string in ``YYYY-MM-DD HH:MM:SS`` format (UTC).
+        time: Datetime string in ``YYYY-MM-DD HH:MM:SS`` format (UTC).
 
     Returns:
         Unix timestamp as an integer.
     """
-    dt = _parse_datetime(time_str).replace(tzinfo=timezone.utc)
-    logger.debug("get_timestamp", time=time_str)
+    dt = _parse_datetime(time).replace(tzinfo=timezone.utc)
+    logger.debug("get_timestamp", time=time)
     return int(dt.timestamp())
 
 
-async def get_week_year(date_str: str | None = None) -> dict[str, int]:
+@require_approval(AuthLevel.READ_AUTO, tool_name="time_get_week_year")
+async def get_week_year(date: str | None = None) -> dict[str, int]:
     """Return week number, ISO week number, and year for a date.
 
     Args:
-        date_str: Date string in ``YYYY-MM-DD`` format.
+        date: Date string in ``YYYY-MM-DD`` format.
             Defaults to the current UTC date when *None*.
 
     Returns:
         Dictionary with keys ``week``, ``isoWeek``, and ``year``.
     """
-    if date_str is None:
+    if date is None:
         dt = datetime.now(timezone.utc).date()
     else:
-        dt = _parse_date(date_str).date()
+        dt = _parse_date(date).date()
 
     iso_cal = dt.isocalendar()
     week = int(dt.strftime("%W"))
-    logger.debug("get_week_year", date=date_str)
+    logger.debug("get_week_year", date=date)
     return {
         "week": week,
         "isoWeek": iso_cal[1],
@@ -222,76 +228,9 @@ async def get_week_year(date_str: str | None = None) -> dict[str, int]:
 
 def register_tools(mcp: FastMCP) -> None:
     """Register all time-related tools with the FastMCP server."""
-
-    @mcp.tool(name="time_current_time")
-    @require_approval(AuthLevel.READ_AUTO, tool_name="time_current_time")
-    async def _current_time(
-        timezone: str = _DEFAULT_TZ,
-        format: str = _DEFAULT_FORMAT,
-    ) -> str:
-        """Get current date and time in specified timezone.
-
-        Args:
-            timezone: IANA timezone name (default: Asia/Jakarta).
-            format: strftime format string (default: %Y-%m-%d %H:%M:%S).
-        """
-        return await current_time(tz_name=timezone, fmt=format)
-
-    @mcp.tool(name="time_convert_time")
-    @require_approval(AuthLevel.READ_AUTO, tool_name="time_convert_time")
-    async def _convert_time(
-        source_tz: str,
-        target_tz: str,
-        time_str: str,
-    ) -> str:
-        """Convert time between IANA timezones.
-
-        Args:
-            source_tz: Source timezone (e.g. 'UTC').
-            target_tz: Target timezone (e.g. 'Asia/Jakarta').
-            time_str: Datetime string in YYYY-MM-DD HH:MM:SS format.
-        """
-        return await convert_time(source_tz, target_tz, time_str)
-
-    @mcp.tool(name="time_days_in_month")
-    @require_approval(AuthLevel.READ_AUTO, tool_name="time_days_in_month")
-    async def _days_in_month(date: str | None = None) -> int:
-        """Get number of days in a month. Defaults to current month.
-
-        Args:
-            date: Date string in YYYY-MM-DD format. Defaults to current date.
-        """
-        return await days_in_month(date_str=date)
-
-    @mcp.tool(name="time_relative_time")
-    @require_approval(AuthLevel.READ_AUTO, tool_name="time_relative_time")
-    async def _relative_time(time: str) -> str:
-        """Get human-readable relative time from now (e.g., '3 hours ago').
-
-        Args:
-            time: Datetime string in YYYY-MM-DD HH:MM:SS format (UTC).
-        """
-        return await relative_time(time)
-
-    @mcp.tool(name="time_get_timestamp")
-    @require_approval(AuthLevel.READ_AUTO, tool_name="time_get_timestamp")
-    async def _get_timestamp(time: str) -> int:
-        """Get Unix timestamp for a UTC datetime string.
-
-        Args:
-            time: Datetime string in YYYY-MM-DD HH:MM:SS format (UTC).
-        """
-        return await get_timestamp(time)
-
-    @mcp.tool(name="time_get_week_year")
-    @require_approval(AuthLevel.READ_AUTO, tool_name="time_get_week_year")
-    async def _get_week_year(date: str | None = None) -> dict[str, int]:
-        """Get week number and ISO week for a date.
-
-        Args:
-            date: Date string in YYYY-MM-DD format. Defaults to current date.
-
-        Returns:
-            Dictionary with keys: week, isoWeek, year.
-        """
-        return await get_week_year(date_str=date)
+    mcp.tool(name="time_current_time")(current_time)
+    mcp.tool(name="time_convert_time")(convert_time)
+    mcp.tool(name="time_days_in_month")(days_in_month)
+    mcp.tool(name="time_relative_time")(relative_time)
+    mcp.tool(name="time_get_timestamp")(get_timestamp)
+    mcp.tool(name="time_get_week_year")(get_week_year)

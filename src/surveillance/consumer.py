@@ -405,10 +405,33 @@ async def main() -> None:
     buffer = RedisSurveillanceBuffer(_redis=redis_client)
 
     # ---- DB session factory ----
-    def db_session_factory() -> _AsyncDBSession:
-        raise NotImplementedError(
-            "DB session factory must be configured via environment or dependency injection before running in production. See P7-007 for TimescaleDB session wiring."
+    from sqlalchemy.ext.asyncio import (
+        AsyncSession,
+        async_sessionmaker,
+        create_async_engine,
+    )
+
+    database_url = os.environ.get("DATABASE_URL", "")
+    if not database_url:
+        db_password = os.environ.get("GUINEVERE_DB_PASSWORD", "")
+        if not db_password:
+            raise RuntimeError(
+                "Neither DATABASE_URL nor GUINEVERE_DB_PASSWORD is set. "
+                "The consumer requires a PostgreSQL connection to store events."
+            )
+        database_url = (
+            f"postgresql+asyncpg://guinevere:{db_password}"
+            f"@localhost:5433/guinevere"
         )
+
+    engine = create_async_engine(database_url, echo=False, pool_pre_ping=True)
+    _session_factory = async_sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False,
+    )
+    logger.info("consumer_db_session_factory_initialized")
+
+    def db_session_factory() -> _AsyncDBSession:
+        return _session_factory()
 
     consumer = SurveillanceConsumer(
         buffer=buffer,
@@ -422,14 +445,17 @@ async def main() -> None:
         logger.info("consumer_signal_received", signal="SIGTERM/SIGINT")
         asyncio.ensure_future(consumer.stop())
 
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        try:
+    if os.name != "nt":
+        for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, _on_signal)
-        except NotImplementedError:
-            # Windows does not support add_signal_handler
-            logger.warning("consumer_signal_handler_not_supported", os_name=os.name)
+    else:
+        logger.warning("consumer_signal_handler_not_supported", os_name=os.name)
 
-    await consumer.run()
+    try:
+        await consumer.run()
+    finally:
+        await engine.dispose()
+        logger.info("consumer_db_engine_disposed")
 
 
 if __name__ == "__main__":

@@ -18,7 +18,7 @@ from __future__ import annotations
 import asyncio
 import shlex
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 import structlog
 
@@ -79,6 +79,21 @@ BLOCKED_PATTERNS: frozenset[str] = frozenset({
     "reboot",
     "halt",
     "poweroff",
+})
+
+# ---------------------------------------------------------------------------
+# Aizanta isolation — block paths and services owned by Aizanta
+# ---------------------------------------------------------------------------
+
+_BLOCKED_PATH_PATTERNS: Final[frozenset[str]] = frozenset({
+    "/home/aizanta",
+    "/etc/aizanta",
+    "/var/lib/aizanta",
+    "/opt/aizanta",
+})
+
+_BLOCKED_SERVICE_PATTERNS: Final[frozenset[str]] = frozenset({
+    "aizanta",
 })
 
 # ---------------------------------------------------------------------------
@@ -165,6 +180,27 @@ def _check_blocked_patterns(command: str) -> None:
             )
 
 
+def _check_path_isolation(command: str) -> None:
+    """Scan *command* for Aizanta-isolated paths and raise if found.
+
+    Args:
+        command: The raw (unparsed) command string.
+
+    Raises:
+        ForbiddenOperationError: If the command references an Aizanta-isolated path.
+    """
+    for pattern in _BLOCKED_PATH_PATTERNS:
+        if pattern in command:
+            logger.warning(
+                "shell_path_blocked",
+                command=command[:120],
+                blocked_path=pattern,
+            )
+            raise ForbiddenOperationError(
+                "shell_path_blocked: command references Aizanta-isolated path"
+            )
+
+
 def validate_command(cmd: str) -> tuple[str, list[str]]:
     """Parse and validate a shell command against the whitelist.
 
@@ -216,6 +252,19 @@ def validate_command(cmd: str) -> tuple[str, list[str]]:
         raise CommandForbiddenError(
             f"Command '{args[0]}' is not in the allowed list."
         )
+
+    # Block systemctl commands targeting Aizanta services
+    if args[0] == "systemctl":
+        for arg in args[1:]:
+            if arg.lower() in _BLOCKED_SERVICE_PATTERNS:
+                logger.warning(
+                    "shell_service_blocked",
+                    command=stripped[:120],
+                    service=arg,
+                )
+                raise ForbiddenOperationError(
+                    f"shell_service_blocked: systemctl targeting Aizanta service '{arg}'"
+                )
 
     logger.debug("shell_command_validated", base=base, args=args)
     return base, args
@@ -295,10 +344,11 @@ async def _execute(args: list[str], workdir: str | None, timeout: int) -> dict[s
 
 
 # ---------------------------------------------------------------------------
-# Public tool function (decorated during registration)
+# Public tool function (decorated at module level)
 # ---------------------------------------------------------------------------
 
 
+@require_approval(AuthLevel.DESTRUCTIVE_APPROVAL, tool_name="shell_exec")
 async def shell_exec(
     command: str,
     workdir: str | None = None,
@@ -328,6 +378,8 @@ async def shell_exec(
         timeout = _DEFAULT_TIMEOUT
     timeout = min(timeout, _MAX_TIMEOUT)
 
+    _check_path_isolation(command)
+
     _base, args = validate_command(command)
 
     logger.info(
@@ -352,13 +404,6 @@ def register_tools(mcp: FastMCP) -> None:
     must explicitly approve each invocation via Discord.
     """
 
-    @mcp.tool()
-    @require_approval(AuthLevel.DESTRUCTIVE_APPROVAL, tool_name="shell_exec")
-    async def shell_exec_mcp(
-        command: str,
-        workdir: str | None = None,
-        timeout: int = _DEFAULT_TIMEOUT,
-    ) -> dict[str, object]:
-        return await shell_exec(command, workdir=workdir, timeout=timeout)
+    mcp.tool()(shell_exec)
 
     logger.info("shell_tool_registered")

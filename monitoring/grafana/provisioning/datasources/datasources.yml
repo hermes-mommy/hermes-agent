@@ -1,0 +1,44 @@
+# Guinevere Grafana Datasource Provisioning — P8-007
+# Auto-provisions Prometheus (default), Loki, and PostgreSQL datasources.
+# Secrets: PostgreSQL password via environment variable GRAFANA_PG_PASSWORD.
+# All datasources are Tailscale-internal only. No public access.
+# ObsSpec §9: dashboard-as-code; datasources provisioned from version-controlled config.
+
+apiVersion: 1
+
+deleteDatasources: []
+
+datasources:
+  # Primary metrics datasource
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: "15s"
+      httpMethod: POST
+
+  # Log aggregation datasource
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false
+    jsonData:
+      maxLines: 1000
+
+  # Direct PostgreSQL for SQL queries in dashboards
+  - name: PostgreSQL
+    type: postgres
+    access: proxy
+    url: postgres-exporter:9187
+    editable: false
+    secureJsonData:
+      password: "${GRAFANA_PG_PASSWORD}"
+    jsonData:
+      sslmode: "disable"
+      maxOpenConns: 5
+      maxIdleConns: 2
+      connMaxLifetime: 14400

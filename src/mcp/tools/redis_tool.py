@@ -145,6 +145,7 @@ def _connect(db: int = _DEFAULT_DB) -> aioredis.Redis:
 # ---------------------------------------------------------------------------
 
 
+@require_approval(AuthLevel.READ_AUTO, tool_name="redis_get")
 async def redis_get(key: str, db: int = _DEFAULT_DB) -> str | None:
     """Get a value by key. Auth: READ_AUTO.
 
@@ -164,6 +165,7 @@ async def redis_get(key: str, db: int = _DEFAULT_DB) -> str | None:
         await client.aclose()
 
 
+@require_approval(AuthLevel.READ_AUTO, tool_name="redis_keys")
 async def redis_keys(pattern: str = "*", db: int = _DEFAULT_DB) -> list[str]:
     """Scan keys matching a glob pattern. Auth: READ_AUTO.
 
@@ -183,6 +185,7 @@ async def redis_keys(pattern: str = "*", db: int = _DEFAULT_DB) -> list[str]:
         await client.aclose()
 
 
+@require_approval(AuthLevel.READ_AUTO, tool_name="redis_hgetall")
 async def redis_hgetall(key: str, db: int = _DEFAULT_DB) -> dict[str, str]:
     """Get all fields and values of a hash. Auth: READ_AUTO.
 
@@ -204,6 +207,7 @@ async def redis_hgetall(key: str, db: int = _DEFAULT_DB) -> dict[str, str]:
         await client.aclose()
 
 
+@require_approval(AuthLevel.READ_AUTO, tool_name="redis_lrange")
 async def redis_lrange(
     key: str,
     start: int = 0,
@@ -237,6 +241,7 @@ async def redis_lrange(
 # ---------------------------------------------------------------------------
 
 
+@require_approval(AuthLevel.WRITE_NOTIFY, tool_name="redis_set")
 async def redis_set(
     key: str,
     value: str,
@@ -266,6 +271,7 @@ async def redis_set(
         await client.aclose()
 
 
+@require_approval(AuthLevel.WRITE_NOTIFY, tool_name="redis_hset")
 async def redis_hset(key: str, field: str, value: str, db: int = _DEFAULT_DB) -> bool:
     """Set a field in a hash. Auth: WRITE_NOTIFY.
 
@@ -293,6 +299,7 @@ async def redis_hset(key: str, field: str, value: str, db: int = _DEFAULT_DB) ->
 # ---------------------------------------------------------------------------
 
 
+@require_approval(AuthLevel.DESTRUCTIVE_APPROVAL, tool_name="redis_del")
 async def redis_del(key: str, db: int = _DEFAULT_DB) -> int:
     """Delete one or more keys. Auth: DESTRUCTIVE_APPROVAL.
 
@@ -368,68 +375,25 @@ def register_tools(mcp: FastMCP) -> None:
     Auth levels are determined by the command classification map above.
     """
     # READ_AUTO tools
-    @mcp.tool()
-    @require_approval(AuthLevel.READ_AUTO, tool_name="redis_get")
-    async def _redis_get(key: str, db: int = _DEFAULT_DB) -> str | None:
-        return await redis_get(key, db)
-
-    @mcp.tool()
-    @require_approval(AuthLevel.READ_AUTO, tool_name="redis_keys")
-    async def _redis_keys(pattern: str = "*", db: int = _DEFAULT_DB) -> list[str]:
-        return await redis_keys(pattern, db)
-
-    @mcp.tool()
-    @require_approval(AuthLevel.READ_AUTO, tool_name="redis_hgetall")
-    async def _redis_hgetall(key: str, db: int = _DEFAULT_DB) -> dict[str, str]:
-        return await redis_hgetall(key, db)
-
-    @mcp.tool()
-    @require_approval(AuthLevel.READ_AUTO, tool_name="redis_lrange")
-    async def _redis_lrange(
-        key: str,
-        start: int = 0,
-        stop: int = -1,
-        db: int = _DEFAULT_DB,
-    ) -> list[str]:
-        return await redis_lrange(key, start, stop, db)
+    mcp.tool(name="redis_get")(redis_get)
+    mcp.tool(name="redis_keys")(redis_keys)
+    mcp.tool(name="redis_hgetall")(redis_hgetall)
+    mcp.tool(name="redis_lrange")(redis_lrange)
 
     # WRITE_NOTIFY tools
-    @mcp.tool()
-    @require_approval(AuthLevel.WRITE_NOTIFY, tool_name="redis_set")
-    async def _redis_set(
-        key: str,
-        value: str,
-        ttl: int | None = None,
-        db: int = _DEFAULT_DB,
-    ) -> bool:
-        return await redis_set(key, value, ttl, db)
-
-    @mcp.tool()
-    @require_approval(AuthLevel.WRITE_NOTIFY, tool_name="redis_hset")
-    async def _redis_hset(
-        key: str,
-        field: str,
-        value: str,
-        db: int = _DEFAULT_DB,
-    ) -> bool:
-        return await redis_hset(key, field, value, db)
+    mcp.tool(name="redis_set")(redis_set)
+    mcp.tool(name="redis_hset")(redis_hset)
 
     # DESTRUCTIVE_APPROVAL tools
-    @mcp.tool()
-    @require_approval(AuthLevel.DESTRUCTIVE_APPROVAL, tool_name="redis_del")
-    async def _redis_del(key: str, db: int = _DEFAULT_DB) -> int:
-        return await redis_del(key, db)
+    mcp.tool(name="redis_del")(redis_del)
 
     # FORBIDDEN tools — always blocked by the decorator
-    @mcp.tool()
-    @require_approval(AuthLevel.FORBIDDEN, tool_name="redis_flushdb")
-    async def _redis_flushdb(db: int | None = None) -> bool:
-        return await redis_flushdb(db)
-
-    @mcp.tool()
-    @require_approval(AuthLevel.FORBIDDEN, tool_name="redis_flushall")
-    async def _redis_flushall() -> bool:
-        return await redis_flushall()
+    mcp.tool(name="redis_flushdb")(
+        require_approval(AuthLevel.FORBIDDEN, tool_name="redis_flushdb")(redis_flushdb)
+    )
+    mcp.tool(name="redis_flushall")(
+        require_approval(AuthLevel.FORBIDDEN, tool_name="redis_flushall")(redis_flushall)
+    )
 
     logger.info(
         "redis_tools_registered",

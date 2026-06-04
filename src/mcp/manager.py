@@ -33,7 +33,7 @@ from mcp.server.fastmcp import FastMCP  # noqa: E402
 sys.path[:] = _SAVED_PATH
 # --------------------------------------------------------------------
 
-from src.mcp.tools import register_all_tools
+from src.mcp.tools import register_all_tools  # noqa: E402
 
 logger = structlog.get_logger()
 
@@ -52,6 +52,20 @@ def _build_lifespan() -> Callable[..., Any]:
 
         tool_count = register_all_tools(server)
         logger.info("mcp_server_ready", tools_registered=tool_count)
+
+        # RG-008: Verify auth matrix completeness at startup
+        try:
+            from src.mcp.auth_matrix import verify_matrix_completeness
+
+            if not verify_matrix_completeness():
+                logger.warning("auth_matrix_incomplete")
+            else:
+                logger.info("auth_matrix_verified")
+        except Exception as matrix_err:
+            logger.warning(
+                "auth_matrix_verification_failed",
+                error=str(matrix_err),
+            )
 
         yield
 

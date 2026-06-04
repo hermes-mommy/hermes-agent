@@ -128,9 +128,9 @@ class TestRecordToolCost:
     def test_daily_total_accumulates(self, tracker: ToolCostTracker) -> None:
         """Multiple calls to the same tool accumulate in the daily key."""
         today = date.today().isoformat()
-        tool_key = f"tool:cost:brave_search:{today}"
+        _tool_key = f"tool:cost:brave_search:{today}"
 
-        mock_pipe = tracker.redis.pipeline.return_value
+        _mock_pipe = tracker.redis.pipeline.return_value
 
         # First call returns 0.01, second returns 0.03.
         tracker.redis.get.side_effect = ["0.01", "0.03"]

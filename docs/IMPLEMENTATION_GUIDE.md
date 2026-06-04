@@ -1,6 +1,6 @@
 # Guinevere Implementation Guide
 
-> User manual for the Guinevere implementation system — 202 steps (MVP) + 31 steps (Stabilization) + TBD steps (Expansion) across 23 phases (P0-P22), $30/month budget, shared VPS constraints.
+> User manual for the Guinevere implementation system — 202 steps (MVP) + 34 steps (Stabilization) + 122 steps (Expansion, P11-P15) across 23 phases (P0-P22), $35-44/month budget, shared VPS constraints. P16-P22: TBD.
 
 **Audience**: Faiz (operator) and AI agents (Guinevere, sub-agents)
 **Last updated**: 2026-05-31
@@ -10,7 +10,7 @@
 
 ## 1. Introduction
 
-Guinevere deploys on a shared VPS (hostdata.id, 4C/16GB, Ubuntu 24.04). The implementation system breaks deployment into **23 phases (P0-P22)** with **202 MVP steps (P0-P8), 31 Stabilization steps (P9-P10), and TBD Expansion steps (P11-P22)**, each with exact commands, verification, rollback, and cost impact.
+Guinevere deploys on a shared VPS (hostdata.id, 4C/16GB, Ubuntu 24.04). The implementation system breaks deployment into **23 phases (P0-P22)** with **202 MVP steps (P0-P8), 34 Stabilization steps (P9-P10), and 122 Expansion steps (P11-P15) with P16-P22 TBD**, each with exact commands, verification, rollback, and cost impact.
 
 ### How to Use This System
 
@@ -47,19 +47,19 @@ With AI agent: say `"lanjut"` — Guinevere reads state, finds next step, execut
 
 | Phase | Name | Steps | Cost/mo | Depends On |
 |-------|------|-------|---------|-----------|
-| P9 | Financial Tracking | 12 | $1 | P8 |
-| P10 | Production Hardening | 19 | $1 | P8 |
-| **Stabilization Total** | | **31** | **$2** | |
+| P9 | Financial Tracking | 13 | $1 | P8 |
+| P10 | Production Hardening | 21 | $1 | P8 |
+| **Stabilization Total** | | **34** | **$2** | |
 
 ### Expansion Phases (P11-P22)
 
 | Phase | Name | Steps | Cost/mo | Depends On |
 |-------|------|-------|---------|-----------|
-| P11 | WhatsApp Integration | TBD | TBD | P5 + P8 |
-| P12 | Gmail/Email Integration | TBD | TBD | P5 + P8 |
-| P13 | X Auto Poster | TBD | TBD | P5 + P6 + P7 + P8 |
-| P14 | Wearable/Xiaomi Watch | TBD | TBD | P7 + P8 |
-| P15 | Windows Daemon + WebSocket | TBD | TBD | P5 + P8 |
+| P11 | WhatsApp Integration | 23 | $0 | P5 + P8 |
+| P12 | Gmail/Email Integration | 29 | $0 | P5 + P8 |
+| P13 | X Auto Poster | 28 | TBD | P5 + P6 + P7 + P8 |
+| P14 | Wearable/Xiaomi Watch | 27 | $0 | P7 + P8 |
+| P15 | Windows Daemon + WebSocket | 15 | $5-15 | P5 + P8 + P12 |
 | P16 | Knowledge Graph | TBD | TBD | P3 + P5 + P8 |
 | P17 | Cross-Device Sync | TBD | TBD | P15 + P8 |
 | P18 | Advanced Memory | TBD | TBD | P3 + P8 |
@@ -67,9 +67,9 @@ With AI agent: say `"lanjut"` — Guinevere reads state, finds next step, execut
 | P20 | Self-Improvement Loop | TBD | TBD | P5 + P8 |
 | P21 | Voice Interface | TBD | TBD | P2 + P8 |
 | P22 | Additional Integrations TBD | TBD | TBD | P8 |
-| **Expansion Total** | | **TBD** | **TBD** | |
+| **Expansion Total** | | **122 (P16-P22 TBD)** | **$5-15+TBD** | |
 
-| **Grand Total** | **23 phases** | **233 + TBD** | **$29 + TBD** | |
+| **Grand Total** | **23 phases** | **358 (P16-P22 TBD)** | **$34-44+TBD** | |
 
 **Critical path**: P0 → P1 → P3 → P5. P2 runs parallel with P1.
 
@@ -79,54 +79,241 @@ P9 (Financial Tracking) and P10 (Production Hardening) are Stabilization phases 
 
 | Phase | Steps | Goal | Evidence Path |
 |-------|-------|------|---------------|
-| P9 | 12 | Cost tracking, budget alerts, FinOps dashboards | `evidence/phase-9/` |
-| P10 | 19 | Hardening, reliability, DR validation, security audit | `evidence/phase-10/` |
+| P9 | 13 | Cost tracking, budget alerts, FinOps dashboards | `evidence/phase-9/` |
+| P10 | 21 | Hardening, reliability, DR validation, security audit | `evidence/phase-10/` |
 
 ### Expansion Phase Details (P11-P22)
 
-Expansion phases build new capabilities on top of the MVP + Stabilization foundation. Each phase is independently scoped when ready for implementation. Steps are TBD until planner gate.
+Expansion phases build new capabilities on top of the MVP + Stabilization foundation. Each phase is independently scoped when ready for implementation. Steps are TBD until planner gate; P11-P13 now have Tier 1 step prompts.
 
 #### Phase 11: WhatsApp Integration
 
-- **Goal**: Bidirectional WhatsApp messaging via WhatsApp Business API or Baileys
+- **Goal**: Bidirectional WhatsApp messaging via Neonize (pure Python, wraps Go whatsmeow). ChannelAdapter pattern, ConversationalAgent, intent classifier, Discord bridge, HARD STOP cross-channel.
 - **Dependencies**: P5 (Agent Loop) + P8 (Observability)
-- **Steps**: TBD
+- **Steps**: 23 (P11-001 to P11-023)
 - **Evidence path**: `evidence/phase-11/`
+
+### Phase 11: WhatsApp Integration (23 steps)
+
+**Library:** Neonize v0.3.18 (pure Python, wraps Go whatsmeow) — replaces Baileys/Node.js from original ADR-022
+**Hosting:** Same VPS, separate `guinevere-whatsapp.service` systemd unit
+
+**Key Architecture Decisions:**
+
+- ChannelAdapter interface (reusable for P12 Gmail, P13 X, P14 Wearable)
+- UnifiedMessage dataclass for cross-channel message normalization
+- ConversationalAgent using LLMRouter + shared memory pool
+- `!` command prefix (not `/`)
+- 10-message sliding window context, shared with Discord
+- Text-only MVP; media → persona-consistent acknowledgment
+- HARD STOP cross-channel via shared Redis flag
+- Rate limiting: 8/min, 30/hour, 200/day with Gaussian jitter
+- Discord bridge: mirror conversations to private channel
+
+**Step Breakdown:**
+
+| Category | Steps | Description |
+|----------|-------|-------------|
+| Infrastructure & Auth | P11-001 to P11-003 | Neonize setup, session auth, connection handler |
+| Channel Layer | P11-004 to P11-005 | ChannelAdapter interface, WhatsAppAdapter |
+| Conversational Agent | P11-006 to P11-007 | Core agent, context manager |
+| Message Pipeline | P11-008 to P11-010 | Routing, intent classifier, command handler |
+| UX & Formatting | P11-011 to P11-013 | Typing/streaming, formatter, media ack |
+| Safety | P11-014 to P11-017 | Rate limiter, HARD STOP, safe word, whitelist |
+| Discord Bridge | P11-018 to P11-019 | Message mirror, notifications |
+| Operations | P11-020 to P11-022 | Reconnection, monitoring, systemd |
+| E2E Testing | P11-023 | Full integration test (P11 GATE) |
 
 #### Phase 12: Gmail/Email Integration
 
 - **Goal**: Read, compose, and send emails via Gmail API; triage and summarize inbox
 - **Dependencies**: P5 (Agent Loop) + P8 (Observability)
-- **Steps**: TBD
+- **Steps**: 29 (P12-001 to P12-029)
+- **Cost**: $0/month (Gmail API free tier + Resend free tier)
 - **Evidence path**: `evidence/phase-12/`
+
+**Key Architecture Decisions:**
+
+- Gmail API REST client wrapper with OAuth2 token rotation via SOPS
+- ChannelAdapter pattern (GmailAdapter) reusing P11 interface
+- Resend for transactional email delivery (password reset, alerts)
+- Cloud Pub/Sub push pipeline for real-time inbox watching
+- Email classifier cascade: spam → priority → category → intent
+- LLM-powered draft generation with Discord approval UX
+- Cross-channel HARD STOP shared via Redis flag
+- Secret scanner + PII redactor for all inbound/outbound email content
+
+**Step Breakdown:**
+
+| Category | Steps | Description |
+|----------|-------|-------------|
+| Infrastructure & Auth | P12-001 to P12-003 | GCP Project + Gmail API Enable, OAuth2 Credential + SOPS, Resend Transactional Email |
+| Client & Sync | P12-004 to P12-006 | Gmail API Client Wrapper, Full/Hybrid Sync Engine, Cloud Pub/Sub Push Pipeline |
+| Channel Layer | P12-007 to P12-008 | GmailAdapter (ChannelAdapter), Conversation Context Manager |
+| Intelligence | P12-009 to P12-012 | Email Classifier Cascade, Priority Scorer, Content Sanitizer + Injection Defense, Secret Scanner + PII Redactor |
+| Memory & Bridge | P12-013 to P12-014 | Memory Store Integration, Financial Email → P9 Bridge |
+| Draft & Send | P12-015 to P12-017 | Draft Generator (LLM), Draft Approval UX (Discord), Draft Send via Gmail API |
+| Notifications | P12-018 to P12-020 | Real-Time Notifications, Morning Briefing Generator, !email-digest Command |
+| Safety & Compliance | P12-021 to P12-023 | Consent + Surveillance Policy, Cross-Channel HARD STOP, Surveillance Data Classification |
+| Operations | P12-024 to P12-026 | Watch Health + Auto-Refresh, Grafana Dashboard + Metrics, Systemd Service + Runbook |
+| Testing | P12-027 to P12-029 | Integration Test (10 Scenarios), Agent Loop Trigger Detector, TaskContract Email Context |
+
+**Full Step List:**
+
+| Step | Title |
+|------|-------|
+| P12-001 | GCP Project + Gmail API Enable |
+| P12-002 | OAuth2 Credential + SOPS |
+| P12-003 | Resend Transactional Email |
+| P12-004 | Gmail API Client Wrapper |
+| P12-005 | Full/Hybrid Sync Engine |
+| P12-006 | Cloud Pub/Sub Push Pipeline |
+| P12-007 | GmailAdapter (ChannelAdapter) |
+| P12-008 | Conversation Context Manager |
+| P12-009 | Email Classifier Cascade |
+| P12-010 | Priority Scorer |
+| P12-011 | Content Sanitizer + Injection Defense |
+| P12-012 | Secret Scanner + PII Redactor |
+| P12-013 | Memory Store Integration |
+| P12-014 | Financial Email → P9 Bridge |
+| P12-015 | Draft Generator (LLM) |
+| P12-016 | Draft Approval UX (Discord) |
+| P12-017 | Draft Send via Gmail API |
+| P12-018 | Real-Time Notifications |
+| P12-019 | Morning Briefing Generator |
+| P12-020 | !email-digest Command |
+| P12-021 | Consent + Surveillance Policy |
+| P12-022 | Cross-Channel HARD STOP |
+| P12-023 | Surveillance Data Classification |
+| P12-024 | Watch Health + Auto-Refresh |
+| P12-025 | Grafana Dashboard + Metrics |
+| P12-026 | Systemd Service + Runbook |
+| P12-027 | Integration Test (10 Scenarios) |
+| P12-028 | Agent Loop Trigger Detector |
+| P12-029 | TaskContract Email Context |
 
 #### Phase 13: X Auto Poster
 
-- **Goal**: Automated X/Twitter posting with browser automation, screenshot capture, and LLM-generated captions on a 3-hour heartbeat cycle
+- **Goal**: Automated X/Twitter posting with manual Windows image drop-folder input, S3 queue lifecycle, Gemini captioning, dedicated Obscura CDP posting, Discord controls, PostgreSQL logs, and operational safeguards.
 - **Dependencies**: P5 (Agent Loop) + P6 (MCP Tools) + P7 (Surveillance) + P8 (Observability)
-- **Key components**:
-  - **Obscura CDP** for headless browser automation (login, posting, screenshot capture)
-  - **S3 queue** for screenshot storage and retrieval before posting
-  - **LLM-generated captions** using context from memory and trending topics
-  - **3h heartbeat posting** — scheduled cron/systemd timer fires every 3 hours
-  - **Discord notifications** for post success/failure with screenshot evidence
-  - **PostgreSQL state tracking** for post history, queue state, retry tracking, and rate limit enforcement
-- **Steps**: TBD
+- **Steps**: 28
+- **Cost**: TBD — S3 media storage, Gemini caption generation, and Obscura CDP runtime; no paid X API dependency
 - **Evidence path**: `evidence/phase-13/`
+- **Key components**:
+  - **Windows watchdog** for local image drop-folder upload to S3 `/pending/`
+  - **S3 prefix queue** for `/pending/`, `/processing/`, `/posted/`, `/failed/`, `/held/`, `/archived/`
+  - **Gemini captioning** with Flash primary, Pro fallback, alt text, hashtags, and moderation block path
+  - **Obscura CDP** dedicated X automation instance on port 9223 with isolated storage and SOPS cookies
+  - **Rate controls** with 3h minimum interval, max 5/day, night hold 23:00-06:00 WIB, and immediate override
+  - **Discord controls** for status, list, cancel, hold/resume, edit, delete, retry, dry run, and daily summary
+  - **PostgreSQL + Grafana** state, retry logs, session age, metrics, alerts, and 90-day retention
 
-#### Phase 14: Wearable/Xiaomi Watch
+| Step | Title |
+|------|-------|
+| P13-001 | S3 Queue Setup |
+| P13-002 | Windows Watchdog Script |
+| P13-003 | Obscura CDP Dedicated Instance |
+| P13-004 | Systemd Service |
+| P13-005 | Queue Polling Loop |
+| P13-006 | Sidecar Parser |
+| P13-007 | Rate Limiter |
+| P13-008 | Cookie Injector |
+| P13-009 | Session Health Check |
+| P13-010 | Session Recovery |
+| P13-011 | Caption Generator |
+| P13-012 | Content Moderation |
+| P13-013 | Tone Controller |
+| P13-014 | Compose Adapter (CDP) |
+| P13-015 | Media Upload (CDP) |
+| P13-016 | Post Action |
+| P13-017 | Dry-Run Mode |
+| P13-018 | Retry Engine |
+| P13-019 | Circuit Breaker |
+| P13-020 | Processing Timeout Handler |
+| P13-021 | Post Notification |
+| P13-022 | Status Commands |
+| P13-023 | Edit Command |
+| P13-024 | Delete Command |
+| P13-025 | Retry Commands |
+| P13-026 | Grafana Dashboard |
+| P13-027 | Daily Summary |
+| P13-028 | Integration Test + P13 GATE |
 
-- **Goal**: Health and activity data ingestion from Xiaomi wearable via Mi Fitness API or BLE
-- **Dependencies**: P7 (Surveillance) + P8 (Observability)
-- **Steps**: TBD
+#### Phase 14: Wearable/Xiaomi Watch (Expansion)
+
+- **Goal:** Xiaomi wearable health data ingestion via Gadgetbridge WebDAV sync → VPS pipeline → TimescaleDB → anomaly detection → GHI scoring → persona-adjusted behavior → Discord health commands.
+- **Dependencies:** P7 (Surveillance) + P8 (Observability/MVP Gate)
+- **Steps:** 27
+- **Cost:** $0/month
 - **Evidence path**: `evidence/phase-14/`
+- **Key components**:
+  - **Gadgetbridge primary** data path (watch → SQLite → WebDAV auto-sync → VPS)
+  - **Mi Fitness Cloud SDK** fallback for gap detection
+  - **7 hypertables** in `health.*` schema + 4 aggregate tables
+  - **Anomaly detection**: ±20% from 28-day baseline, 3 severity tiers
+  - **GHI scoring**: Sleep 40% / Cardio 20% / Activity 20% / Recovery 20%, 5 tiers
+  - **Persona state machine** adjusts Y-level when sleep-deprived (NEVER for confrontation)
+  - **4 Discord commands**, morning brief health section, proactive DM alerts
+  - **CRITICAL classification**, 365d retention, data export/deletion support
+  - **guinevere-health.service** separate systemd unit
+
+| Step | Title |
+|------|-------|
+| P14-001 | Device Procurement + Gadgetbridge Setup |
+| P14-002 | WebDAV Server Endpoint |
+| P14-003 | Database Schema Creation (7 hypertables) |
+| P14-004 | HMAC Key Provisioning |
+| P14-005 | Gadgetbridge SQLite Parser |
+| P14-006 | Health Ingestion Endpoint |
+| P14-007 | Consumer Scope Mapping |
+| P14-008 | Mi Fitness Cloud SDK Fallback |
+| P14-009 | Personal Baseline Computation |
+| P14-010 | Anomaly Detection Engine |
+| P14-011 | GHI Composite Score Engine |
+| P14-012 | Daily Summary Pre-computation |
+| P14-013 | Persona State Machine (Health-Aware) |
+| P14-014 | Health Memory Injection |
+| P14-015 | Distress Escalation Logic |
+| P14-016 | /health-status + /ghi-score Commands |
+| P14-017 | /sleep-report + /activity-today Commands |
+| P14-018 | Morning Brief Health Section |
+| P14-019 | Proactive Health Alerts + Night Owl |
+| P14-020 | WAC-001..007 Activation Checklist |
+| P14-021 | Data Export + Deletion |
+| P14-022 | Prometheus Metrics |
+| P14-023 | Grafana Health Dashboard |
+| P14-024 | Stale Data + Battery Alerts |
+| P14-025 | Systemd Service |
+| P14-026 | Mock Health Data Generator |
+| P14-027 | Integration Test + P14 GATE |
 
 #### Phase 15: Windows Daemon + WebSocket
 
-- **Goal**: Windows background daemon with WebSocket bridge for real-time desktop surveillance and control
-- **Dependencies**: P5 (Agent Loop) + P8 (Observability)
-- **Steps**: TBD
-- **Evidence path**: `evidence/phase-15/`
+- **Goal**: Windows surveillance daemon with WebSocket connection to VPS via Tailscale mesh
+- **Dependencies**: P5 (Agent Loop) + P8 (Observability/MVP Gate) + P12 (Surveillance Pipeline)
+- **Steps**: 15 (P15-001 through P15-015)
+- **Cost**: $5-15/month (NSSM + minimal CPU on Windows PC)
+- **Evidence path**: `docs/setup-evidence/p15-expansion/`
+- **Planner Gate**: `docs/setup-evidence/plans/p15-windows-daemon.md`
+- **StepPrompts**: `stepprompts/StepPrompts.md` Phase 15 section
+
+| Step | Title |
+|---|---|
+| P15-001 | Project Scaffold + Base Tracker ABC |
+| P15-002 | Active Window Tracker (win32gui + psutil) |
+| P15-003 | Idle Tracker (GetLastInputInfo, graduated) |
+| P15-004 | Git Context Tracker (traversal + project mapping) |
+| P15-005 | Event Pipeline (MessagePack + EventRouter + WS Client) |
+| P15-006 | NSSM Service Wrapper + Config |
+| P15-007 | VPS WebSocket Endpoint (FastAPI + ConnectionManager) |
+| P15-008 | Command Protocol (ACK-based, Redis DB4 pub/sub) |
+| P15-009 | Consent Gate Integration (belt-and-suspenders) ⚠️ SAFETY-CRITICAL |
+| P15-010 | Discord `/pc` Command (status + session override) |
+| P15-011 | Observability (Prometheus metrics + Grafana dashboard + alerting) |
+| P15-012 | TimescaleDB Migration (windows_events hypertable) |
+| P15-013 | Test Suite (unit + integration) |
+| P15-014 | Integration Test — End-to-End Daemon ↔ VPS |
+| P15-015 | Deployment + Smoke Test + README |
 
 #### Phase 16: Knowledge Graph
 

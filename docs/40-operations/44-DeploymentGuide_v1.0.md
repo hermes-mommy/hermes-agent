@@ -81,7 +81,7 @@ This document provides the complete, step-by-step deployment guide for Project G
 - pyenv for Python version management
 - Per-service environment files, all SOPS encrypted
 - Step-by-step Discord bot setup with guild-specific slash commands
-- Full Baileys WhatsApp setup with QR code auth as systemd service
+- WhatsApp service via Neonize (pure Python) with QR code auth as systemd unit
 - Concrete commands only -- no `see documentation` placeholders
 
 ---
@@ -106,7 +106,7 @@ graph TB
         LOOPS[`guinevere-loops SDLC Runner`]
         WSYNC[`guinevere-windows-sync WebSocket :8001`]
         DISCORD[`guinevere-discord Discord Bot`]
-        WA[`guinevere-whatsapp Baileys Bridge`]
+        WA[`guinevere-whatsapp Neonize Service`]
         OLLAMA[`guinevere-ollama :11434`]
     end
 
@@ -833,20 +833,9 @@ PYENV_INSTALL
 su - guinevere -s /bin/bash -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
 ```
 
-#### Node.js 20+ via nvm
+#### Node.js (REMOVED -- Neonize replaces Baileys)
 
-```bash
-su - guinevere -s /bin/bash << 'NVM_INSTALL'
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-nvm install 20
-nvm use 20
-nvm alias default 20
-node --version
-npm --version
-NVM_INSTALL
-```
+> **Note:** Node.js was previously required for the Baileys WhatsApp bridge. ADR-022 revision (2026-06-03) replaced Baileys with Neonize (pure Python). Node.js is no longer needed. The nvm installation section has been removed.
 
 #### Ollama Installation
 
@@ -876,7 +865,7 @@ EOF
 echo "=== System Tools Verification ==="
 python3.12 --version 2>/dev/null && echo "OK Python 3.12" || echo "FAIL Python"
 uv --version 2>/dev/null && echo "OK UV" || echo "FAIL UV"
-node --version 2>/dev/null && echo "OK Node.js" || echo "FAIL Node"
+# Node.js no longer required (Neonize replaced Baileys -- ADR-022 rev 2026-06-03)
 git --version && echo "OK Git"
 jq --version && echo "OK jq"
 ollama --version && echo "OK Ollama"
@@ -1457,33 +1446,34 @@ async def on_ready():
     print(f"Discord bot online as {bot.user.name}")
 ```
 
-### 3.7 guinevere-whatsapp (WhatsApp Bridge via Baileys)
+### 3.7 guinevere-whatsapp (WhatsApp Service via Neonize)
 
 ```ini
 # /etc/systemd/system/guinevere-whatsapp.service
 [Unit]
-Description=Guinevere WhatsApp Bridge -- Baileys Node.js service
-After=network-online.target guinevere-core.service
+Description=Guinevere WhatsApp Service -- Neonize (pure Python)
+After=network-online.target guinevere-core.service postgresql.service
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=guinevere
 Group=guinevere
-WorkingDirectory=/home/guinevere/whatsapp
+Slice=guinevere.slice
+WorkingDirectory=/home/guinevere/guinevere
 EnvironmentFile=-/run/guinevere/whatsapp.env
 ExecStartPre=/usr/bin/sops --decrypt --output /run/guinevere/whatsapp.env /home/guinevere/secrets/whatsapp.env.sops
-ExecStart=/home/guinevere/.nvm/versions/node/v20.18.1/bin/node index.js
+ExecStart=/home/guinevere/guinevere/.venv/bin/python -m src.whatsapp.main
 Restart=always
 RestartSec=10
-MemoryMax=500M
+MemoryMax=512M
 CPUQuota=50%
 TasksMax=256
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
 PrivateTmp=true
-ReadWritePaths=/home/guinevere/whatsapp/auth_info_baileys /home/guinevere/data /run/guinevere
+ReadWritePaths=/home/guinevere/data /run/guinevere
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 PrivateDevices=true
 SystemCallArchitectures=native
@@ -1498,26 +1488,18 @@ WantedBy=multi-user.target
 ```
 
 ```bash
-# Initialize WhatsApp bridge project
-su - guinevere -s /bin/bash << 'WA_SETUP'
-cd ~/whatsapp
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-npm init -y
-npm install @whiskeysockets/baileys@latest pino qrcode-terminal
-mkdir -p auth_info_baileys
-WA_SETUP
-mkdir -p /home/guinevere/whatsapp/auth_info_baileys
-chown -R guinevere:guinevere /home/guinevere/whatsapp
+# No additional setup required -- Neonize is installed via pip (included in guinevere requirements.txt)
+# Session stored in PostgreSQL (Neonize native backend)
+# DB credentials managed via SOPS
 ```
 
 **QR Code Pairing Procedure:**
 1. Start service: `systemctl start guinevere-whatsapp`
 2. Watch logs: `journalctl -u guinevere-whatsapp -f`
-3. QR code appears in terminal logs
+3. QR code appears in terminal logs (or Discord notification with QR image)
 4. On WhatsApp phone: Settings -> Linked Devices -> Link a Device -> Scan QR
-5. For headless VPS, use pairing code instead: `sock.requestPairingCode('6281234567890')`
-6. Verify session: `ls -la /home/guinevere/whatsapp/auth_info_baileys/`
+5. For headless VPS, use pairing code via Discord command: `!wa-pair`
+6. Verify session: `psql -U guinevere -d guinevere -c "SELECT * FROM whatsapp_sessions LIMIT 1;"`
 
 ### 3.8 guinevere-ollama (Local LLM Fallback -- ADR-028 Tier 3)
 
@@ -3016,7 +2998,7 @@ jobs:
 | Service won't start | Config error or missing dep | `journalctl -u guinevere-core -n 50` | Check logs, verify secrets decrypt, check DB |
 | High memory usage | Ollama running during Tier 1 | `systemctl status guinevere-ollama` | `systemctl stop guinevere-ollama` |
 | Discord bot offline | Token expired or bad intents | `journalctl -u guinevere-discord -n 20` | Verify token in SOPS, check Developer Portal |
-| WhatsApp disconnected | Session expired | `journalctl -u guinevere-whatsapp -n 20` | Re-pair QR or use pairing code |
+| WhatsApp disconnected | Session expired or Neonize connection drop | `journalctl -u guinevere-whatsapp -n 20` | Re-pair QR or use `!wa-pair` Discord command |
 | DB connection refused | PostgreSQL or PgBouncer down | `docker ps` + `systemctl status pgbouncer` | `docker restart postgresql` |
 | Slow LLM responses | Tier degradation | `curl http://127.0.0.1:8100/health` | Check tier, wait for provider |
 | Disk full | Logs or DB growth | `df -h` + `du -sh /var/lib/docker/*` | Vacuum DB, clean logs |
@@ -3143,7 +3125,7 @@ uname -r
 ```bash
 lynis audit system --no-colors 2>&1 | tail -30
 su - guinevere -s /bin/bash -c 'eval "$(pyenv init -)" && cd ~/core && uv run safety check'
-su - guinevere -s /bin/bash -c 'export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh" && cd ~/whatsapp && npm audit'
+# WhatsApp: Neonize (pure Python) -- audited via uv pip audit (no npm)
 ```
 
 ### 10.4 Audit Log Review
@@ -3243,7 +3225,7 @@ echo "=== Done ==="
 - Lynis audit: `lynis audit system --no-colors`
 - Failed logins: `lastb | head -30`
 - Sudo usage: `ausearch -m USER_CMD --start this-month`
-- CVE check: `uv run safety check && npm audit`
+- CVE check: `uv run safety check && uv pip audit`
 - Firewall: `ufw status verbose`
 - Tailscale ACLs review
 - Rotate due secrets
@@ -3392,7 +3374,7 @@ echo "=== Complete ==="
 | guinevere-loops.service | simple | SDLC loops |
 | guinevere-scheduler.service | simple | APScheduler |
 | guinevere-discord.service | simple | Discord bot |
-| guinevere-whatsapp.service | simple | Baileys bridge |
+| guinevere-whatsapp.service | simple | Neonize WhatsApp service |
 | guinevere-ollama.service | simple | Ollama (on-demand) |
 | guinevere-selfdeploy.timer | timer | Self-deploy (03:00) |
 | guinevere-selfdeploy.service | oneshot | Deploy script |

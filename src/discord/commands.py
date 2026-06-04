@@ -18,6 +18,7 @@ SLASH_COMMAND_TYPE = 1
 OPTION_STRING = 3
 OPTION_INTEGER = 4
 OPTION_BOOLEAN = 5
+OPTION_NUMBER = 10
 
 
 class ChoicePayload(TypedDict):
@@ -111,6 +112,17 @@ CONSENT_ACTION_CHOICES = (
     ("Revoke", "revoke"),
 )
 
+COST_PERIOD_CHOICES = (
+    ("Today", "today"),
+    ("Week", "week"),
+    ("Month", "month"),
+)
+
+BUDGET_ACTION_CHOICES = (
+    ("View", "view"),
+    ("Set", "set"),
+)
+
 COMMAND_SPECS: tuple[CommandSpec, ...] = (
     CommandSpec("core", "status", "Show Mommy's current system, loop, and safety status."),
     CommandSpec("core", "mood", "Show or update Guinevere's current mood state."),
@@ -163,8 +175,36 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
     CommandSpec("surveillance", "surveillance-status", "Show consent-bound surveillance status."),
     CommandSpec("surveillance", "surveillance-pause", "Pause consent-bound surveillance collectors."),
     CommandSpec("surveillance", "surveillance-resume", "Resume consent-bound surveillance collectors."),
-    CommandSpec("finance", "cost", "Show Guinevere cost usage for today."),
-    CommandSpec("finance", "budget", "Show budget status and current spend limits."),
+    CommandSpec(
+        "finance",
+        "cost",
+        "Show Guinevere cost usage for a given period.",
+        (CommandOption(
+            "period",
+            "Cost period: today, week, or month.",
+            required=False,
+            choices=COST_PERIOD_CHOICES,
+        ),),
+    ),
+    CommandSpec(
+        "finance",
+        "budget",
+        "Show or update budget cap and current spend.",
+        (
+            CommandOption(
+                "action",
+                "Budget action: view current or set new cap.",
+                required=False,
+                choices=BUDGET_ACTION_CHOICES,
+            ),
+            CommandOption(
+                "amount",
+                "Monthly budget cap in USD (required when action is set).",
+                option_type=OPTION_NUMBER,
+                required=False,
+            ),
+        ),
+    ),
     CommandSpec("finance", "cost-alert", "Show or update Guinevere cost alert thresholds."),
     CommandSpec(
         "system",
@@ -203,6 +243,9 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
     CommandSpec("admin", "backup-now", "Request an immediate Guinevere backup run."),
     CommandSpec("admin", "health-check", "Run Guinevere service health checks."),
     CommandSpec("admin", "clear-cache", "Request a guarded cache clear operation."),
+    # Hermes Phase 1: Conversation session commands
+    CommandSpec("core", "new", "Reset conversation history and start fresh."),
+    CommandSpec("core", "history", "Show recent conversation turns with Mommy."),
 )
 
 EXPECTED_COMMAND_NAMES = tuple(spec.name for spec in COMMAND_SPECS)

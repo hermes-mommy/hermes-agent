@@ -7,7 +7,7 @@ owner: "Faiz"
 executor: "Guinevere"
 operator_alias_note: "Samm is a historical/pseudonymous alias only; canonical operator identity is Faiz."
 format: "MADR with YAML frontmatter"
-adr_count: 34
+adr_count: 35
 ---
 
 # Guinevere ADR Folder Index
@@ -17,7 +17,7 @@ Root master index: [`../Guinevere_ADR_Index_v1.0.md`](../Guinevere_ADR_Index_v1.
 
 ## Purpose
 
-This index is the canonical decision register for Project Guinevere's first 34 technical-core ADRs. Guinevere is a private autonomous AI companion and engineering system with persona identity **Guinevere de Baroque — Super Dominant Yandere Mommy AI Agent**. The ADR set locks technical foundations, safety-critical boundaries, and operational governance needed before later enterprise documentation expands the system.
+This index is the canonical decision register for Project Guinevere's first 35 technical-core ADRs. Guinevere is a private autonomous AI companion and engineering system with persona identity **Guinevere de Baroque — Super Dominant Yandere Mommy AI Agent**. The ADR set locks technical foundations, safety-critical boundaries, and operational governance needed before later enterprise documentation expands the system.
 
 ## Source Documents
 
@@ -60,6 +60,7 @@ The safe word is a global user-autonomy override, not a persona flourish. In gen
 | Redis DB0–DB5 canonical assignments | [`ADR-030`](ADR-030-redis-db-assignments.md) | Accepted |
 | Database name is `guinevere` (not `guinevere_db`) | [`ADR-031`](ADR-031-database-naming.md) | Accepted |
 | Backup storage: idcloudhost S3 primary + Cloudflare R2 secondary | [`ADR-032`](ADR-032-backup-storage-strategy.md) | Accepted |
+| Hermes NousResearch hybrid migration architecture | [`ADR-035`](ADR-035-hermes-migration.md) | Accepted |
 
 ## ADR Register
 
@@ -86,7 +87,7 @@ The safe word is a global user-autonomy override, not a persona flourish. In gen
 | ADR-019 | Access Control & VPN Mesh Strategy | Accepted with notes | HIGH | access-control, tailscale, vpn, rbac | [`ADR-019-access-control-vpn-mesh-strategy.md`](ADR-019-access-control-vpn-mesh-strategy.md) |
 | ADR-020 | Browser Automation Strategy | Accepted | MEDIUM | browser, obscura, playwright, automation | [`ADR-020-browser-automation-strategy.md`](ADR-020-browser-automation-strategy.md) |
 | ADR-021 | Wearable Integration Post-MVP | Accepted | MEDIUM | wearable, post-mvp, health, integration | [`ADR-021-wearable-integration-post-mvp.md`](ADR-021-wearable-integration-post-mvp.md) |
-| ADR-022 | Communication Channel Strategy | Accepted with notes | HIGH | discord, whatsapp, email, communication | [`ADR-022-communication-channel-strategy.md`](ADR-022-communication-channel-strategy.md) |
+| ADR-022 | Communication Channel Strategy | Accepted with notes (Revised 2026-06-03) | HIGH | discord, whatsapp, email, communication, neonize | [`ADR-022-communication-channel-strategy.md`](ADR-022-communication-channel-strategy.md) |
 | ADR-023 | Financial Data Integration Strategy | Accepted with notes | MEDIUM | financial, ewallet, data-integration, privacy | [`ADR-023-financial-data-integration-strategy.md`](ADR-023-financial-data-integration-strategy.md) |
 | ADR-024 | Data Governance & Classification Policy | Accepted with notes | CRITICAL | data-governance, classification, privacy, compliance | [`ADR-024-data-governance-classification-policy.md`](ADR-024-data-governance-classification-policy.md) |
 | ADR-025 | Backup & Disaster Recovery Strategy | Accepted with notes | CRITICAL | backup, dr, rpo, rto, operations | [`ADR-025-backup-disaster-recovery-strategy.md`](ADR-025-backup-disaster-recovery-strategy.md) |
@@ -99,37 +100,38 @@ The safe word is a global user-autonomy override, not a persona flourish. In gen
 | ADR-032 | Backup Storage Strategy — idcloudhost S3 + Cloudflare R2 | Accepted | CRITICAL | backup, storage, s3, cloudflare, r2, idcloudhost, dr | [`ADR-032-backup-storage-strategy.md`](ADR-032-backup-storage-strategy.md) |
 | ADR-033 | Browser Automation — Obscura CDP over Headless Chrome + Playwright | Accepted | MEDIUM | browser, obscura, cdp, playwright-core, stealth, p6-009 | [`ADR-033-browser-automation-obscura.md`](ADR-033-browser-automation-obscura.md) |
 | ADR-034 | Post-MVP Phase Restructure — P0-P11 → P0-P22 | Accepted | MEDIUM | phase, restructure, roadmap, expansion | [`ADR-034-post-mvp-phase-restructure.md`](ADR-034-post-mvp-phase-restructure.md) |
+| ADR-035 | Hermes NousResearch Migration Architecture | Accepted | CRITICAL | architecture, migration, hermes, discord, safety, mcp, memory, llm-routing, nfr | [`ADR-035-hermes-migration.md`](ADR-035-hermes-migration.md) |
 
 ## Status Summary
 
 - **Accepted**: 18
 - **Accepted with notes**: 14
 - **Superseded**: 1
-- **Proposed**: 0
+- **Proposed**: 1
 
 ## Risk Summary
 
-- **CRITICAL**: 11
+- **CRITICAL**: 12
 - **HIGH**: 15
 - **MEDIUM**: 7
 - **LOW**: 0
 
 ## Backlog for Future ADRs
 
-- ADR-035 Acceptance Criteria Catalog Governance
-- ADR-036 Privacy Impact Assessment / DPIA
-- ADR-037 Consent & Revocation Policy
-- ADR-038 Prompt Injection & Model Safety
-- ADR-039 RBAC/ABAC Access Control Matrix
-- ADR-040 Secrets Rotation Runbook
-- ADR-041 OpenAPI / AsyncAPI Contract Governance
-- ADR-042 Event Schema & Webhook Contract
-- ADR-043 Database ERD & Migration Strategy
-- ADR-044 SLO/SLA/Error Budget Policy
-- ADR-045 Incident Response & Postmortem Runbook
-- ADR-046 Feature Flag Governance
-- ADR-047 Product Analytics & Event Taxonomy
-- ADR-048 Compliance & Data Residency Mapping
+- ADR-036 Acceptance Criteria Catalog Governance
+- ADR-037 Privacy Impact Assessment / DPIA
+- ADR-038 Consent & Revocation Policy
+- ADR-039 Prompt Injection & Model Safety
+- ADR-040 RBAC/ABAC Access Control Matrix
+- ADR-041 Secrets Rotation Runbook
+- ADR-042 OpenAPI / AsyncAPI Contract Governance
+- ADR-043 Event Schema & Webhook Contract
+- ADR-044 Database ERD & Migration Strategy
+- ADR-045 SLO/SLA/Error Budget Policy
+- ADR-046 Incident Response & Postmortem Runbook
+- ADR-047 Feature Flag Governance
+- ADR-048 Product Analytics & Event Taxonomy
+- ADR-049 Compliance & Data Residency Mapping
 
 ## Maintenance Rules
 
