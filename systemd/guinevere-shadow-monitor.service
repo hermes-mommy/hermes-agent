@@ -1,0 +1,31 @@
+[Unit]
+Description=Guinevere Shadow Monitor
+After=guinevere-discord.service
+PartOf=guinevere.slice
+
+[Service]
+Type=oneshot
+User=guinevere
+WorkingDirectory=/home/guinevere/code/guinevere
+Environment=PYTHONPATH=/home/guinevere/code/guinevere
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=VIRTUAL_ENV=/home/guinevere/code/guinevere/.venv
+EnvironmentFile=/home/guinevere/code/guinevere/hermes-config/.env
+ExecStart=/home/guinevere/code/guinevere/.venv/bin/python -m src.discord.shadow_monitor --check
+StandardOutput=journal
+StandardError=journal
+Slice=guinevere.slice
+
+# Resource limits
+MemoryHigh=128M
+MemoryMax=256M
+CPUQuota=50%
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/guinevere/code/guinevere/logs
+
+[Install]
+WantedBy=multi-user.target

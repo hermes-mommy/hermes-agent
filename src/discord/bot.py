@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from src.surveillance.safe_mode import SurveillanceSafeModeGuard
 
 from .intents import get_intents
-from src.persona.ritual_scheduler import RitualScheduler, RitualResult
+from src.discord.shadow_pipeline import ShadowPipeline
 
 
 # Dynamically import discord.ext.commands to avoid shadowing by the
@@ -92,8 +92,13 @@ class GuinevereBot(_BotBase):
         )
         logger.info("guinevere_bot_init")
         self._session_factory: object | None = None
-        self._ritual_scheduler: RitualScheduler | None = None
         self._register_hard_stop_listener()
+
+        # S2.1: Shadow pipeline — disabled by default, opt-in via env
+        self.shadow_pipeline: ShadowPipeline = ShadowPipeline(
+            enabled=os.environ.get("SHADOW_ENABLED", "false").lower() == "true",
+            traffic_pct=int(os.environ.get("SHADOW_TRAFFIC_PCT", "0")),
+        )
 
         # P7.5-C5: Wire surveillance safe mode guard
         from src.surveillance.safe_mode import SurveillanceSafeModeGuard
@@ -423,56 +428,10 @@ class GuinevereBot(_BotBase):
             extra={"count": len(synced)},
         )
 
-        # RG-005: Start ritual scheduler with Discord callback
-        try:
-            _ritual_scheduler = RitualScheduler()
-
-            async def _discord_ritual_callback(ritual_name: str) -> RitualResult:
-                """Send ritual message to #guinevere-chat."""
-                from datetime import datetime as _dt, timezone as _tz
-                channel = self.get_channel(1510914600777023659)
-                if channel is None:
-                    logger.warning("ritual_channel_not_found", extra={"ritual": ritual_name})
-                    return RitualResult(
-                        name=ritual_name, executed_at=_dt.now(_tz.utc),
-                        message="", success=False, error="Channel not found",
-                    )
-                from src.persona.ritual_scheduler import _RITUAL_MAP
-                ritual_config = _RITUAL_MAP.get(ritual_name)
-                msg = ritual_config.default_message if ritual_config else f"Ritual: {ritual_name}"
-                try:
-                    await channel.send(msg)
-                    logger.info("ritual_delivered", extra={"ritual": ritual_name, "channel": "guinevere-chat"})
-                    return RitualResult(
-                        name=ritual_name, executed_at=_dt.now(_tz.utc),
-                        message=msg, success=True,
-                    )
-                except Exception as send_err:
-                    logger.error("ritual_send_failed", extra={"ritual": ritual_name, "error": str(send_err)})
-                    return RitualResult(
-                        name=ritual_name, executed_at=_dt.now(_tz.utc),
-                        message=msg, success=False, error=str(send_err),
-                    )
-
-            _ritual_scheduler.setup(callback=_discord_ritual_callback)
-            await _ritual_scheduler.start()
-            self._ritual_scheduler = _ritual_scheduler
-            logger.info("ritual_scheduler_started")
-        except Exception as ritual_err:
-            logger.warning("ritual_scheduler_start_failed", extra={"error": str(ritual_err)})
-            self._ritual_scheduler = None
-
     # ── Graceful Shutdown ──────────────────────────────────────────────────────
 
     async def close(self) -> None:
-        """Graceful shutdown — stop ritual scheduler before parent close."""
-        scheduler = getattr(self, "_ritual_scheduler", None)
-        if scheduler is not None:
-            try:
-                await scheduler.stop()
-                logger.info("ritual_scheduler_stopped")
-            except Exception as stop_err:
-                logger.warning("ritual_scheduler_stop_failed", extra={"error": str(stop_err)})
+        """Graceful shutdown."""
         await super().close()
 
     # ── Session Factory ───────────────────────────────────────────────────────

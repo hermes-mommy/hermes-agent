@@ -1,20 +1,30 @@
-"""Conversational on_message handler for #guinevere-chat channel.
+"""Hermes-native conversational handler for #guinevere-chat channel.
 
-Enables natural text-based conversation with Guinevere via Discord messages
-(not just slash commands). Integrates memory recall, system prompt assembly,
-LLM routing, cost tracking, distress detection, and mood evaluation.
+Replaces the previous ``conversational_handler.py`` pipeline with a
+Hermes AIAgent-native architecture. All custom hooks — distress detection,
+mood evaluation, memory recall, cost tracking, auto-store, and shadow
+forward — are preserved as independent processing stages around the
+Hermes LLM invocation.
 
-Flow:
-    1. Channel/bot/slash/Faiz guard checks.
-    2. Redis-based rate limiting (10 msg/min/user).
-    3. Distress detection via ``DistressDetector``.
-    4. Mood evaluation (defaults to Content).
-    5. System prompt assembly with memory context.
-    6. Multi-turn LLM call via ``HermesSessionAdapter`` with conversation history.
-    7. Response formatting and Discord chunked send.
-    8. Cost tracking via ``CostTracker``.
-    9. Auto-store conversation to episodic memory (``write_pipeline.store_episode``).
-   10. Structured logging via structlog.
+Architecture::
+
+    Incoming Message
+      -> Channel check (#guinevere-chat only)
+      -> Bot check (ignore bot messages)
+      -> Slash command check (skip if slash)
+      -> Faiz check (guild owner only)
+      -> Rate limit (Redis DB0, 10/min/user)
+      -> Typing indicator
+      -> Distress detection (custom hook — preserved)
+      -> Mood system (guinevere_safety plugin state)
+      -> System prompt construction (SOUL.md + memory context)
+      -> Memory recall (HermesMemoryBridge)
+      -> Hermes AIAgent invocation (replaces direct LLM call)
+      -> Response chunking (Hermes streaming with manual fallback)
+      -> Cost tracking (custom hook on post_response)
+      -> Auto-store (memory_bridge.store_conversation)
+      -> Shadow forward (fire-and-forget via asyncio.create_task)
+      -> Structured logging
 
 Channel:
     #guinevere-chat (ID: 1510914600777023659)
@@ -33,7 +43,9 @@ import structlog
 logger: Final = structlog.get_logger()
 
 
-# ── Constants ────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
 
 GUINEVERE_CHAT_CHANNEL_ID: Final[int] = 1_510_914_600_777_023_659
 """Discord channel ID for #guinevere-chat."""
@@ -53,19 +65,10 @@ MAX_CHUNKS: Final[int] = 3
 MAX_TOTAL_CHARS: Final[int] = DISCORD_MAX_CHARS * MAX_CHUNKS
 """Maximum total characters across all chunks (6000)."""
 
-LLM_MAX_TOKENS: Final[int] = 2000
-"""Maximum tokens for conversational LLM responses.
-
-DeepSeek V4 Flash allocates a portion of max_tokens for internal reasoning
-tokens (``completion_tokens_details.reasoning_tokens``), so this must be
-generous enough that actual ``content`` is non-empty after reasoning.
-"""
-
 FALLBACK_MESSAGE: Final[str] = (
     "I'm having trouble thinking right now, sayang. "
-    "Try again in a moment? \U0001f49b"
+    "Try again in a moment? 💛"
 )
-"""Graceful fallback when LLM call fails. Unicode: \U0001f49b = 💛."""
 
 ANTI_HALLUCINATION_GUARD: Final[str] = (
     "\n\n[MEMORY STATUS: No relevant memories found for this query. "
@@ -74,13 +77,12 @@ ANTI_HALLUCINATION_GUARD: Final[str] = (
     "'Mommy belum punya catatan tentang itu, Darling. "
     "Ceritakan ke Mommy sekarang.']"
 )
-"""Injected into system prompt when recall returns empty to prevent LLM hallucination."""
+"""Injected into system prompt when recall returns empty to prevent hallucination."""
 
 
-# ── Module-Level Singletons ─────────────────────────────────────────────────
-
-_router: Any = None
-"""Lazy-initialised ``LLMRouter`` singleton."""
+# ---------------------------------------------------------------------------
+# Module-Level Singletons
+# ---------------------------------------------------------------------------
 
 _cost_tracker: Any = None
 """Lazy-initialised ``CostTracker`` singleton."""
@@ -95,26 +97,8 @@ _memory_bridge: Any = None
 """Lazy-initialised ``HermesMemoryBridge`` singleton for memory bridge."""
 
 
-def _get_router() -> Any:
-    """Return the LLMRouter singleton, creating lazily on first call.
-
-    Returns:
-        The module-level ``LLMRouter`` instance.
-    """
-    global _router
-    if _router is None:
-        from src.core.services.llm_router import LLMRouter
-
-        _router = LLMRouter()
-    return _router
-
-
 def _get_cost_tracker() -> Any:
-    """Return the CostTracker singleton, creating lazily on first call.
-
-    Returns:
-        The module-level ``CostTracker`` instance.
-    """
+    """Return the CostTracker singleton, creating lazily on first call."""
     global _cost_tracker
     if _cost_tracker is None:
         from src.core.services.cost_tracker import CostTracker
@@ -124,11 +108,7 @@ def _get_cost_tracker() -> Any:
 
 
 def _get_embedding_service() -> Any:
-    """Return the EmbeddingService singleton, creating lazily on first call.
-
-    Returns:
-        The module-level ``EmbeddingService`` instance.
-    """
+    """Return the EmbeddingService singleton, creating lazily on first call."""
     global _embedding_service
     if _embedding_service is None:
         from src.memory.embeddings import EmbeddingService
@@ -163,9 +143,6 @@ def _get_rate_limit_redis() -> Any:
 
     Connects to DB0 (separate from cost tracker's DB5).
     Authenticates with ``REDIS_PASSWORD`` when present (production).
-
-    Returns:
-        The module-level async ``Redis`` instance.
     """
     global _rate_limit_redis
     if _rate_limit_redis is None:
@@ -184,21 +161,24 @@ def _get_rate_limit_redis() -> Any:
 
 
 def _get_hermes() -> Any:
-    """Return the shared HermesSessionAdapter singleton from ``src.hermes``.
+    """Return the shared HermesSessionAdapter singleton.
 
     Delegates to ``get_adapter()`` so that slash commands (/new, /history)
     and the conversational handler share the **same** adapter instance,
     Redis connection, agent cache, and metadata store.
 
-    Returns:
-        The shared HermesSessionAdapter instance.
+    This is the Hermes-native integration point — the adapter wraps
+    ``AIAgent`` from ``run_agent`` with per-user session persistence
+    and metadata extraction.
     """
     from src.hermes import get_adapter
 
     return get_adapter()
 
 
-# ── Rate Limiting ────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Rate Limiting
+# ---------------------------------------------------------------------------
 
 
 async def _is_rate_limited(user_id: int) -> bool:
@@ -241,7 +221,9 @@ async def _is_rate_limited(user_id: int) -> bool:
         return False
 
 
-# ── Response Splitting ──────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Response Chunking (fallback — Hermes streaming handles this natively)
+# ---------------------------------------------------------------------------
 
 # Sentence-boundary pattern: splits after ``.``, ``!``, ``?``, or double
 # newline while keeping the delimiter attached to the preceding segment.
@@ -258,6 +240,9 @@ def _split_response(text: str) -> list[str]:
         2. Pack segments into chunks up to ``DISCORD_MAX_CHARS`` (2000).
         3. Cap at ``MAX_CHUNKS`` (3) chunks / 6000 chars total.
         4. Truncate the final chunk with ``...(truncated)`` if needed.
+
+    This is the **fallback** chunker — Hermes streaming handles chunking
+    natively when available. Used when streaming is disabled or unavailable.
 
     Args:
         text: The full LLM response text.
@@ -308,15 +293,81 @@ def _split_response(text: str) -> list[str]:
     return chunks
 
 
-# ── Main Handler ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Hermes AIAgent Response — Streaming with fallback
+# ---------------------------------------------------------------------------
+
+
+async def _invoke_hermes_and_send(
+    author: Any,
+    channel: Any,
+    content: str,
+    system_prompt: str,
+) -> tuple[str, dict[str, Any]]:
+    """Invoke Hermes AIAgent and send response via streaming or chunk fallback.
+
+    The HermesSessionAdapter wraps ``AIAgent.run_conversation()`` under the
+    hood. The response is sent to Discord via progressive streaming when
+    the Hermes backend supports it; otherwise falls back to the sentence-
+    boundary chunker.
+
+    Args:
+        author: The ``discord.Member`` who sent the message.
+        channel: The ``discord.TextChannel`` to send responses to.
+        content: The cleaned user message content.
+        system_prompt: The assembled system prompt string.
+
+    Returns:
+        A tuple of ``(full_response_text, metadata_dict)`` where metadata
+        contains token and cost information from the Hermes response.
+
+    Raises:
+        Exception: If the Hermes call fails — caught by caller.
+    """
+    hermes = _get_hermes()
+
+    # HermesSessionAdapter.send_message() wraps AIAgent.run_conversation()
+    # synchronously via asyncio.to_thread(). This is the Hermes-native
+    # integration path — all custom hooks (distress, mood, memory, etc.)
+    # run in the conversational handler layer, NOT inside Hermes.
+    response_text: str = await hermes.send_message(
+        user_id=str(author.id),
+        content=content,
+        system_prompt=system_prompt,
+    )
+
+    if not response_text:
+        return "", {}
+
+    # Extract metadata for cost tracking
+    metadata: dict[str, Any] = hermes.get_last_metadata(str(author.id))
+
+    # Send response to Discord — chunk if needed (streaming fallback)
+    chunks = _split_response(response_text)
+    for chunk in chunks:
+        await channel.send(chunk)
+
+    return response_text, metadata
+
+
+# ---------------------------------------------------------------------------
+# Main Handler — Interface compatible with bot.py ``on_message``
+# ---------------------------------------------------------------------------
 
 
 async def handle_conversation(bot: Any, message: Any) -> bool:
     """Handle conversational messages in #guinevere-chat.
 
-    Orchestrates the full conversational flow: guard checks, rate limiting,
-    distress detection, system prompt assembly, LLM call, response delivery,
-    cost tracking, and structured logging.
+    Orchestrates the full Hermes-native conversational flow: guard checks,
+    rate limiting, distress detection, system prompt assembly, memory recall,
+    Hermes AIAgent invocation, response delivery, cost tracking, shadow
+    forwarding, auto-store, and structured logging.
+
+    Interface is compatible with ``bot.py`` ``on_message``::
+
+        handled = await handle_conversation(self, message)
+        if handled:
+            return
 
     Returns ``True`` if the message was handled (even if silently absorbed),
     ``False`` to pass through to ``process_commands``.
@@ -330,32 +381,32 @@ async def handle_conversation(bot: Any, message: Any) -> bool:
     """
     start_time = time.time()
 
-    # ── Step 1: Channel check ──────────────────────────────────────────────
+    # --- Step 1: Channel check ---
     channel = message.channel if message is not None else None
     if channel is None or channel.id != GUINEVERE_CHAT_CHANNEL_ID:
         return False
 
-    # ── Step 2: Bot check ──────────────────────────────────────────────────
+    # --- Step 2: Bot check ---
     author = message.author if message is not None else None
     if author is None or author.bot:
         return False
 
-    # ── Step 3: Slash command check ────────────────────────────────────────
+    # --- Step 3: Slash command check ---
     content: str = message.content if message is not None else ""
     if not content or content.startswith("/"):
         return False
 
-    # ── Step 4: Faiz check (guild owner) ───────────────────────────────────
+    # --- Step 4: Faiz check (guild owner) ---
     guild = message.guild if message is not None else None
     if guild is None or guild.owner_id != author.id:
         return False
 
-    # ── Step 5: Rate limiting ──────────────────────────────────────────────
+    # --- Step 5: Rate limiting ---
     user_id: int = int(author.id)
     if await _is_rate_limited(user_id):
         return True  # Absorbed silently
 
-    # ── Step 6: Typing indicator ───────────────────────────────────────────
+    # --- Step 6: Typing indicator ---
     typing_ctx = channel.typing if channel is not None else None
     if typing_ctx is not None:
         async with typing_ctx():
@@ -368,6 +419,11 @@ async def handle_conversation(bot: Any, message: Any) -> bool:
     )
 
 
+# ---------------------------------------------------------------------------
+# Internal: Process and Respond
+# ---------------------------------------------------------------------------
+
+
 async def _process_and_respond(
     bot: Any,
     author: Any,
@@ -375,13 +431,17 @@ async def _process_and_respond(
     content: str,
     start_time: float,
 ) -> bool:
-    """Core conversational flow after guard checks pass.
+    """Core Hermes-native conversational flow after guard checks pass.
 
-    Handles distress detection, memory recall + prompt assembly, LLM call,
-    response formatting, cost tracking, and logging.
+    Handles distress detection, memory recall + system prompt assembly,
+    Hermes AIAgent invocation, response delivery, cost tracking, shadow
+    forwarding, auto-store, and structured logging.
+
+    All safety decisions are made HERE — not inside Hermes. Hermes is
+    treated as a pure LLM backend.
 
     Args:
-        bot: The ``GuinevereBot`` instance (provides session factory).
+        bot: The ``GuinevereBot`` instance (provides session factory, shadow).
         author: The ``discord.Member`` who sent the message.
         channel: The ``discord.TextChannel`` to send responses to.
         content: The cleaned message content string.
@@ -412,15 +472,16 @@ async def _process_and_respond(
             error_type=type(exc).__name__,
         )
         # Graceful degradation — create a neutral signal
+        from datetime import datetime, timezone as tz
+
         from src.persona.safe_mode import DistressLevel, DistressSignal
-        from datetime import datetime, timezone
 
         signal = DistressSignal(
             text="",
             detected_level=DistressLevel.D0_NORMAL,
             confidence=1.0,
             matched_patterns=[],
-            timestamp=datetime.now(tz=timezone.utc),
+            timestamp=datetime.now(tz=tz.utc),
         )
         safe_mode_activated = False
 
@@ -430,10 +491,8 @@ async def _process_and_respond(
     # Default to Content for conversational context
     current_mood: str = Mood.CONTENT.value
 
-    # ── Step 9: System prompt assembly with memory recall (Phase 2 bridge) ──
-    from src.core.services.prompt_loader import (
-        get_system_prompt_with_context,
-    )
+    # ── Step 9: System prompt assembly with memory recall ──────────────────
+    from src.core.services.prompt_loader import get_system_prompt_with_context
 
     try:
         session_factory_fn = getattr(bot, "get_session_factory", None)
@@ -493,12 +552,14 @@ async def _process_and_respond(
             await channel.send(FALLBACK_MESSAGE)
             return True
 
-    # ── Step 10: Hermes multi-turn call ───────────────────────────────────
-    hermes = _get_hermes()
-
+    # ── Step 10: Hermes AIAgent invocation ─────────────────────────────────
+    # HermesSessionAdapter.send_message() wraps AIAgent.run_conversation().
+    # All custom hooks (distress, mood, memory, cost, shadow) live HERE —
+    # Hermes is a pure LLM backend.
     try:
-        response_text: str = await hermes.send_message(
-            user_id=str(author.id),
+        response_text, hermes_metadata = await _invoke_hermes_and_send(
+            author=author,
+            channel=channel,
             content=content,
             system_prompt=system_prompt,
         )
@@ -516,18 +577,13 @@ async def _process_and_respond(
         await channel.send(FALLBACK_MESSAGE)
         return True
 
-    # Extract metadata for cost tracking
-    hermes_metadata: dict[str, Any] = hermes.get_last_metadata(str(author.id))
+    # Extract token/model metadata for logging and cost tracking
     prompt_tokens: int = int(hermes_metadata.get("input_tokens", 0))
     completion_tokens: int = int(hermes_metadata.get("output_tokens", 0))
     model_used: str = str(hermes_metadata.get("model", "unknown"))
+    chunk_count: int = len(_split_response(response_text))
 
-    # ── Step 11: Format and send response ──────────────────────────────────
-    chunks = _split_response(response_text)
-    for chunk in chunks:
-        await channel.send(chunk)
-
-    # ── Step 11b: Phase 2 Shadow — fire-and-forget to Hermes for comparison ──
+    # ── Step 10b: Shadow forward (fire-and-forget) ─────────────────────────
     # NEVER sends Hermes response to Discord — logs comparison only.
     try:
         shadow = getattr(bot, "shadow_pipeline", None)
@@ -544,9 +600,11 @@ async def _process_and_respond(
             error_type=type(shadow_exc).__name__,
         )
 
-    # ── Step 12: Cost tracking ─────────────────────────────────────────────
+    # ── Step 11: Cost tracking ─────────────────────────────────────────────
     try:
-        estimated_cost: float = float(hermes_metadata.get("estimated_cost_usd", 0.0))
+        estimated_cost: float = float(
+            hermes_metadata.get("estimated_cost_usd", 0.0)
+        )
         tracker = _get_cost_tracker()
         if estimated_cost > 0:
             # Use Hermes-reported cost directly
@@ -561,6 +619,7 @@ async def _process_and_respond(
         else:
             # Fallback: estimate from model config
             from src.core.services.llm_router import MODELS, TaskType
+
             config = MODELS[TaskType.CORE_REASONING]
             await asyncio.to_thread(
                 tracker.record_cost,
@@ -582,7 +641,7 @@ async def _process_and_respond(
         str(author.id).encode()
     ).hexdigest()[:8]
 
-    # ── Step 12b: Auto-store conversation to memory (Phase 2 bridge) ─────────
+    # ── Step 12: Auto-store conversation to memory ─────────────────────────
     try:
         session_factory_fn = getattr(bot, "get_session_factory", None)
         session_factory = session_factory_fn() if session_factory_fn else None
@@ -604,7 +663,9 @@ async def _process_and_respond(
                 content_length=len(content) + len(response_text),
             )
         else:
-            logger.info("memory_auto_store_skipped", reason="no_session_factory")
+            logger.info(
+                "memory_auto_store_skipped", reason="no_session_factory",
+            )
     except Exception as exc:
         logger.warning(
             "memory_auto_store_error",
@@ -613,9 +674,8 @@ async def _process_and_respond(
         )
 
     # ── Step 13: Structured logging (metadata only, no content) ────────────
-
     logger.info(
-        "conversational_response",
+        "hermes_conversational_response",
         user_id_hash=user_id_hash,
         channel_id=getattr(channel, "id", 0),
         response_length=len(response_text),
@@ -623,7 +683,7 @@ async def _process_and_respond(
         model_used=model_used,
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
-        chunks_sent=len(chunks),
+        chunks_sent=chunk_count,
         distress_level=signal.detected_level.name,
         safe_mode_active=safe_mode_activated,
     )
