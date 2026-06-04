@@ -1,0 +1,25 @@
+name: guinevere_safety
+version: 1.0.0
+description: Dynamic persona state management for Guinevere
+author: Guinevere Project
+critical: true
+dependencies:
+  - redis>=4.0.0
+hooks:
+  - event: pre_prompt
+    handler: inject_dynamic_state
+    priority: 95
+  - event: post_response
+    handler: update_state
+    priority: 55
+commands:
+  - name: get_persona_state
+    handler: cmd_get_state
+  - name: set_punishment
+    handler: cmd_set_punishment
+  - name: set_reward
+    handler: cmd_set_reward
+  - name: set_mood
+    handler: cmd_set_mood
+  - name: get_distress
+    handler: cmd_get_distress
