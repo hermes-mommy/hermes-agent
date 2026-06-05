@@ -1,0 +1,69 @@
+{
+  "version": "p3-005-v1.0",
+  "generated_at": "2026-06-05T05:21:39.795777+00:00",
+  "dataset_version": "1.0",
+  "mode": "both",
+  "preconditions": {
+    "scipy_available": false,
+    "scipy_import_error": "No module named 'scipy'",
+    "pipeline_imports_ok": false,
+    "pipeline_import_error": "ModuleNotFoundError: No module named 'src'",
+    "embeddings_imports_ok": false,
+    "embeddings_import_error": "ModuleNotFoundError: No module named 'src'",
+    "dnr_imports_ok": false,
+    "dnr_import_error": "ModuleNotFoundError: No module named 'src'",
+    "db_has_data": false,
+    "embedding_service_status": "BROKEN (9Router HTTP 400)",
+    "note": "Database has 0 rows. Meaningful A/B comparison requires seeded test data. Current run validates golden dataset, scipy statistics, and synthetic recall scoring. Real comparison requires seeded memory.episodes table."
+  },
+  "baseline": {
+    "mode": "baseline",
+    "total_queries": 111,
+    "errors": 2,
+    "avg_latency_ms": 6.347,
+    "total_latency_ms": 704.545,
+    "recall_count_avg": 6.64,
+    "recall_count_total": 737,
+    "score_mean_avg": 0.007249,
+    "vector_available": false,
+    "category_distribution": {
+      "episodic_recall": 12,
+      "semantic_facts": 11,
+      "emotional_context": 11,
+      "temporal_queries": 11,
+      "person_queries": 11,
+      "project_queries": 11,
+      "safety_boundary": 11,
+      "dnr_exclusion": 11,
+      "classification_filter": 11,
+      "edge_cases": 11
+    }
+  },
+  "hybrid": {
+    "mode": "hybrid",
+    "total_queries": 111,
+    "errors": 2,
+    "avg_latency_ms": 6.347,
+    "total_latency_ms": 704.545,
+    "recall_count_avg": 6.64,
+    "recall_count_total": 737,
+    "score_mean_avg": 0.007249,
+    "vector_available": false,
+    "category_distribution": {
+      "episodic_recall": 12,
+      "semantic_facts": 11,
+      "emotional_context": 11,
+      "temporal_queries": 11,
+      "person_queries": 11,
+      "project_queries": 11,
+      "safety_boundary": 11,
+      "dnr_exclusion": 11,
+      "classification_filter": 11,
+      "edge_cases": 11
+    }
+  },
+  "statistical_comparison": {
+    "error": "scipy_not_available",
+    "detail": "No module named 'scipy'"
+  }
+}
