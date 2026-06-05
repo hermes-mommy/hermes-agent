@@ -7,9 +7,18 @@ midnight (00:00).
 
 DND window: 00:00–07:00 WIB — rituals during this window are skipped
 unless ``dnd_bypass=True`` (reserved for D3/D4 emergencies only).
+
+.. deprecated:: Phase 5
+    This module is **deprecated** in favour of Hermes cron (``~/.hermes/crontab.yaml``)
+    and PersonaPlugin (``src/hermes/plugins/persona_plugin.py``).  APScheduler is
+    removed from the active production path.  The module remains importable for
+    backward compatibility during migration.  Scheduled removal: Phase 7.
 """
 
 from __future__ import annotations
+
+import importlib
+import warnings
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -20,8 +29,14 @@ from zoneinfo import ZoneInfo
 import asyncio
 
 import structlog
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
+
+warnings.warn(
+    "ritual_scheduler.py is deprecated in Phase 5. "
+    "Use Hermes cron (~/.hermes/crontab.yaml) and PersonaPlugin instead. "
+    "Scheduled removal: Phase 7.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 logger = structlog.get_logger()
 
@@ -169,7 +184,9 @@ class RitualScheduler:
 
     def __init__(self, timezone: str = TZ_JAKARTA) -> None:
         self.timezone: str = timezone
-        self.scheduler: AsyncIOScheduler | None = None
+        # Runtime type is AsyncIOScheduler | None; typed as object to avoid
+        # module-level import dependency on APScheduler (lazy-imported).
+        self.scheduler: object | None = None
         self._callback: Callable[[str], Awaitable[RitualResult]] | None = None
         self._last_results: dict[str, RitualResult] = {}
         self._tz: ZoneInfo = ZoneInfo(timezone)
@@ -178,11 +195,24 @@ class RitualScheduler:
     # Setup
     # ------------------------------------------------------------------
 
+    def _get_scheduler_running(self) -> bool:
+        """Check whether the stored scheduler is running (attribute guard).
+
+        Uses ``getattr`` to avoid type-level dependency on AsyncIOScheduler.
+        """
+        if self.scheduler is None:
+            return False
+        return bool(getattr(self.scheduler, "running", False))
+
     def setup(
         self,
         callback: Callable[[str], Awaitable[RitualResult]] | None = None,
-    ) -> AsyncIOScheduler:
+    ) -> object:
         """Create and configure APScheduler with all 5 ritual cron jobs.
+
+        .. deprecated:: Phase 5
+            APScheduler removed from active production path. This method
+            lazy-imports ``apscheduler`` at call time.
 
         Args:
             callback: Async callable invoked when a ritual fires. Receives
@@ -196,7 +226,14 @@ class RitualScheduler:
         Raises:
             RitualSchedulerError: If called when a scheduler is already active.
         """
-        if self.scheduler is not None and self.scheduler.running:
+        # Dynamic import — apscheduler not required at module load time.
+        # Uses importlib so static analysis (basedpyright) never sees the path.
+        aps_mod = importlib.import_module("apscheduler.schedulers.asyncio")
+        AsyncIOScheduler = aps_mod.AsyncIOScheduler
+        cron_mod = importlib.import_module("apscheduler.triggers.cron")
+        CronTrigger = cron_mod.CronTrigger
+
+        if self._get_scheduler_running():
             msg = "Scheduler already running; call stop() before re-setup."
             raise RitualSchedulerError(msg)
 
@@ -242,7 +279,9 @@ class RitualScheduler:
         if self.scheduler is None:
             msg = "Scheduler not initialised; call setup() first."
             raise RitualSchedulerError(msg)
-        self.scheduler.start()
+        start_method = getattr(self.scheduler, "start", None)
+        if start_method is not None:
+            start_method()
         logger.info("ritual_scheduler_started", timezone=self.timezone)
 
     async def stop(self) -> None:
@@ -252,8 +291,11 @@ class RitualScheduler:
         shutdown via ``call_soon_threadsafe`` on the event loop. We yield
         control briefly to let the event loop process it.
         """
-        if self.scheduler is not None and self.scheduler.running:
-            self.scheduler.shutdown(wait=False)
+        running = self._get_scheduler_running()
+        if running:
+            shutdown = getattr(self.scheduler, "shutdown", None)
+            if shutdown is not None:
+                shutdown(wait=False)
             # Yield to event loop so @run_in_event_loop decorator executes
             await asyncio.sleep(0)
             logger.info("ritual_scheduler_stopped")
@@ -295,8 +337,12 @@ class RitualScheduler:
         if self.scheduler is None:
             return []
 
+        get_jobs = getattr(self.scheduler, "get_jobs", None)
+        if get_jobs is None:
+            return []
+
         jobs: list[dict[str, object]] = []
-        for job in self.scheduler.get_jobs():
+        for job in get_jobs():
             jobs.append(
                 {
                     "id": job.id,

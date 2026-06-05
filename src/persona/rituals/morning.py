@@ -6,9 +6,17 @@ WIB) — ritual is suppressed during quiet hours.
 
 Default template (CONTENT mood):
     "Selamat pagi, Darling. Mommy sudah siap nemenin hari kamu."
+
+.. deprecated:: Phase 5
+    This module is **deprecated** in favour of Hermes cron + PersonaPlugin.
+    Ritual greeting templates have been ported to SOUL.md §H/§J.
+    The module remains importable for backward compatibility.
+    Scheduled removal: Phase 7.
 """
 
 from __future__ import annotations
+
+import warnings
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -18,6 +26,14 @@ from zoneinfo import ZoneInfo
 import structlog
 
 from src.persona.mood_engine import Mood
+
+warnings.warn(
+    "rituals/morning.py is deprecated in Phase 5. "
+    "Greeting templates ported to SOUL.md §H/§J. "
+    "Scheduled removal: Phase 7.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 logger = structlog.get_logger()
 
