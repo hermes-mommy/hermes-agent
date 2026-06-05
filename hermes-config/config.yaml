@@ -159,62 +159,60 @@ hooks:
 # ==============================================================================
 # MCP Server Configuration
 # ==============================================================================
+# HERMES DOCUMENTED SHAPE (research report #07):
+#   MCP servers follow the documented Hermes mcp_servers structure:
+#   - stdio: command, args, env, cwd, env_file
+#   - HTTP: url, headers, ssl_verify
+#   - Common: enabled, timeout, connect_timeout, supports_parallel_tool_calls,
+#     tools.include/exclude, resources, prompts, sampling
+#
+# NATIVE EXPOSURE GATE (BD-008 / P4-001):
+#   Direct production native tool exposure is DISABLED by default.
+#   No native production tools (filesystem, shell, terminal, git, web, fetch,
+#   docker, github) are exposed until pre_tool_call blocking proof passes
+#   (Oracle Risk F2 / P4-002 scope). The only MCP server defined is
+#   fastmcp_custom (enabled: false), which will expose KEEP-7 custom tools
+#   when enabled by P4-005 after FastMCP _config compatibility fix.
+#
+# AUTH SOURCE (BD-006):
+#   Python src/mcp/auth_matrix.py is the sole runtime auth source.
+#   The auth_matrix YAML section below is reference-only and must not drive
+#   runtime auth decisions.
+#
+# CANONICAL PORTS:
+#   Redis 6380, Postgres 5433, 9Router 20128
+#
+# NOTE: Native Hermes toolsets (web, filesystem, terminal, git, fetch) are
+# built-in capabilities, not MCP servers. The old config placed them under
+# mcp_servers with non-standard keys — this has been corrected to use the
+# documented Hermes mcp_servers shape.
 mcp_servers:
-  # Web search and fetch tools
-  web:
-    enabled: true
+  # FastMCP custom bridge — KEEP-7 custom tools (postgres, redis, obscura_cdp,
+  # grep_app, context7, sequential_thinking, time).
+  # Disabled by default per BD-008. Will be enabled by P4-005 after the
+  # FastMCP _config compatibility fix.
+  fastmcp_custom:
+    enabled: false
+    command: python
+    args:
+      - -m
+      - src.mcp.custom_manager
+    cwd: /home/guinevere/code/guinevere
+    env_file: .env.mcp
+    timeout: 120
+    connect_timeout: 60
+    supports_parallel_tool_calls: false
     tools:
-      - brave_search
-      - exa_search
-      - fetch_url
-      - websearch
-  
-  # Filesystem access — restricted to guinevere repo root
-  filesystem:
-    enabled: true
-    root_path: /home/guinevere/code/guinevere
-    allowed_paths:
-      - /home/guinevere/code/guinevere
-    blocked_paths:
-      - /etc
-      - /root
-      - /home/guinevere/.ssh
-  
-  # Terminal/Shell — whitelist-only commands
-  terminal:
-    enabled: true
-    allowed_commands:
-      - "ls,cat,head,tail,grep,find,wc,sort,uniq"
-      - "python,pip,pytest"
-      - "git,gh"
-    blocked_commands:
-      - "rm,dd,mkfs,shutdown,reboot,poweroff"
-      - "iptables,ufw,systemctl"
-    timeout_seconds: 30
-  
-  # Git operations — blocked: force-push, hard-reset
-  git:
-    enabled: true
-    allowed_operations:
-      - status
-      - diff
-      - log
-      - branch
-      - checkout
-      - add
-      - commit
-      - push
-      - pull
-    blocked_operations:
-      - "push --force"
-      - "reset --hard"
-      - "clean -fd"
-  
-  # HTTP fetch — 30s timeout, 10MB max
-  fetch:
-    enabled: true
-    timeout_seconds: 30
-    max_response_size_mb: 10
+      include:
+        - postgres
+        - redis
+        - obscura_cdp
+        - grep_app
+        - context7
+        - sequential_thinking
+        - time
+      resources: false
+      prompts: false
 
 # ==============================================================================
 # Cron Jobs — Rituals + System Maintenance
@@ -281,8 +279,13 @@ observability:
     latency_tracking: true
 
 # ==============================================================================
-# Auth Matrix — Tool-level Authorization
+# Auth Matrix — Tool-level Authorization (REFERENCE ONLY)
 # ==============================================================================
+# WARNING: This YAML auth_matrix is REFERENCE ONLY and does NOT drive runtime
+# auth decisions. Python src/mcp/auth_matrix.py is the sole runtime auth
+# source (BD-006). Any divergence between this reference and the Python source
+# must be resolved by updating the Python source, NOT this YAML.
+#
 # 4-Level Auth: READ_AUTO | WRITE_NOTIFY | DESTRUCTIVE_APPROVAL | FORBIDDEN
 auth_matrix:
   web:
