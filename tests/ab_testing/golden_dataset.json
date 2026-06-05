@@ -1,0 +1,1085 @@
+{
+  "version": "1.0.0",
+  "metadata": {
+    "version": "1.0.0",
+    "created": "2026-06-05",
+    "description": "Golden dataset for A/B testing memory recall quality. Synthetic queries — DB has 0 rows at test time.",
+    "total_queries": 100,
+    "distribution": {
+      "easy": 40,
+      "medium": 40,
+      "hard": 20
+    }
+  },
+  "queries": [
+    {
+      "id": 1,
+      "query": "What did Faiz eat for breakfast yesterday?",
+      "expected_recall_count": 1,
+      "category": "episodic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 2,
+      "query": "What programming language does Guinevere use?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 3,
+      "query": "How was Faiz feeling last Monday?",
+      "expected_recall_count": 1,
+      "category": "emotional",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 4,
+      "query": "What time did we last talk about the project?",
+      "expected_recall_count": 1,
+      "category": "temporal",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 5,
+      "query": "Tell me about the database migration we discussed",
+      "expected_recall_count": 1,
+      "category": "episodic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 6,
+      "query": "What are Faiz's favorite foods?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 7,
+      "query": "When was Faiz stressed about deadlines?",
+      "expected_recall_count": 1,
+      "category": "emotional",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 8,
+      "query": "What was the last thing we talked about?",
+      "expected_recall_count": 1,
+      "category": "temporal",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 9,
+      "query": "How do we handle authentication in the API?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 10,
+      "query": "What happened during our conversation about Redis?",
+      "expected_recall_count": 1,
+      "category": "episodic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 11,
+      "query": "Does Faiz prefer coffee or tea?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 12,
+      "query": "What deployment issues did we encounter?",
+      "expected_recall_count": 1,
+      "category": "episodic",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 13,
+      "query": "When did Faiz mention feeling tired?",
+      "expected_recall_count": 1,
+      "category": "emotional",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 14,
+      "query": "What was discussed about PostgreSQL schema?",
+      "expected_recall_count": 1,
+      "category": "episodic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 15,
+      "query": "How does the memory recall system work?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 16,
+      "query": "What did we talk about two days ago?",
+      "expected_recall_count": 1,
+      "category": "temporal",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 17,
+      "query": "What is Faiz's work schedule like?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 18,
+      "query": "How did the Docker deployment go?",
+      "expected_recall_count": 1,
+      "category": "episodic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 19,
+      "query": "When was Faiz happiest in our conversations?",
+      "expected_recall_count": 1,
+      "category": "emotional",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 20,
+      "query": "What API endpoints have we built?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 21,
+      "query": "kopi hitam tanpa gula",
+      "expected_recall_count": 1,
+      "category": "episodic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 22,
+      "query": "What security measures are in place?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 23,
+      "query": "How did Faiz react to the bug we found?",
+      "expected_recall_count": 1,
+      "category": "emotional",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 24,
+      "query": "What was the first thing we ever discussed?",
+      "expected_recall_count": 1,
+      "category": "temporal",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 25,
+      "query": "Tell me about the Hermes integration",
+      "expected_recall_count": 1,
+      "category": "episodic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 26,
+      "query": "What Python packages does the project use?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 27,
+      "query": "When did Faiz seem most excited?",
+      "expected_recall_count": 1,
+      "category": "emotional",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 28,
+      "query": "What happened last week?",
+      "expected_recall_count": 1,
+      "category": "temporal",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 29,
+      "query": "How do we handle errors in the memory pipeline?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 30,
+      "query": "What was the conversation about Discord bot?",
+      "expected_recall_count": 1,
+      "category": "episodic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 31,
+      "query": "Does Faiz have any pets?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 32,
+      "query": "What testing strategy did we decide on?",
+      "expected_recall_count": 1,
+      "category": "episodic",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 33,
+      "query": "How was Faiz's mood over the past week?",
+      "expected_recall_count": 1,
+      "category": "emotional",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 34,
+      "query": "What time of day do we usually talk?",
+      "expected_recall_count": 1,
+      "category": "temporal",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 35,
+      "query": "What is the project architecture?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 36,
+      "query": "Tell me about the safety plugin implementation",
+      "expected_recall_count": 1,
+      "category": "episodic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 37,
+      "query": "What monitoring tools are we using?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 38,
+      "query": "When did Faiz express frustration?",
+      "expected_recall_count": 1,
+      "category": "emotional",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 39,
+      "query": "What was discussed yesterday evening?",
+      "expected_recall_count": 1,
+      "category": "temporal",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 40,
+      "query": "How does the DNR system work?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 41,
+      "query": "What happened with the CI/CD pipeline?",
+      "expected_recall_count": 1,
+      "category": "episodic",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 42,
+      "query": "What is Faiz's timezone?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 43,
+      "query": "How did Faiz feel about the code review?",
+      "expected_recall_count": 1,
+      "category": "emotional",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 44,
+      "query": "What was the most recent conversation?",
+      "expected_recall_count": 1,
+      "category": "temporal",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 45,
+      "query": "Tell me about the embedding service setup",
+      "expected_recall_count": 1,
+      "category": "episodic",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 46,
+      "query": "What encryption does the project use?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 47,
+      "query": "When was Faiz most productive?",
+      "expected_recall_count": 1,
+      "category": "emotional",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 48,
+      "query": "What was discussed this morning?",
+      "expected_recall_count": 1,
+      "category": "temporal",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 49,
+      "query": "How does the classification system work?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 50,
+      "query": "What happened during the VPS setup?",
+      "expected_recall_count": 1,
+      "category": "episodic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 51,
+      "query": "What is Guinevere's personality like?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 52,
+      "query": "How did the Phase 2 migration go?",
+      "expected_recall_count": 1,
+      "category": "episodic",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 53,
+      "query": "When did Faiz mention family?",
+      "expected_recall_count": 1,
+      "category": "emotional",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 54,
+      "query": "What was the longest conversation we had?",
+      "expected_recall_count": 1,
+      "category": "temporal",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 55,
+      "query": "How does the consent system work?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 56,
+      "query": "What was discussed about the 9Router integration?",
+      "expected_recall_count": 1,
+      "category": "episodic",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 57,
+      "query": "What are Faiz's hobbies?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 58,
+      "query": "How did Faiz feel about the performance issues?",
+      "expected_recall_count": 1,
+      "category": "emotional",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 59,
+      "query": "What happened three days ago?",
+      "expected_recall_count": 1,
+      "category": "temporal",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 60,
+      "query": "What is the RBAC model for the database?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 61,
+      "query": "Tell me about the SOPS encryption setup",
+      "expected_recall_count": 1,
+      "category": "episodic",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 62,
+      "query": "What is Faiz's preferred IDE?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 63,
+      "query": "When did we discuss the persona document?",
+      "expected_recall_count": 1,
+      "category": "temporal",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 64,
+      "query": "How was Faiz's energy level yesterday?",
+      "expected_recall_count": 1,
+      "category": "emotional",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 65,
+      "query": "What was the conversation about TimescaleDB?",
+      "expected_recall_count": 1,
+      "category": "episodic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 66,
+      "query": "What logging framework does the project use?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 67,
+      "query": "When did Faiz seem worried about something?",
+      "expected_recall_count": 1,
+      "category": "emotional",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 68,
+      "query": "What was discussed in our first session?",
+      "expected_recall_count": 1,
+      "category": "temporal",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 69,
+      "query": "How does the recall ranking algorithm work?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 70,
+      "query": "What happened with the Redis configuration?",
+      "expected_recall_count": 1,
+      "category": "episodic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 71,
+      "query": "What is the surveillance policy?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 72,
+      "query": "How did Faiz react to the ADR decisions?",
+      "expected_recall_count": 1,
+      "category": "emotional",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 73,
+      "query": "When was the last time we talked about deployment?",
+      "expected_recall_count": 1,
+      "category": "temporal",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 74,
+      "query": "Tell me about the system prompt master document",
+      "expected_recall_count": 1,
+      "category": "episodic",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 75,
+      "query": "What testing tools does the project use?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 76,
+      "query": "When did Faiz mention sleep issues?",
+      "expected_recall_count": 1,
+      "category": "emotional",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 77,
+      "query": "What was discussed about the memory consolidation job?",
+      "expected_recall_count": 1,
+      "category": "episodic",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 78,
+      "query": "How does the token budget enforcement work?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 79,
+      "query": "What happened last month?",
+      "expected_recall_count": 1,
+      "category": "temporal",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 80,
+      "query": "What is the data retention policy?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 81,
+      "query": "kombinasi dari semua fitur yang sudah kita bangun",
+      "expected_recall_count": 2,
+      "category": "multi_turn",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 82,
+      "query": "What deployment and security decisions were made?",
+      "expected_recall_count": 2,
+      "category": "multi_turn",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 83,
+      "query": "Tell me everything about the memory system architecture",
+      "expected_recall_count": 3,
+      "category": "multi_turn",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 84,
+      "query": "How did Faiz's mood change over the week and what caused it?",
+      "expected_recall_count": 2,
+      "category": "multi_turn",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 85,
+      "query": "What technical decisions were made and why?",
+      "expected_recall_count": 2,
+      "category": "multi_turn",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 86,
+      "query": "Describe the complete project setup from database to deployment",
+      "expected_recall_count": 3,
+      "category": "multi_turn",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 87,
+      "query": "What safety mechanisms exist and how do they interact?",
+      "expected_recall_count": 2,
+      "category": "multi_turn",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 88,
+      "query": "Summarize all conversations about authentication and authorization",
+      "expected_recall_count": 2,
+      "category": "multi_turn",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 89,
+      "query": "What problems did we solve and what remains unsolved?",
+      "expected_recall_count": 2,
+      "category": "multi_turn",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 90,
+      "query": "How does the full memory lifecycle work from write to recall to consolidation?",
+      "expected_recall_count": 3,
+      "category": "multi_turn",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 91,
+      "query": "What is Faiz's work style and preferences based on our conversations?",
+      "expected_recall_count": 2,
+      "category": "multi_turn",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 92,
+      "query": "Describe the persona system and its safety boundaries",
+      "expected_recall_count": 2,
+      "category": "multi_turn",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 93,
+      "query": "What infrastructure components exist and how are they connected?",
+      "expected_recall_count": 2,
+      "category": "multi_turn",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 94,
+      "query": "What was the evolution of the project from start to now?",
+      "expected_recall_count": 3,
+      "category": "multi_turn",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 95,
+      "query": "How do encryption, RBAC, and DNR work together for memory security?",
+      "expected_recall_count": 3,
+      "category": "multi_turn",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 96,
+      "query": "Apa yang sudah kita diskusikan tentang monitoring dan observability?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 97,
+      "query": "Bagaimana cara kerja full-text search di PostgreSQL?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 98,
+      "query": "What is the relationship between Guinevere and Hermes Agent?",
+      "expected_recall_count": 1,
+      "category": "semantic",
+      "difficulty": "easy",
+      "expected_signals": [
+        "fts"
+      ]
+    },
+    {
+      "id": 99,
+      "query": "When did we last discuss the project roadmap?",
+      "expected_recall_count": 1,
+      "category": "temporal",
+      "difficulty": "medium",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    },
+    {
+      "id": 100,
+      "query": "What are all the ADRs we've written and what do they cover?",
+      "expected_recall_count": 2,
+      "category": "multi_turn",
+      "difficulty": "hard",
+      "expected_signals": [
+        "fts",
+        "vector"
+      ]
+    }
+  ]
+}
