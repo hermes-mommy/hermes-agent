@@ -6,10 +6,10 @@ critical: true
 dependencies:
   - redis>=4.0.0
 hooks:
-  - event: pre_prompt
+  - event: pre_llm_call
     handler: inject_dynamic_state
     priority: 95
-  - event: post_response
+  - event: post_llm_call
     handler: update_state
     priority: 55
 commands:

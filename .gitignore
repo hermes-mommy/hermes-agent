@@ -26,6 +26,7 @@ secrets/
 *.pem
 *.env
 !.env.example
+pat.txt
 
 # Testing
 .pytest_cache/

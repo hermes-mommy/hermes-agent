@@ -4,7 +4,7 @@
 |-------|-------|
 | **Project** | Guinevere — Autonomous AI Companion & Engineering System |
 | **Status** | ✅ P0+P1+P2+P3+P4+P5+P5.5+P6+P7+P7.5+P8 Complete — MVP Infrastructure Complete. Production deployment pending. |
-| **Last Updated** | 2026-06-05 (Phase 2 Discord Wave 4 Cutover COMPLETE — Hermes Agent gateway running on VPS, custom bot.py stopped+masked, Discord connected via 2 WS connections, safety plugin active Y4_BASELINE. Evidence: `docs/setup-evidence/hermes-phase2-discord/evidence-cutover.md`.) |
+| **Last Updated** | 2026-06-05 (Phase 2 Discord Wave 4 Cutover COMPLETE + E2E VERIFIED. Hermes Agent gateway running on VPS, model=ds/deepseek-v4-flash via 9Router, Discord connected as Guinevere#1445. 3-layer safety: Python plugin (10 gates, 6 hooks) + shell hooks (consent_gate, dnr_filter) + guinevere-safety plugin. Custom bot.py masked. 2/2 auditors PASS. Evidence: `docs/setup-evidence/hermes-phase2-discord/evidence-cutover.md`, `evidence-hook-fix.md`, `auditor-wave4-e2e.md`, `auditor-phase2-complete.md`.) |
 | **Budget** | $30/month hard cap |
 | **Infrastructure** | Shared VPS (hostdata.id 4C/16GB Ubuntu 24.04) |
 | **Critical Path** | P0 → P1 → P3 → P5 |

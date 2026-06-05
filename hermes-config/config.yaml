@@ -41,27 +41,34 @@ discord:
 # ==============================================================================
 # LLM Configuration (9Router proxy)
 # ==============================================================================
-llm:
-  provider: custom
-  model: gpt-5.5
+# Hermes reads top-level `model`, `providers`, `fallback_providers`.
+# The `provider` field in model MUST match a key in `providers` dict.
+model:
+  provider: ninerouter
   base_url: http://localhost:20128/v1
-  api_key_env: NINEROUTER_API_KEY
-  max_tokens: 16384
-  temperature: 0.7
-  api_max_retries: 3
-  
-  # Fallback configuration
-  fallback:
-    enabled: true
-    model: deepseek-v4-flash
-    strategy: sequential
-  
-  # Monthly budget tracking
-  budget:
-    monthly_limit: 30.00
-    alert_threshold: 0.80
-    block_threshold: 1.00
-    currency: USD
+  model: ds/deepseek-v4-flash
+
+providers:
+  ninerouter:
+    name: ninerouter
+    base_url: http://localhost:20128/v1
+    key_env: NINEROUTER_API_KEY
+    model: ds/deepseek-v4-flash
+
+# NOTE: gpt-5.5 removed — 9Router token invalidated (HTTP 401)
+# Re-add as fallback when token is refreshed:
+# fallback_providers:
+#   - name: ninerouter-fallback
+#     base_url: http://localhost:20128/v1
+#     key_env: NINEROUTER_API_KEY
+#     model: cx/gpt-5.5
+
+# Monthly budget tracking (informational — not read by Hermes)
+budget:
+  monthly_limit: 30.00
+  alert_threshold: 0.80
+  block_threshold: 1.00
+  currency: USD
 
 # ==============================================================================
 # Agent Runtime Configuration
