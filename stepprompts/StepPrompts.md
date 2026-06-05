@@ -3409,6 +3409,7 @@ uv pip install \
   sentry-sdk[fastapi]==2.* \
   prometheus-client==0.21.* \
   structlog==24.* \
+  <!-- ⚠️ STALE: hermes-agent PyPI references are obsolete per ADR-035. Hermes now = NousResearch fork. -->
   hermes-agent \
   discord.py==2.*
 
@@ -3471,14 +3472,17 @@ cd /home/guinevere/code/guinevere
 source .venv/bin/activate
 
 # Install Hermes Agent
+<!-- ⚠️ STALE: hermes-agent PyPI references are obsolete per ADR-035. Hermes now = NousResearch fork. -->
 uv pip install hermes-agent
 
 # If not available via pip, install from source:
+<!-- ⚠️ STALE: hermes-agent PyPI references are obsolete per ADR-035. Hermes now = NousResearch fork. -->
 # git clone https://github.com/NousResearch/hermes-agent.git /tmp/hermes-agent
 # cd /tmp/hermes-agent
 # uv pip install -e .
 
 # Verify
+<!-- ⚠️ STALE: hermes-agent PyPI references are obsolete per ADR-035. Hermes now = NousResearch fork. -->
 python -c "import hermes_agent; print(hermes_agent.__version__)"
 
 # Create project structure for Hermes
@@ -3521,6 +3525,7 @@ EOF
 ```
 
 #### Verification
+<!-- ⚠️ STALE: hermes-agent PyPI references are obsolete per ADR-035. Hermes now = NousResearch fork. -->
 - [ ] Hermes installed → `python -c "import hermes_agent"` succeeds
 - [ ] Project structure created → `find src -type d` shows all directories
 - [ ] pyproject.toml valid → `python -c "import tomllib; tomllib.load(open('pyproject.toml','rb'))"` succeeds

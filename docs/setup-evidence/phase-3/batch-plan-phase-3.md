@@ -22,6 +22,7 @@
 | **P3-006** | Execute A/B test: 100 queries, recall quality gate | P3-002, P3-003, P3-005 | sequential | 0.5 day |
 | **P3-007** | Verify zero PG writes from Hermes (read-only enforcement) | P3-001, P3-004 | sequential | 0.5 day |
 | **P3-008** | Final integration verification and safety audit | ALL above | sequential | 0.5 day |
+| **P3-009** | Configure Hermes mirror sync (MEMORY.md/USER.md) | P3-001 | parallel (Wave 2) | 0.5 day |
 
 ---
 
@@ -31,6 +32,7 @@
 P3-001 (Refactor) ---+---> P3-002 (Compression)  --+
                      |                              +--> P3-006 (A/B Test) --> P3-008 (Final)
                      +--> P3-003 (FTS5+Safety)    --+
+                     +--> P3-009 (Mirror Sync)
 P3-004 (Mirror)  --------------------------------------> P3-007 (Zero PG Writes) --> P3-008
 P3-005 (A/B Infra) --------------------------------------> P3-006 (A/B Test)
 ```
@@ -40,7 +42,7 @@ P3-005 (A/B Infra) --------------------------------------> P3-006 (A/B Test)
 | Wave | Steps | Rationale |
 |---|---|---|
 | **Wave 1** (parallel) | P3-001, P3-004, P3-005 | Independent: code refactor, DB infrastructure, test tooling. No shared files. |
-| **Wave 2** (parallel) | P3-002, P3-003 | Depend on P3-001 (new plugin interface). Can run in parallel with each other. |
+| **Wave 2** (parallel) | P3-002, P3-003, P3-009 | Depend on P3-001 (new plugin interface). Can run in parallel with each other. No shared files. |
 | **Wave 3** (sequential) | P3-006, P3-007 | Depend on Wave 2 + P3-005. Must run after all enabling steps complete. |
 | **Wave 4** (sequential) | P3-008 | Final integration gate. All prior steps must PASS. |
 
@@ -67,7 +69,7 @@ P3-005 (A/B Infra) --------------------------------------> P3-006 (A/B Test)
 
 | Component | File | Status |
 |---|---|---|
-| Memory Bridge | src/hermes/memory/memory_bridge.py (295 lines) | Phase 2 bridge. recall_for_context() + store_conversation(). Always passes embedding_service=None. |
+| Memory Bridge | src/hermes/memory_bridge.py (295 lines) | Phase 2 bridge. recall_for_context() + store_conversation(). Always passes embedding_service=None. |
 | Session Adapter | src/hermes/session_adapter.py (366 lines) | skip_memory=True. ALL Hermes memory disabled. Redis DB4 sessions. |
 | Read Pipeline | src/memory/read_pipeline.py (963 lines) | Full hybrid ranking (vector+FTS+recency+importance, RRF k=60). DNR, classification ceiling, safe-mode, 4000-token budget. Vector search NEVER fires. |
 | Write Pipeline | src/memory/write_pipeline.py (359 lines) | store_episode with Critical fail-closed, Restricted default classification. |
@@ -153,12 +155,14 @@ P3-005 (A/B Infra) --------------------------------------> P3-006 (A/B Test)
 
 | File | Step | Changes |
 |---|---|---|
-| src/hermes/memory/memory_bridge.py | P3-001 | Deprecate; redirect to new plugin. Add deprecation warning. |
+| src/hermes/memory_bridge.py | P3-001 | Deprecate; redirect to new plugin. Add deprecation warning. |
 | src/discord/conversational_handler.py | P3-001 | Update bridge import path to use new plugin interface. |
 | plugins/memory/guinevere-memory/\_\_init\_\_.py | P3-003 | Add `from .safety_gates import ...` import + wire safety gate calls in prefetch/sync_turn. P3-001 creates this file; P3-003 only adds import + wiring. |
 | hermes-config/config.yaml | P3-003 | Add session_search configuration block (FTS5 backend). |
 | requirements.txt or pyproject.toml | P3-005 | Add scipy >= 1.12 dependency. |
 | docs/README.md | P3-008 | Update Phase 3 completion status. |
+| plugins/memory/guinevere-memory/\_\_init\_\_.py | P3-009 | Add `extract_key_facts()` implementation for mirror sync. P3-001 creates this file; P3-009 adds extraction logic. |
+| hermes-config/config.yaml | P3-009 | Add `mirrors` configuration block (enabled, sync_interval_messages, paths). |
 | docs/10-governance/17-ADR_Index_v1.0.md | P3-008 | Add Phase 3 completion reference. |
 
 ### 7.3 Files to NOT MODIFY (Read-Only References)
@@ -281,13 +285,13 @@ memory:
 > **Architecture decision**: Safety gates live in a SEPARATE module (`safety_gates.py`), not in `__init__.py`. This resolves the Wave 2 collision (Architecture Audit Finding 1): P3-002 tests `__init__.py` for hook registration while P3-003 writes safety gate code. `__init__.py` only adds a `from .safety_gates import apply_safety_gates` import.
 
 1. **Post-Recall DNR Verification**: 
-   - **Implementation approach (DNR ID Cache)**: On plugin `initialize()`, load all DNR-marked memory IDs from PostgreSQL (`SELECT id FROM memory.episodic_memory WHERE do_not_recall = true`) into an in-memory `set[str]`. Refresh cache every 5 minutes via background daemon thread.
+   - **Implementation approach (DNR ID Cache)**: On plugin `initialize()`, load all DNR-marked memory IDs from PostgreSQL (`SELECT id FROM memory.episodes WHERE do_not_recall = true`) into an in-memory `set[str]`. Refresh cache every 5 minutes via background daemon thread.
    - When session_search returns results, cross-reference each result's content hash/ID against the DNR cache. Any match → remove from results and log DNR exclusion event.
    - Rationale: Hermes FTS5 results from `~/.hermes/state.db` have no `do_not_recall` column. Direct `verify_recall_results_dnr_free()` call on raw FTS5 results would silently pass (no `do_not_recall` field = check passes). The cache approach bridges this gap.
    - Fallback: If DNR cache load fails, block ALL session_search results (fail-closed).
 
 2. **Classification Ceiling Filtering**:
-   - **Implementation approach (PG Enrichment)**: After session_search returns results, batch-query PostgreSQL for classification metadata: `SELECT id, classification FROM memory.episodic_memory WHERE id IN (...)`. Enrich each FTS5 result with its classification level. Apply ceiling filter: `classification_level(result) <= principal_ceiling(guinevere_core)`.
+   - **Implementation approach (PG Enrichment)**: After session_search returns results, batch-query PostgreSQL for classification metadata: `SELECT id, classification FROM memory.episodes WHERE id IN (...)`. Enrich each FTS5 result with its classification level. Apply ceiling filter: `classification IN ('Public', 'Internal', 'Restricted')` for `guinevere_core` principal (maps to ceiling level 2 = Restricted). Uses IN-list because string comparison is lexicographically wrong for classification enum values (lexicographic order: Confidential < Critical < Internal < Public < Restricted, which does not match semantic hierarchy Public=0 < Internal=1 < Restricted=2 < Confidential=3 < Critical=4).
    - Rationale: Same gap as DNR — Hermes FTS5 has no classification field. PG enrichment is the authoritative source.
    - Performance: Batch query with IN clause, max 20 IDs per session_search call. Sub-ms for indexed lookups.
    - Fallback: If PG enrichment query fails, treat all results as Critical (fail-closed = return empty).
@@ -338,6 +342,8 @@ User Query
 - The `hermes_memory_bridge` role maps to this principal. Critical-classified data is NOT accessible through this role (RLS enforced).
 - `~/.hermes/state.db` is documented as a governed data store in the classification scope.
 
+**Pre-requisite (v1.3 FIX — Auditor Tech F4)**: Verify `memory_owner` role exists before running SQL migration. If it does not exist, create it or identify the actual role that owns `memory` schema tables. Run: `SELECT rolname FROM pg_roles WHERE rolname = 'memory_owner';` — if empty, determine the table owner via `SELECT tableowner FROM pg_tables WHERE schemaname = 'memory' LIMIT 1;` and substitute in the `ALTER DEFAULT PRIVILEGES` statement below.
+
 **SQL Migration**:
 
 ```sql
@@ -346,6 +352,7 @@ CREATE ROLE hermes_memory_bridge LOGIN PASSWORD '${HERMES_PG_PASSWORD}';
 ALTER ROLE hermes_memory_bridge CONNECTION LIMIT 50;
 GRANT USAGE ON SCHEMA memory TO hermes_memory_bridge;
 GRANT SELECT ON ALL TABLES IN SCHEMA memory TO hermes_memory_bridge;
+-- NOTE: Replace 'memory_owner' with actual table-owning role if different (see pre-requisite)
 ALTER DEFAULT PRIVILEGES FOR ROLE memory_owner IN SCHEMA memory
   GRANT SELECT ON TABLES TO hermes_memory_bridge;
 
@@ -354,14 +361,18 @@ REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA memory
   FROM hermes_memory_bridge;
 
 -- Row-Level Security: Classification ceiling (DBA Audit fix)
-ALTER TABLE memory.episodic_memory FORCE ROW LEVEL SECURITY;
-CREATE POLICY hermes_classification_ceiling ON memory.episodic_memory
+-- v1.2 FIX (Auditor Safety S10, Tech T4): Table is memory.episodes (not episodic_memory).
+-- Classification uses IN-list because string comparison is lexicographically wrong for this enum.
+-- Lexicographic order: Confidential(C) < Critical(C) < Internal(I) < Public(P) < Restricted(R)
+-- Semantic hierarchy: Public=0 < Internal=1 < Restricted=2 < Confidential=3 < Critical=4
+ALTER TABLE memory.episodes FORCE ROW LEVEL SECURITY;
+CREATE POLICY hermes_classification_ceiling ON memory.episodes
   FOR SELECT TO hermes_memory_bridge
-  USING (classification_level <= 'Restricted');
+  USING (classification IN ('Public', 'Internal', 'Restricted'));
 
 -- Row-Level Security: Surveillance data isolation (Safety Audit fix)
 -- Hermes cannot read episodes with source='surveillance'
-CREATE POLICY hermes_surveillance_isolation ON memory.episodic_memory
+CREATE POLICY hermes_surveillance_isolation ON memory.episodes
   FOR SELECT TO hermes_memory_bridge
   USING (source != 'surveillance');
 
@@ -369,12 +380,12 @@ CREATE POLICY hermes_surveillance_isolation ON memory.episodic_memory
 ALTER TABLE memory.faiz_profile FORCE ROW LEVEL SECURITY;
 CREATE POLICY hermes_profile_ceiling ON memory.faiz_profile
   FOR SELECT TO hermes_memory_bridge
-  USING (classification_level <= 'Restricted');
+  USING (classification IN ('Public', 'Internal', 'Restricted'));
 
 ALTER TABLE memory.emotional_events FORCE ROW LEVEL SECURITY;
 CREATE POLICY hermes_emotional_ceiling ON memory.emotional_events
   FOR SELECT TO hermes_memory_bridge
-  USING (classification_level <= 'Confidential');
+  USING (classification IN ('Public', 'Internal', 'Restricted', 'Confidential'));
 
 -- Streaming replication configuration
 -- primary postgresql.conf:
@@ -413,7 +424,7 @@ CREATE POLICY hermes_emotional_ceiling ON memory.emotional_events
    - Loads golden dataset
    - Runs Baseline A (current pipeline) and Variant B (Hermes-augmented)
    - Computes Precision@10, Recall@10, MRR, NDCG@10 for both
-   - Uses scipy.stats.ttest_ind or McNemar test for p-value
+   - Uses scipy.stats.ttest_rel (paired t-test, same queries through both pipelines) for p-value. v1.2 FIX (Auditor Tech T5): ttest_ind is wrong — queries are paired/matched samples, not independent.
    - Exit 1 if p < 0.05 OR any DNR violation
    - Outputs JSON report to evidence/memory-eval/ab-results-{timestamp}.json
 
@@ -479,7 +490,7 @@ WHERE usename = 'hermes_memory_bridge'
 **Objective**: End-to-end verification that Phase 3 migration is complete and safe.
 
 **Checklist**:
-- [ ] P3-001 through P3-007 all PASS
+- [ ] P3-001 through P3-007 and P3-009 all PASS
 - [ ] Plugin registered and discoverable by Hermes MemoryManager
 - [ ] Compression activates at 70% token usage
 - [ ] session_search returns results with DNR gate enforced
@@ -501,6 +512,67 @@ WHERE usename = 'hermes_memory_bridge'
 - [ ] All evidence files created and referenced
 - [ ] All auditor reports PASS
 - [ ] Rollback procedure tested and documented
+- [ ] Hermes mirror sync (MEMORY.md/USER.md) operational
+
+### P3-009: Configure Hermes Mirror Sync (MEMORY.md/USER.md)
+
+**Objective**: Enable Hermes to write MEMORY.md and USER.md mirror files that reflect key facts extracted from conversations, providing human-readable memory summaries alongside the PostgreSQL canonical store.
+
+**Canonical Reference**: phase-3-memory.md Step 3.4 (lines 200-250).
+
+**Source Documents**:
+- phase-3-memory.md Step 3.4: Hermes mirror sync configuration
+- ADR-035 Appendix A: Memory configuration parameters
+- research-reports/phase-3-planning/06-compression-algorithm-research.md: Key fact extraction stub status
+
+**Implementation Design**:
+
+1. **Configuration in hermes-config/config.yaml**:
+   ```yaml
+   memory:
+     mirrors:
+       enabled: true
+       sync_interval_messages: 5
+       paths:
+         user: "~/.hermes/mirrors/USER.md"
+         memory: "~/.hermes/mirrors/MEMORY.md"
+   ```
+
+2. **Key Fact Extraction**:
+   - `memory_bridge.py` `extract_key_facts()` is currently a Phase 3 stub (returns `[]`). v1.3 FIX (Auditor Tech F2): Since P3-001 deprecates `memory_bridge.py`, the `extract_key_facts()` implementation lives in the plugin module (`plugins/memory/guinevere-memory/__init__.py`), not the deprecated bridge.
+   - Implementation: Extract key facts from conversation turns using LLM summarization or rule-based extraction.
+   - Output format: Markdown bullet points suitable for MEMORY.md/USER.md append.
+   - Fallback: If extraction fails, skip mirror update (non-blocking). Never block conversation flow.
+
+3. **Mirror File Format**:
+   - MEMORY.md: Chronological key facts from conversations (date-stamped sections)
+   - USER.md: User preferences, preferences changes, and profile observations
+   - Both files are read-only for Hermes (Hermes reads them for context enrichment)
+   - Python write authority: `src/memory/write_pipeline.py` remains the PG write path
+
+4. **Safety Gates**:
+   - Mirror content must pass classification filter (no Critical/Confidential content in mirrors)
+   - DNR-marked memories must not appear in mirror files
+   - Mirror files stored in `~/.hermes/mirrors/` (Hermes-managed directory)
+   - No PII/intimate data in mirrors (PII redaction gate from write_pipeline applies)
+
+5. **Sync Mechanism**:
+   - Triggered every `sync_interval_messages` (default: 5) conversation turns
+   - Non-blocking: runs in daemon thread, never blocks conversation response
+   - Idempotent: same facts not duplicated (dedup via content hash)
+
+**Acceptance Criteria**:
+- [ ] `memory.mirrors.enabled: true` in hermes-config/config.yaml
+- [ ] `sync_interval_messages: 5` configured
+- [ ] Mirror paths set to `~/.hermes/mirrors/USER.md` and `~/.hermes/mirrors/MEMORY.md`
+- [ ] `extract_key_facts()` produces non-empty output for test conversations
+- [ ] Mirror files created and updated after sync interval
+- [ ] No Critical/Confidential content in mirror files (verified by classification filter)
+- [ ] No DNR-marked content in mirror files (verified by DNR gate)
+- [ ] Mirror sync is non-blocking (conversation latency unchanged)
+- [ ] Deduplication working (same fact not repeated)
+
+**Rollback**: Set `memory.mirrors.enabled: false` in config.yaml and reload. Mirror files persist but are no longer updated.
 
 ---
 
@@ -510,7 +582,7 @@ WHERE usename = 'hermes_memory_bridge'
 
 | Field | Value |
 |---|---|
-| Expected Files | plugins/memory/guinevere-memory/\_\_init\_\_.py, plugin.yaml, README.md. Modified: src/hermes/memory/memory_bridge.py (deprecation), src/discord/conversational_handler.py (import update) |
+| Expected Files | plugins/memory/guinevere-memory/\_\_init\_\_.py, plugin.yaml, README.md. Modified: src/hermes/memory_bridge.py (deprecation), src/discord/conversational_handler.py (import update) |
 | Forbidden Patterns | `as any`, `@ts-ignore`, `# type: ignore`, empty `except:`, `except Exception: pass` |
 | Required Commands | `python -c "from plugins.memory.guinevere_memory import GuinevereMemoryProvider; p = GuinevereMemoryProvider(); assert p.name == 'guinevere-memory'"` (exit 0). `python -m pytest tests/hermes/test_memory_bridge.py -v` (exit 0). `python -m pytest tests/memory/ -v -k consent` (exit 0). |
 | Evidence Requirements | docs/setup-evidence/phase-3/verification-P3-001.md, docs/setup-evidence/phase-3/auditor-gate-P3-001.md |
@@ -582,9 +654,19 @@ WHERE usename = 'hermes_memory_bridge'
 |---|---|
 | Expected Files | Updated: docs/README.md, docs/10-governance/17-ADR_Index_v1.0.md |
 | Forbidden Patterns | Safety boundary modifications without Oracle review |
-| Required Commands | All P3-001 through P3-007 verification commands must still pass (regression check) |
+| Required Commands | All P3-001 through P3-007 and P3-009 verification commands must still pass (regression check) |
 | Evidence Requirements | docs/setup-evidence/phase-3/verification-P3-008.md, docs/setup-evidence/phase-3/auditor-gate-P3-008.md |
 | Hard Rejection Criteria | FAIL if: any prior step verification fails, any safety checklist item unchecked, any auditor report not PASS |
+
+### P3-009 Scaffold
+
+| Field | Value |
+|---|---|
+| Expected Files | Modified: hermes-config/config.yaml (mirrors block added), plugins/memory/guinevere-memory/\_\_init\_\_.py (extract_key_facts implementation for mirror sync). Created: tests/hermes/test_mirror_sync.py |
+| Forbidden Patterns | `as any`, `@ts-ignore`, `# type: ignore`, empty `except:`, Critical/Confidential content in mirror files, DNR-marked content in mirror files, PII/intimate data in mirror files, blocking mirror sync (must be daemon thread) |
+| Required Commands | `python -c "import yaml; c = yaml.safe_load(open('hermes-config/config.yaml')); assert c['memory']['mirrors']['enabled'] == True"` (exit 0). `python -c "import yaml; c = yaml.safe_load(open('hermes-config/config.yaml')); assert c['memory']['mirrors']['sync_interval_messages'] == 5"` (exit 0). `python -m pytest tests/hermes/test_mirror_sync.py -v` (exit 0). `grep -rn 'Critical\|Confidential' ~/.hermes/mirrors/ 2>/dev/null` (zero matches after classification filter). All P3-001 through P3-007 verification commands must still pass (regression check). |
+| Evidence Requirements | docs/setup-evidence/phase-3/verification-P3-009.md, docs/setup-evidence/phase-3/auditor-gate-P3-009.md |
+| Hard Rejection Criteria | FAIL if: mirrors.enabled not true, sync_interval_messages != 5, extract_key_facts returns empty for test input, mirror files contain Critical/Confidential content, mirror files contain DNR-marked content, mirror sync blocks conversation (latency increase > 100ms), mirror files contain PII/intimate data, deduplication not working (same fact repeated) |
 
 ---
 
@@ -628,10 +710,27 @@ WHERE usename = 'hermes_memory_bridge'
 | P3-006 | Quality + Safety | A/B results validity, p-value correctness, DNR violations, hallucination check | After P3-006 |
 | P3-007 | Security + DBA | Zero write verification, RBAC persistence, plugin code review | After P3-007 |
 | P3-008 | Full Safety Audit | All safety boundaries, all evidence, all auditor reports, regression check | Final gate |
+| P3-009 | Safety + Code Quality | Mirror sync config, classification filter on mirrors, DNR exclusion, non-blocking sync, no PII/intimate data | P3-002, P3-003 auditors |
 
 ---
 
-## 13. Rollback Plan
+## 13. Gap Mapping Rationale
+
+Several gaps from `07-MEMORY-BRIDGE-GAP.md` were originally recommended for Phase 1 or Phase 2 but are addressed in Phase 3. This section documents the rationale for the phase shift.
+
+| Gap ID | Gap Title | Original Recommendation | Actual Phase | Rationale |
+|---|---|---|---|---|
+| G-B3 | Auto-store fails when embedding unavailable | Phase 1 (immediate fix) | Phase 3 (P3-001) | Store failure is caused by embedding routing (G-B1), which requires 9Router config fix. P3-001 refactors store path through plugin's `sync_turn()` with graceful degradation (FTS-only store without vector). Fixing this before Phase 3 plugin refactor would create duplicate work. |
+| G-B6 | No classification enforcement on Hermes recall | Phase 2 | Phase 3 (P3-003) | Classification enforcement for Hermes requires the safety gates module (safety_gates.py) which is built as part of P3-003. Phase 2 focused on Discord migration where classification was already enforced by read_pipeline. Hermes path needs separate enforcement built into the plugin. |
+| G-B7 | hard_stop_handler not wired to Hermes | Phase 1 | Phase 3 (P3-001, P3-008) | HARD STOP is already enforced by safety_plugin.py at the LLM level. Hermes integration requires the plugin lifecycle hooks (on_session_end) which are built in P3-001. The safety boundary is already active; Hermes integration is additive. |
+| G-B9 | No DNR enforcement on Hermes FTS5 | Phase 2 | Phase 3 (P3-003) | Same as G-B6: requires safety_gates.py built in P3-003. DNR enforcement for Hermes FTS5 results needs the DNR ID cache approach which is designed as part of the session_search safety gates. |
+| G-B10 | Memory consolidation not Hermes-aware | Phase 2 | Phase 3 (P3-009) | Consolidation depends on mirror sync (MEMORY.md/USER.md) which is P3-009. Hermes has its own compression-based consolidation; the bridge consolidation path mirrors key facts from PG to Hermes mirrors. This is a Phase 3 concern after the core plugin (P3-001) and safety gates (P3-003) are operational. |
+
+**General principle**: All five gaps require the MemoryProvider plugin (P3-001) as a prerequisite. Addressing them before the plugin exists would require temporary workarounds that are immediately superseded. Phase 1 and Phase 2 addressed safety boundaries at the existing codebase level; Phase 3 extends those boundaries to the Hermes integration path.
+
+---
+
+## 14. Rollback Plan
 
 | Scenario | Rollback Procedure | Time Estimate |
 |---|---|---|
@@ -641,11 +740,12 @@ WHERE usename = 'hermes_memory_bridge'
 | P3-004 fails | DROP ROLE hermes_memory_bridge; remove replication config from pg_hba.conf | Under 3 minutes |
 | P3-006 fails (p < 0.05) | Disable session_search + compression. Revert to Phase 2 state. Investigate recall quality regression. | Under 5 minutes |
 | P3-007 fails (writes detected) | Revoke all grants from hermes_memory_bridge. Disable plugin. | Under 3 minutes |
+| P3-009 fails | Set memory.mirrors.enabled: false in hermes-config/config.yaml. Mirror files persist but stop updating. | Under 1 minute |
 | Full rollback | Disable all Phase 3 features. Restore skip_memory=True in session_adapter.py. | Under 10 minutes |
 
 ---
 
-## 14. Caveats and Known Risks
+## 15. Caveats and Known Risks
 
 1. **VPS State Unknown**: SSH timed out from Windows. All PostgreSQL and Redis verification steps require direct VPS access. Pre-flight checklist must be run before execution begins.
 
@@ -661,7 +761,7 @@ WHERE usename = 'hermes_memory_bridge'
 
 7. **Consent Gate Novelty (Safety Audit Addition)**: No existing codebase component has a consent gate on memory operations. The consent gate in P3-001 is net-new functionality. It requires a consent state store (Redis DB2 or config file) that does not currently exist in the Guinevere codebase. Pre-requisite: define consent state schema and storage location before P3-001 implementation.
 
-8. **RLS Policy Maintenance (DBA Audit Addition)**: RLS policies with `FORCE ROW LEVEL SECURITY` apply to all sessions including the table owner. The `memory_owner` role used by `ALTER DEFAULT PRIVILEGES` must not be the table owner, or RLS must be configured carefully to avoid blocking the write path. Verify `memory_owner` is a dedicated non-superuser role.
+8. **RLS Policy Maintenance (DBA Audit Addition)**: RLS policies with `FORCE ROW LEVEL SECURITY` apply to all sessions including the table owner. The `memory_owner` role used by `ALTER DEFAULT PRIVILEGES` must not be the table owner, or RLS must be configured carefully to avoid blocking the write path. Verify `memory_owner` is a dedicated non-superuser role. v1.3 FIX (Auditor Tech F4): P3-004 now includes a pre-requisite check that verifies `memory_owner` exists before running the SQL migration, with a fallback to discover the actual table-owning role via `pg_tables`.
 
 9. **Hermes Principal Definition (DBA Audit Addition)**: Hermes is defined as an external framework principal outside the current Guinevere RBAC matrix. This definition must be added to `docs/20-security/21-RBAC_ABAC_Matrix_v1.0.md` during P3-004 execution. The RBAC matrix update is a doc-sync task owned by parent.
 
@@ -669,7 +769,7 @@ WHERE usename = 'hermes_memory_bridge'
 
 ---
 
-## 15. Execution Checklist
+## 16. Execution Checklist
 
 ### Pre-Execution
 - [ ] VPS SSH access verified
@@ -689,6 +789,7 @@ WHERE usename = 'hermes_memory_bridge'
 ### Wave 2 (Parallel, after P3-001)
 - [ ] P3-002: Verify compression at 70%
 - [ ] P3-003: Enable session_search FTS5 with safety gates
+- [ ] P3-009: Configure Hermes mirror sync (MEMORY.md/USER.md)
 
 ### Wave 3 (Sequential, after Wave 2 + P3-005)
 - [ ] P3-006: Execute A/B test (100 queries)
@@ -707,7 +808,7 @@ WHERE usename = 'hermes_memory_bridge'
 
 ---
 
-## 16. Footer
+## 17. Footer
 
 ### Versioning
 
@@ -715,12 +816,14 @@ WHERE usename = 'hermes_memory_bridge'
 |---|---|---|---|
 | 1.0 | 2026-06-04 | Guinevere (Parent Planner) | Initial planner gate with 8 atomic steps, per-step scaffolds, dependency map, collision scan, rollback plan |
 | 1.1 | 2026-06-04 | Guinevere (Parent Planner) | Auditor fix pass: (1) Safety gates moved to separate `safety_gates.py` module — resolves Wave 2 collision (Arch-A1). (2) Consent gate added to P3-001 prefetch/sync_turn with fail-closed pattern (Safety-S1). (3) DNR ID cache + PG classification enrichment specified for P3-003 (Safety-S2/S3). (4) RLS policies with classification ceiling + surveillance isolation added to P3-004 (Safety-S4, DBA-D2). (5) Safe-word logging documented (Safety-S5). (6) Explicit REVOKE INSERT/UPDATE/DELETE/TRUNCATE (DBA-D1). (7) Streaming replication config detailed with wal_level, max_wal_senders, ssl_mode (DBA-D3). (8) log_statement='mod' added to P3-007 scaffold (DBA-D4). (9) REDIS_PASSWORD, DISCORD_TOKEN, SOPS encryption added to secrets table (DBA-D5/D6). (10) Network isolation via Tailscale specified (DBA-D7). (11) state.db exfiltration addressed via RLS classification ceiling (DBA-D8). (12) Connection string logging rule added (DBA-D9). (13) 4 new caveats added. Ready for re-audit. |
+| 1.2 | 2026-06-04 | Guinevere (Parent Planner) | Second auditor fix pass (6 findings across 3 auditors): (1) All SQL table names fixed: `memory.episodic_memory` → `memory.episodes` (Safety S10, Tech T4). (2) RLS classification ceiling fixed: string comparison `classification_level <= 'Restricted'` replaced with IN-list `classification IN ('Public', 'Internal', 'Restricted')` because lexicographic ordering is wrong for classification enum (Safety S10). (3) A/B test statistical method fixed: `ttest_ind` → `ttest_rel` because queries are paired samples (Tech T5). (4) P3-009 added: Hermes mirror sync (MEMORY.md/USER.md) from canonical phase-3-memory.md Step 3.4 — was missing entirely (ADR C2). (5) Gap mapping rationale section added documenting why G-B3/G-B6/G-B7/G-B9/G-B10 shifted from Phase 1/2 to Phase 3 (ADR C6). (6) Section numbering updated (§13-§17). Ready for re-audit. |
+| 1.3 | 2026-06-05 | Guinevere (Parent Planner) | Third auditor fix pass (4 findings from Technical Accuracy re-audit; Memory Safety passed v1.2): (1) F1 HIGH: Fixed file path `src/hermes/memory/memory_bridge.py` → `src/hermes/memory_bridge.py` at 4 locations (Known State, §7.2, P3-001 scaffold, P3-009 scaffold). (2) F2 MEDIUM: Moved `extract_key_facts()` implementation target from deprecated `memory_bridge.py` to plugin module `plugins/memory/guinevere-memory/__init__.py` (P3-009 design + scaffold). (3) F3 LOW: Added P3-009 entries to §7.2 Files to MODIFY table (plugin \_\_init\_\_.py + config.yaml). (4) F4 MEDIUM: Added pre-requisite check for `memory_owner` role existence with fallback discovery via `pg_tables`, strengthened caveat 8. Ready for re-audit (Tech Accuracy + ADR-035 Compliance only; Memory Safety already PASS). |
 
 ### Approval
 
-This planner gate (v1.1) has been revised to address all findings from the initial 3-auditor review:
-1. Architecture Auditor (NEEDS REVIEW → 3 items fixed: collision scan, safety_gates.py module, file plan)
-2. Safety Auditor (FAIL → 5 items fixed: consent gate, DNR ID cache, PG classification enrichment, surveillance RLS, safe-word logging)
-3. DBA/Security Auditor (NEEDS REVIEW → 9 items fixed: RLS, explicit REVOKE, streaming config, log_statement, secrets, SOPS, network isolation, data exfiltration, connection string logging)
+This planner gate (v1.3) has been revised to address all findings from the third auditor review:
+1. Memory Safety Auditor: **PASS** on v1.2 — no re-audit needed
+2. Technical Accuracy Auditor (NEEDS REVIEW → 4 items fixed: file path corrected, extract_key_facts moved to plugin, §7.2 table updated, memory_owner pre-requisite added)
+3. ADR-035 Compliance Auditor: **INCOMPLETE** on v1.2 (session ended before report written) — needs fresh re-audit on v1.3
 
-**Re-audit required**: All 3 auditors must re-review v1.1 and PASS before Wave 1 execution begins.
+**Re-audit required**: Tech Accuracy and ADR-035 Compliance auditors must re-review v1.3 and PASS before Wave 1 execution begins.

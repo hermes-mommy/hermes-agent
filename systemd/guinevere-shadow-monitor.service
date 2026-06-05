@@ -10,7 +10,7 @@ WorkingDirectory=/home/guinevere/code/guinevere
 Environment=PYTHONPATH=/home/guinevere/code/guinevere
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=VIRTUAL_ENV=/home/guinevere/code/guinevere/.venv
-EnvironmentFile=/home/guinevere/code/guinevere/hermes-config/.env
+EnvironmentFile=/home/guinevere/code/guinevere/.env.discord
 ExecStart=/home/guinevere/code/guinevere/.venv/bin/python -m src.discord.shadow_monitor --check
 StandardOutput=journal
 StandardError=journal
