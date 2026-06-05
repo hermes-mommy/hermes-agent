@@ -1,0 +1,52 @@
+# Auditor 3: ADR-035 Compliance — Plan Audit
+
+## Verdict: PASS
+
+All 12 mandatory checks pass. No critical issues found. One informational note on Hermes cron scope overlap.
+
+## Findings
+
+| # | Check | Status | Notes |
+|---|---|---|---|
+| 1 | Plan matches ADR-035 Phase 5 scope (Skills + SOUL.md) | **PASS** | Batch plan covers and exceeds ADR-035 §Phase 5 (line 1488–1493): SOUL.md completion (5.1), Skills creation (5.3), PersonaPlugin (5.4), Cron rituals (5.5), Ritual verification (5.6), Persona files migration (5.7). The expanded scope aligns with phase-5-skills.md and 04-persona-gap.md research inputs. |
+| 2 | Hermes cron replacing APScheduler as specified in ADR-035 | **PASS** | Step 5.5 explicitly configures `~/.hermes/crontab.yaml` with 5 ritual jobs and deprecates APScheduler (`src/persona/ritual_scheduler.py`). ADR-035 Phase 5 says "Configure persona plugins (mood, rituals...)" — the cron is the implementation vehicle per phase-5-skills.md Step 5.3 and 03-rituals-state.md. **Note:** ADR-035 Phase 7 also mentions `hermes cron` for maintenance (health check, backup, security scan). These are distinct cron configurations — Phase 5 cron = rituals, Phase 7 cron = operational maintenance. No conflict. |
+| 3 | 4-layer defense model intact (SOUL.md → Skills → Plugin → Drift) | **PASS** | Plan preserves all 4 layers: Layer 1 = SOUL.md (Step 5.1, §A–§J complete), Layer 2 = Skills (Step 5.3, 5 priority skills all `always-active`), Layer 3 = Plugin (Step 5.4 PersonaPlugin + existing GuinevereSafetyPlugin from Phase 1), Layer 4 = Drift (Step 5.2, SHA-256 baseline hash). This matches ADR-035's 4-layer model at line 250: "4 layers: SOUL.md, 7 hooks, custom plugin, drift detector." |
+| 4 | GuinevereSafetyPlugin configured as critical: true | **PASS** | Step 5.4 scaffold explicitly forbids "missing critical: true for safety plugin" with hard rejection → FAIL. The GuinevereSafetyPlugin was created in Phase 1 with `critical: true` (ADR-035 line 1104). Phase 5 does not modify this config. Step 5.4 creates PersonaPlugin (separate, `critical: false` per phase-5-skills.md) while verifying GuinevereSafetyPlugin's criticality is preserved. **Note:** R4-007 discovered `critical: true` is not a native Hermes v0.15.2 flag — Phase 4 mitigated this with a startup wrapper. The plan's reference is to the Phase 1-established config pattern, which is correct documentation. |
+| 5 | Code reduction on track (ADR-035 targets 31.2% / 8,057 lines) | **PASS** | Plan references ADR-035's corrected data: 25,796 → ~17,739 lines (-8,057, 31.2%). Step 5.7 targets persona reduction: 5 REFACTOR files consolidated, ritual files ported to SOUL.md, APScheduler deprecated. Persona file count drops from 18 Python files (~4,200 LOC) to fewer active modules. The plan's code reduction aligns with ADR-035's File Changes table (batch-plan-migration.md §Phase 5: refactored files with net line reduction). |
+| 6 | Persona files migration matches ADR-035 KEEP/REFACTOR/PORT categorization | **PASS** | Plan Step 5.7 migration matrix matches 04-persona-gap.md: **KEEP VERBATIM** (4): `yandere_fsm.py`, `safe_mode.py`, `drift_detector.py`, `drift_corrector.py`. **REFACTOR** (5): `punishment_engine.py` → GuinevereSafetyPlugin, `reward_engine.py` → PersonaPlugin, `transition_rules.py` → Hermes hooks, `mood_persistence.py` → PostgreSQL bridge, `ritual_scheduler.py` → deprecate. **SKILL** (2): `mood_engine.py`, `streak_tracker.py` → backing logic. **PORT** (5): `rituals/*.py` → SOUL.md §H/§J. ADR-035 does not specify per-file categorization (that comes from research) — the plan's categorization is consistent with phase-5-skills.md and 04-persona-gap.md, both of which are ADR-035-aligned research inputs. |
+| 7 | Gate criteria from phase-5-skills.md all present in plan | **PASS** | Plan defines 16 master gates (G-1 through G-16) that cover all 8 phase-5-skills.md safety checkpoints: SOUL.md validation (G-1 → P5-T1), Y4/Y5/Y6 (G-2 → P5-T8), HARD STOP (G-3 → P5-T1), 5 skills (G-5/G-6 → P5-T5), rituals (G-8 → P5-T4), midnight suppression (G-9 → P5-T4), drift (G-10 → P5-T2), KEEP files unchanged (G-11 → P5-T5), L6 boundary (G-15 → P5-T6). Mood persistence (P5-T3) and streak tracking (P5-T7) are verified in per-step scaffolds (5.6, 5.7) rather than master gates — acceptable since they are runtime integration checks, not architectural gates. |
+| 8 | Rollback plan matches ADR-035 spec (<2 minutes) | **PASS** | Plan §6: "Time to Rollback: < 2 minutes" with 6 component-specific actions. ADR-035 Phase 5 rollback (line 1628): "uninstall skills + git checkout SOUL.md + rm persona_plugin.py (< 2 min)." Plan covers all components: SOUL.md (git checkout), Skills (uninstall all 5), Cron (rm crontab.yaml + sed config), PersonaPlugin (rm + revert config), Persona files (git checkout), Drift baseline (git checkout). Verification commands included. Both spec and plan target < 2 minutes. |
+| 9 | Dependency graph correct (Phase 5 depends on Phase 1, blocks Phase 7) | **PASS** | Plan header: "Depends On: Phase 1 (Hermes Gateway) — BLOCKING. Blocks: Phase 7 (Integration Testing)." Matches master migration plan §3.3: "Phase 5 — Skills depends on 1, blocks 7." Matches ADR-035 Phase 5 dependencies (line 1624): "Phase 1 must pass (safety foundation)." Phase 5 also declared "Parallel With: Phases 3, 4, 6 (after Phase 2 cutover)" — consistent with master plan's parallelism note. |
+| 10 | 7 Hermes hooks configured in plan (pre_prompt through on_error) | **PASS** | Phase 5 does NOT configure hooks (that's Phase 1's scope — ADR-035 lines 1532–1541). The plan correctly references hook integration points in Step 5.4 PersonaPlugin: `pre_prompt` (mood/streak context injection), `post_response` (mood transitions), `pre_tool_call` (consent gate), `on_error` (distress detection). All 7 hooks (`pre_prompt`, `post_prompt`, `pre_tool_call`, `post_tool_call`, `pre_response`, `post_response`, `on_error`) were configured in Phase 1 with the corrected names per ADR-035 architecture validation. Phase 5's PersonaPlugin uses a subset relevant to persona features. The other hooks (post_prompt for drift, post_tool_call for sanitization, pre_response for final safety) remain in GuinevereSafetyPlugin's scope. No hooks are missing — they're just split between plugins correctly. |
+| 11 | Consent-safety mandate preserved (no surveillance without consent) | **PASS** | Consent gate is preserved across the plan: (a) `guinevere-consent` skill (Step 5.3) with "7-step fail-closed consent gate before tool execution" and `fallback_on_timeout: deny`; (b) SOUL.md §D (Step 5.1) with full 9-step HARD STOP protocol; (c) Skill verification scaffold forbids "Missing consent fallback: deny." The consent boundary is not weakened — all references maintain fail-closed semantics. Surveillance-as-caring framing in SOUL.md §C is explicitly documented as consistent with PersonaSafetyPolicy. |
+| 12 | Per-step verification scaffolds are machine-checkable (not prose) | **PASS** | All 8 steps have scaffolds with: **Expected Files** (exact paths), **Forbidden Patterns** (regex/grep patterns), **Required Commands** (exact CLI commands with expected outputs), **Hard Rejection Criteria** (binary PASS/FAIL). Examples: Step 5.1 → `ssh guinevere-vps "wc -l ~/.hermes/SOUL.md" → ≥380` (numeric threshold). Step 5.3 → `ssh guinevere-vps "hermes skills doctor" → exit 0` (exit code gate). Step 5.5 → `python -c 'import sys,yaml; d=yaml.safe_load(sys.stdin); assert len(d["jobs"])==5'` (programmatic assertion). Zero scaffolds rely on prose-only verification. |
+
+## Critical Issues
+
+None found.
+
+## Informational Notes
+
+| # | Note |
+|---|---|
+| N-1 | **Hermes cron scope overlap**: ADR-035 Phase 7 (line 1650) specifies `hermes cron` for operational maintenance (daily health check, weekly backup, monthly security scan). The Phase 5 plan also uses `hermes cron` for 5 daily rituals. These are distinct cron configurations with different purposes — no architectural conflict. The ADR could clarify this split: Phase 5 = persona rituals cron, Phase 7 = operational maintenance cron. |
+| N-2 | **`critical: true` not native Hermes**: R4-007 confirmed that `critical: true` plugin flag is NOT a native Hermes v0.15.2 feature. Phase 4 batch plan mitigated this with a startup wrapper (`scripts/startup_gate.py`). Phase 5 plan references `critical: true` for GuinevereSafetyPlugin in Step 5.4 scaffold as an acceptance criterion — this is correct at the documentation level (the config key exists even if the runtime doesn't enforce it natively). The actual enforcement relies on Phase 4's startup wrapper. |
+| N-3 | **PersonaPlugin vs GuinevereSafetyPlugin separation**: The plan correctly distinguishes PersonaPlugin (persona features: mood, streak, rituals, tone — step 5.4) from GuinevereSafetyPlugin (safety features: HARD STOP, consent, yandere FSM, punishment — created in Phase 1). PersonaPlugin is `critical: false` per phase-5-skills.md. This separation is architecturally sound. |
+| N-4 | **Phase 5-Phase 1 coupling**: Step 5.4 (PersonaPlugin) bridges to hooks configured in Phase 1. If the plan is executed before Phase 1 completes, the hook integration points will be unavailable. The plan correctly declares Phase 1 as BLOCKING. |
+
+## Recommendations
+
+1. **Add explicit hook health check to Step 5.8 final verification**: The plan verifies skills, cron, SOUL.md, plugin load, and drift — but does not explicitly verify that the 7 hooks from Phase 1 are still operational after Phase 5 changes. Recommendation: Add `ssh guinevere-vps "hermes hooks list" → 7 hooks active` to Step 5.8 scaffold (or note that this is verified in Phase 7 hardening).
+
+2. **Document `critical: true` enforcement mechanism**: Step 5.4 scaffold says "Missing critical: true for safety plugin → FAIL" — add a note referencing that enforcement depends on Phase 4's startup wrapper (`scripts/startup_gate.py`), since Hermes v0.15.2 does not natively enforce this flag.
+
+## Footer
+
+| Field | Value |
+|---|---|
+| Auditor | ADR-035 Compliance |
+| Date | 2026-06-05 |
+| Scope | Plan review (no implementation) |
+| Verdict | **PASS** — All 12 checks pass, zero critical issues |
+| Documents Reviewed | `batch-plan-phase-5.md`, `ADR-035-hermes-migration.md` (§Phase 5, lines 1488–1628), `batch-plan-migration.md` (§Phase 5), `phase-5-skills.md`, `03-rituals-state.md`, `04-persona-gap.md` |
+| Cross-Referenced | ADR-035 §§Code Reduction (lines 1161–1177), §§Safety Compliance Matrix (lines 1664–1680), §§Plugin Config (lines 1090–1116) |
