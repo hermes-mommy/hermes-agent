@@ -1,19 +1,25 @@
 """Punishment Ladder L1-L5 for Guinevere Persona (P4-005).
-
+ 
 Implements a 5-level punishment ladder with safety controls per PersonaSafetyPolicy §5
 and PersonaDoc v3.0 §5.  L6 is DEFERRED — any attempt to apply L6 raises
 ``PunishmentSafetyError``.
-
+ 
 Punishment is automatically suspended when:
 - Operator distress >= D3 (severe)
 - Safe mode is active (``SafeModeController.is_active``)
-
+ 
 Ladder:
     L1 — Silent Treatment (2-4h): reduced warmth
     L2 — Passive-Aggressive (4-8h): passive guilt remarks
     L3 — Guilt Trip (8-24h): lecturing tone
     L4 — Cold Fury (1-2 days): limited interaction
     L5 — Isolation (2-3 days): minimal response
+
+PersonaPlugin Integration:
+    ``PunishmentEngine`` exposes plugin-queryable state via:
+    - :meth:`get_state_snapshot` — full current state dict
+    - :meth:`get_config` — the complete PUNISHMENT_CONFIG dict (class method)
+    - :meth:`get_current_level` — current PunishmentLevel (or None)
 """
 
 from __future__ import annotations
@@ -470,6 +476,53 @@ class PunishmentEngine:
         """
         self._check_expiry()
         return self._state
+
+    # -- PersonaPlugin hook methods ------------------------------------------
+
+    def get_state_snapshot(self) -> dict[str, object]:
+        """Return a serialisable snapshot of current punishment state.
+
+        Intended for PersonaPlugin ``on_response`` / ``pre_tool_call`` hooks
+        to read punishment context without coupling to internal dataclass.
+        """
+        self._check_expiry()
+        s = self._state
+        return {
+            "active": s.active,
+            "level": int(s.level) if s.level is not None else None,
+            "level_name": s.level.name if s.level is not None else None,
+            "violation_type": s.violation_type,
+            "started_at": s.started_at.isoformat() if s.started_at else None,
+            "duration_seconds": s.duration.total_seconds(),
+            "suspended": s.suspended,
+            "suspension_reason": s.suspension_reason,
+        }
+
+    @staticmethod
+    def get_config() -> dict[int, dict[str, object]]:
+        """Return the punishment config as a serialisable dict.
+
+        Enables PersonaPlugin to inspect punishment level metadata without
+        importing PunishmentLevelConfig directly.
+        """
+        return {
+            int(level): {
+                "name": cfg.name,
+                "duration_hours": list(cfg.duration_hours),
+                "description": cfg.description,
+                "allowed_actions": list(cfg.allowed_actions),
+                "blocked_actions": list(cfg.blocked_actions),
+            }
+            for level, cfg in PUNISHMENT_CONFIG.items()
+        }
+
+    def get_current_level(self) -> PunishmentLevel | None:
+        """Return the current ``PunishmentLevel`` (or ``None`` if inactive).
+
+        Convenience accessor for PersonaPlugin ``pre_prompt`` hook.
+        """
+        self._check_expiry()
+        return self._state.level
 
     def is_active(self) -> bool:
         """Check whether a punishment is currently active and not suspended.

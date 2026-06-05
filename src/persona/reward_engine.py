@@ -9,6 +9,12 @@ activation, per PersonaDoc v3.0 and SystemPromptMaster §B.
 Architecture:
     RewardTier IntEnum → REWARD_CONFIG → RewardEngine.calculate_tier()
     → RewardEngine.award() → RewardResult
+
+PersonaPlugin Integration:
+    ``RewardEngine`` exposes plugin-queryable state via:
+    - :meth:`get_state_snapshot` — full current state dict
+    - :meth:`get_config` — the complete REWARD_CONFIG dict (class method)
+    - ``get_current_tier()``, ``last_reason``, ``total_rewards_awarded``
 """
 from __future__ import annotations
 
@@ -378,3 +384,35 @@ class RewardEngine:
     def last_reason(self) -> str:
         """The reason string of the most recently awarded reward."""
         return self._last_reason
+
+    # -- PersonaPlugin hook methods ------------------------------------------
+
+    def get_state_snapshot(self) -> dict[str, object]:
+        """Return a serialisable snapshot of current reward engine state.
+
+        Intended for PersonaPlugin ``post_response`` hook to read reward
+        context without coupling to internal fields.
+        """
+        return {
+            "current_tier": int(self._current_tier),
+            "current_tier_name": self._current_tier.name,
+            "last_reason": self._last_reason,
+            "total_rewards_awarded": self._total_rewards_awarded,
+        }
+
+    @staticmethod
+    def get_config() -> dict[int, dict[str, object]]:
+        """Return the reward config as a serialisable dict.
+
+        Enables PersonaPlugin to inspect reward tier metadata
+        without importing RewardConfigEntry directly.
+        """
+        return {
+            int(tier): {
+                "name": cfg.name,
+                "description": cfg.description,
+                "trigger_conditions": list(cfg.trigger_conditions),
+                "message_templates": list(cfg.message_templates),
+            }
+            for tier, cfg in REWARD_CONFIG.items()
+        }
