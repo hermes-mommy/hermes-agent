@@ -4,7 +4,7 @@
 |-------|-------|
 | **Project** | Guinevere — Autonomous AI Companion & Engineering System |
 | **Status** | ✅ P0+P1+P2+P3+P4+P5+P5.5+P6+P7+P7.5+P8 Complete — MVP Infrastructure Complete. Production deployment pending. |
-| **Last Updated** | 2026-06-05 (Phase 2 Discord Wave 4 Cutover COMPLETE + E2E VERIFIED. Hermes Agent gateway running on VPS, model=ds/deepseek-v4-flash via 9Router, Discord connected as Guinevere#1445. 3-layer safety: Python plugin (10 gates, 6 hooks) + shell hooks (consent_gate, dnr_filter) + guinevere-safety plugin. Custom bot.py masked. 2/2 auditors PASS. Evidence: `docs/setup-evidence/hermes-phase2-discord/evidence-cutover.md`, `evidence-hook-fix.md`, `auditor-wave4-e2e.md`, `auditor-phase2-complete.md`.) |
+| **Last Updated** | 2026-06-06 (ADR-035 Phase 5 Hermes Migration 5.1-5.8 implemented and parent-verified: SOUL.md §A-§J complete, five Guinevere skills installed, drift baseline reset, PersonaPlugin bridge registered locally, Hermes cron rituals corrected/verified, persona module migration verified, final 18-gate evidence written. Remaining closure gates: post-implementation auditor wave, Redis transcript incident disposition by Faiz, deployment/restart, commit/push. Evidence: `docs/setup-evidence/phase-5/evidence-phase-5.md`, `security-incident-5-2-redis-transcript.md`.) |
 | **Budget** | $30/month hard cap |
 | **Infrastructure** | Shared VPS (hostdata.id 4C/16GB Ubuntu 24.04) |
 | **Critical Path** | P0 → P1 → P3 → P5 |
@@ -259,6 +259,21 @@
 **Evidence**: `audit-reports/P5/P5-FINAL-AUDIT/P5-FINAL-AUDIT.md`, `docs/setup-evidence/P5.5/batch-plan-remediation.md`, 6 re-audit reports at `audit-reports/P5/P5-FINAL-AUDIT/D*-re-audit.md`.
 
 **P6 GO/NO-GO**: CONDITIONAL GO — P5 structurally sound, all blocking CRITICALs fixed. Remaining gaps are non-blocking and deferred to later phases.
+
+### ADR-035 Phase 5 Hermes Migration Enhancements (2026-06-06)
+
+| Step | Scope | Status | Evidence |
+|---|---|---|---|
+| 5.1 | VPS `SOUL.md` completion (§A-§J, Y4/Y5/Y6, HARD STOP, prompt-injection defense) | ✅ Parent-verified | `docs/setup-evidence/phase-5/verification-5-1.md` |
+| 5.2 | Drift baseline reset to finalized SOUL SHA-256 | ✅ Functional / security disposition pending | `docs/setup-evidence/phase-5/verification-5-2.md`, `docs/setup-evidence/phase-5/security-incident-5-2-redis-transcript.md` |
+| 5.3 | Five priority Hermes skills (`hardstop`, `consent`, `yandere`, `mood`, `rituals`) + custom discovery smoke test | ✅ Parent-verified | `docs/setup-evidence/phase-5/verification-5-3-preflight.md`, `docs/setup-evidence/phase-5/verification-5-3.md` |
+| 5.4 | PersonaPlugin bridge (`src/hermes/plugins/persona_plugin.py`) + local registration package | ✅ Parent-verified | `docs/setup-evidence/phase-5/verification-5-4.md` |
+| 5.5 | Hermes cron ritual configuration with midnight suppression | ✅ Parent-verified | `docs/setup-evidence/phase-5/verification-5-5.md` |
+| 5.6 | Ritual verification; fixed invalid `hermes run` plan syntax to `hermes chat -Q -q` | ✅ Parent-verified | `docs/setup-evidence/phase-5/verification-5-6.md` |
+| 5.7 | Persona module migration; APScheduler retired from active ritual path | ✅ Parent-verified | `docs/setup-evidence/phase-5/verification-5-7.md` |
+| 5.8 | Final 18-gate evidence | ⚠️ 13 PASS / 2 conditional / 2 blocked / 1 fail before this PROGRESS sync | `docs/setup-evidence/phase-5/evidence-phase-5.md` |
+
+**Remaining Phase 5 closure gates**: post-implementation auditor wave (G-16), Faiz decision for Redis transcript exposure disposition (G-14/security), deploy/restart, commit/push, final report.
 
 ## P6: MCP Tools (21 steps)
 *ADRs: ADR-020, ADR-033 | Cost: $1/mo avg | Deps: P5 complete*
