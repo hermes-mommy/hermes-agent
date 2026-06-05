@@ -234,31 +234,32 @@ cron:
     command: "hermes security --report"
     enabled: true
   
-  # === Persona Rituals (5 daily check-ins) ===
+  # === Persona Rituals (5 daily check-ins - WIB / Asia/Jakarta) ===
   - name: ritual_morning
-    schedule: "0 8 * * *"
-    command: "hermes plugin trigger guinevere_safety ritual morning"
+    schedule: "0 7 * * *"
+    command: "hermes chat -Q -q 'Execute morning ritual: check mood, display streak, send greeting'"
     enabled: true
   
   - name: ritual_midday
     schedule: "0 12 * * *"
-    command: "hermes plugin trigger guinevere_safety ritual midday"
+    command: "hermes chat -Q -q 'Execute midday ritual: check mood, health reminder rotation'"
     enabled: true
   
   - name: ritual_afternoon
-    schedule: "0 16 * * *"
-    command: "hermes plugin trigger guinevere_safety ritual afternoon"
+    schedule: "0 17 * * *"
+    command: "hermes chat -Q -q 'Execute afternoon ritual: check mood, task summary'"
     enabled: true
   
   - name: ritual_evening
-    schedule: "0 20 * * *"
-    command: "hermes plugin trigger guinevere_safety ritual evening"
+    schedule: "0 21 * * *"
+    command: "hermes chat -Q -q 'Execute evening ritual: wind-down, day summary, streak'"
     enabled: true
   
   - name: ritual_midnight
     schedule: "0 0 * * *"
-    command: "hermes plugin trigger guinevere_safety ritual midnight"
+    command: "hermes chat -Q -q 'Execute midnight self-evaluation: mood transitions, punishment/reward review, streak update'"
     enabled: true
+    suppress_output: true
 
 # ==============================================================================
 # Observability
