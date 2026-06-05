@@ -187,10 +187,10 @@ def validate_path(path: str, allowed_paths: frozenset[str]) -> Path:
 
 @require_approval(AuthLevel.READ_AUTO)
 async def fs_read(
-    path: str, _config: FilesystemConfig = _DEFAULT_CONFIG
+    path: str, config: FilesystemConfig = _DEFAULT_CONFIG
 ) -> str:
     """Read file contents. Auth: READ_AUTO."""
-    validated = validate_path(path, _config.allowed_paths)
+    validated = validate_path(path, config.allowed_paths)
     _check_path_isolation(validated)
     logger.info("fs_read", path=str(validated))
     return validated.read_text(encoding="utf-8")
@@ -198,10 +198,10 @@ async def fs_read(
 
 @require_approval(AuthLevel.WRITE_NOTIFY)
 async def fs_write(
-    path: str, content: str, _config: FilesystemConfig = _DEFAULT_CONFIG
+    path: str, content: str, config: FilesystemConfig = _DEFAULT_CONFIG
 ) -> dict[str, str]:
     """Write file contents. Auth: WRITE_NOTIFY."""
-    validated = validate_path(path, _config.allowed_paths)
+    validated = validate_path(path, config.allowed_paths)
     _check_path_isolation(validated)
     logger.info("fs_write", path=str(validated))
     validated.write_text(content, encoding="utf-8")
@@ -210,10 +210,10 @@ async def fs_write(
 
 @require_approval(AuthLevel.DESTRUCTIVE_APPROVAL)
 async def fs_delete(
-    path: str, _config: FilesystemConfig = _DEFAULT_CONFIG
+    path: str, config: FilesystemConfig = _DEFAULT_CONFIG
 ) -> dict[str, str]:
     """Delete a file. Auth: DESTRUCTIVE_APPROVAL."""
-    validated = validate_path(path, _config.allowed_paths)
+    validated = validate_path(path, config.allowed_paths)
     _check_path_isolation(validated)
     logger.info("fs_delete", path=str(validated))
     validated.unlink(missing_ok=False)
@@ -222,10 +222,10 @@ async def fs_delete(
 
 @require_approval(AuthLevel.READ_AUTO)
 async def fs_list(
-    path: str, _config: FilesystemConfig = _DEFAULT_CONFIG
+    path: str, config: FilesystemConfig = _DEFAULT_CONFIG
 ) -> list[str]:
     """List directory contents. Auth: READ_AUTO."""
-    validated = validate_path(path, _config.allowed_paths)
+    validated = validate_path(path, config.allowed_paths)
     _check_path_isolation(validated)
     logger.info("fs_list", path=str(validated))
     return sorted(p.name for p in validated.iterdir())
