@@ -1,0 +1,6 @@
+name: auth_overlay
+version: 1.0.0
+description: "Fail-closed auth overlay enforcing Python auth_matrix for all MCP tool calls"
+author: "Guinevere"
+hooks:
+  - pre_tool_call
