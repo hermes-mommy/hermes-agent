@@ -1,8 +1,16 @@
-"""Hermes Memory Bridge — Phase 2.
+"""Hermes Memory Bridge — Phase 2 (DEPRECATED).
 
 Bridges Hermes conversational agent with Guinevere's episodic memory system.
 Provides READ path (recall_for_context) and WRITE path (store_conversation)
 with graceful degradation when embeddings are unavailable.
+
+.. deprecated::
+    This module is deprecated as of Phase 3.  Use the new Hermes
+    MemoryProvider plugin instead::
+
+        from plugins.memory.guinevere_memory import GuinevereMemoryProvider
+
+    See ``plugins/memory/guinevere_memory/README.md`` for setup instructions.
 
 Safety: DNR exclusion, classification ceiling, safe-mode, token budget —
 all delegated to underlying pipelines. No raw content in logs.
@@ -11,7 +19,14 @@ all delegated to underlying pipelines. No raw content in logs.
 from __future__ import annotations
 
 import logging
+import warnings
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+
+warnings.warn(
+    "memory_bridge is deprecated; use plugins/memory/guinevere_memory",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 if TYPE_CHECKING:
     from src.memory.read_pipeline import EmbeddingClient

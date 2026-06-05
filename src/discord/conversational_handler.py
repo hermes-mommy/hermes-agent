@@ -149,7 +149,10 @@ def _get_or_create_bridge(session_factory: Any, embedding_svc: Any) -> Any:
     """
     global _memory_bridge
     if _memory_bridge is None:
-        from src.hermes.memory_bridge import HermesMemoryBridge
+        # DEPRECATED (Phase 3): import kept for backward compatibility.
+        # New code should use plugins.memory.guinevere_memory.GuinevereMemoryProvider.
+        # This import triggers a DeprecationWarning from memory_bridge.py.
+        from src.hermes.memory_bridge import HermesMemoryBridge  # noqa: WPS301
 
         _memory_bridge = HermesMemoryBridge(
             session_factory=session_factory,

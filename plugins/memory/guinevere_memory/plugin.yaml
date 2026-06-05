@@ -1,0 +1,15 @@
+name: guinevere-memory
+version: 1.0.0
+description: "Guinevere Phase 3 Memory Bridge — PostgreSQL episodic memory for Hermes Agent"
+author: "Guinevere"
+pip_dependencies:
+  - "sqlalchemy>=2.0"
+  - "pgvector>=0.2"
+hooks:
+  - prefetch
+  - sync_turn
+  - on_session_end
+  - on_pre_compress
+  - on_memory_write
+  - system_prompt_block
+  - shutdown
