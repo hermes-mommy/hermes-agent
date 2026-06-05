@@ -1,0 +1,9 @@
+name: guinevere-persona
+version: 1.0.0
+description: "Dynamic persona state injection from Redis DB5 — enriches LLM prompts with mood, yandere, punishment, last interaction"
+author: "Guinevere"
+hooks:
+  - pre_llm_call
+  - post_llm_call
+  - pre_tool_call
+  - on_session_start
