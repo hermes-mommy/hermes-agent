@@ -9,9 +9,16 @@ suppressed from external output. Evaluation data is logged regardless.
 
 Message template (internal log only):
     "Self-evaluation complete. Silent mode until morning."
+
+.. deprecated:: Phase 5
+    This module is **deprecated** in favour of Hermes cron + PersonaPlugin.
+    The midnight ritual is always suppressed from Discord (``suppress_output: true``).
+    Scheduled removal: Phase 7.
 """
 
 from __future__ import annotations
+
+import warnings
 
 from datetime import datetime
 from typing import Any, Final
@@ -19,6 +26,14 @@ from typing import Any, Final
 import structlog
 
 from src.persona.rituals.morning import RitualResult, TZ_JAKARTA
+
+warnings.warn(
+    "rituals/midnight.py is deprecated in Phase 5. "
+    "Midnight ritual suppressed — use Hermes cron with suppress_output: true. "
+    "Scheduled removal: Phase 7.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 logger = structlog.get_logger()
 

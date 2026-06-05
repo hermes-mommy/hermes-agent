@@ -1,4 +1,21 @@
-"""Persona Engine — mood FSM, yandere FSM, punishment, reward, rituals, drift, safe-mode, streak."""
+"""Persona Engine — mood FSM, yandere FSM, punishment, reward, rituals, drift, safe-mode, streak.
+
+Phase 5 Migration:
+    - ``ritual_scheduler`` and ``rituals/*`` modules are **deprecated** (Phase 5).
+      Imports still work but trigger ``DeprecationWarning``.
+      Scheduled removal: Phase 7.
+    - ``punishment_engine``, ``reward_engine``, ``transition_rules``, and
+      ``mood_persistence`` expose PersonaPlugin hook methods (``get_state_snapshot``,
+      ``get_config``, ``get_session``) for integration without coupling.
+"""
+
+from __future__ import annotations
+
+import warnings
+
+# ===================================================================
+# Active modules (verified, non-deprecated)
+# ===================================================================
 
 from src.persona.drift_corrector import (
     DRIFT_THRESHOLD,
@@ -22,9 +39,9 @@ from src.persona.mood_engine import (
     MoodEngineError,
     MoodEvaluationError,
     MoodTransition,
+    TRANSITIONS,
     can_transition,
     evaluate_mood,
-    TRANSITIONS,
 )
 from src.persona.mood_persistence import (
     MoodHistoryRecord,
@@ -33,17 +50,6 @@ from src.persona.mood_persistence import (
     MoodPersistenceWriteError,
     MoodRepository,
     MoodState,
-)
-from src.persona.ritual_scheduler import (
-    DND_END_HOUR,
-    DND_START_HOUR,
-    RITUALS,
-    RitualConfig,
-    RitualExecutionError,
-    RitualResult,
-    RitualScheduler,
-    RitualSchedulerError,
-    TZ_JAKARTA,
 )
 from src.persona.safe_mode import (
     DISTRESS_PATTERNS,
@@ -101,14 +107,6 @@ from src.persona.yandere_fsm import (
     get_effective_level,
     validate_level,
 )
-from src.persona.rituals.afternoon import AfternoonRitual
-from src.persona.rituals.midday import MiddayRitual
-from src.persona.rituals.midnight import MidnightRitual
-from src.persona.rituals.morning import (
-    MorningRitual,
-    RitualResult as MorningRitualResult,
-)
-from src.persona.rituals.evening import EveningRitual
 from src.persona.transition_rules import (
     ALL_MOODS,
     CooldownActiveError,
@@ -120,7 +118,35 @@ from src.persona.transition_rules import (
     VALID_TRANSITIONS,
 )
 
-__all__ = [
+# ===================================================================
+# Deprecated ritual imports (Phase 5 — kept for backward compatibility)
+# These trigger DeprecationWarning; scheduled removal: Phase 7.
+# ===================================================================
+
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore", DeprecationWarning)
+
+    from src.persona.ritual_scheduler import (
+        DND_END_HOUR,
+        DND_START_HOUR,
+        RITUALS,
+        RitualConfig,
+        RitualExecutionError,
+        RitualResult as RitualSchedulerResult,
+        RitualScheduler,
+        RitualSchedulerError,
+        TZ_JAKARTA,
+    )
+    from src.persona.rituals.morning import (
+        MorningRitual,
+        RitualResult as MorningRitualResult,
+    )
+    from src.persona.rituals.evening import EveningRitual
+    from src.persona.rituals.afternoon import AfternoonRitual
+    from src.persona.rituals.midnight import MidnightRitual
+    from src.persona.rituals.midday import MiddayRitual
+
+__all__: list[str] = [
     # mood_engine
     "Mood",
     "MoodTransition",
@@ -146,25 +172,6 @@ __all__ = [
     "TransitionRulesError",
     "CooldownActiveError",
     "InvalidTransitionError",
-    # ritual_scheduler
-    "RitualScheduler",
-    "RitualConfig",
-    "RitualResult",
-    "RITUALS",
-    "TZ_JAKARTA",
-    "DND_START_HOUR",
-    "DND_END_HOUR",
-    "RitualSchedulerError",
-    "RitualExecutionError",
-    # rituals.morning
-    "MorningRitual",
-    "MorningRitualResult",
-    # rituals.evening
-    "EveningRitual",
-    # rituals.afternoon
-    "AfternoonRitual",
-    # rituals.midnight
-    "MidnightRitual",
     # drift_detector
     "DriftDetector",
     "DriftBaseline",
@@ -230,6 +237,4 @@ __all__ = [
     "RewardError",
     "InvalidQualityScoreError",
     "InvalidTierError",
-    # rituals.midday
-    "MiddayRitual",
 ]

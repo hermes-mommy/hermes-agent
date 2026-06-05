@@ -6,6 +6,12 @@ MoodPersistenceError subclasses — no bare exceptions leak.
 
 This module works with raw mood strings only; it does NOT depend on
 mood_engine.py (P4-001).
+
+PersonaPlugin Integration:
+    ``MoodRepository`` exposes plugin-queryable state via:
+    - :meth:`get_session` — expose the underlying AsyncSession for plugin reuse
+    - ``get_current_mood()``, ``get_mood_streak()`` — async queries
+    - ``set_current_mood()``, ``record_mood_transition()`` — async mutations
 """
 from __future__ import annotations
 
@@ -13,7 +19,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import structlog
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.memory.models import MoodHistory, PersonaState
@@ -80,6 +86,16 @@ class MoodRepository:
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+
+    # ---- session accessor (PersonaPlugin hook) -------------------------
+
+    def get_session(self) -> AsyncSession:
+        """Return the underlying AsyncSession.
+
+        Enables PersonaPlugin to reuse the same database session for
+        transactional consistency across multiple mood operations.
+        """
+        return self._session
 
     # ---- current mood -------------------------------------------------
 

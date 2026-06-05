@@ -17,9 +17,15 @@ Mood variants:
 Optional integrations:
     - day_summary: brief recap appended when provided
     - streak_count: streak line appended when > 0
+
+.. deprecated:: Phase 5
+    This module is **deprecated** in favour of Hermes cron + PersonaPlugin.
+    Scheduled removal: Phase 7.
 """
 
 from __future__ import annotations
+
+import warnings
 
 from datetime import datetime
 from typing import Final
@@ -28,6 +34,13 @@ import structlog
 
 from src.persona.mood_engine import Mood
 from src.persona.rituals.morning import RitualResult, TZ_JAKARTA
+
+warnings.warn(
+    "rituals/evening.py is deprecated in Phase 5. "
+    "Use Hermes cron + PersonaPlugin instead. Scheduled removal: Phase 7.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 logger = structlog.get_logger()
 
