@@ -3362,6 +3362,7 @@ rm -rf ~/.local/bin/uv ~/.local/bin/uvx
 ---
 
 ### Step P1-003: Virtual Environment Setup
+> ⚠️ STATUS: STALE — hermes-agent PyPI replaced by Hermes NousResearch fork. See ADR-035. Rewrite required before implementation.
 
 **Type:** Application
 **Status:** ⬜ Not Started
@@ -3411,7 +3412,7 @@ uv pip install \
   structlog==24.* \
   <!-- ⚠️ STALE: hermes-agent PyPI references are obsolete per ADR-035. Hermes now = NousResearch fork. -->
   hermes-agent \
-  discord.py==2.*
+  discord.py==2.*  <!-- STALE: discord.py ref in old hermes-agent era dependency list; P1 stale per ADR-035 -->
 
 # Verify
 python --version
@@ -3446,6 +3447,7 @@ rm -rf .venv
 ---
 
 ### Step P1-004: Hermes Agent Installation
+> ⚠️ STATUS: STALE — hermes-agent PyPI replaced by Hermes NousResearch fork. See ADR-035. Rewrite required before implementation.
 
 **Type:** Application
 **Status:** ⬜ Not Started
@@ -3515,7 +3517,7 @@ dependencies = [
     "sentry-sdk[fastapi]>=2",
     "prometheus-client>=0.21",
     "structlog>=24",
-    "discord.py>=2",
+    "discord.py>=2",  <!-- STALE: discord.py ref in old hermes-agent era dependency list; P1 stale per ADR-035 -->
 ]
 
 [build-system]
@@ -3559,6 +3561,7 @@ rm -rf src/ pyproject.toml
 ---
 
 ### Step P1-005: Hermes Agent Configuration
+> ⚠️ STATUS: STALE — hermes-agent PyPI replaced by Hermes NousResearch fork. See ADR-035. Rewrite required before implementation.
 
 **Type:** Application
 **Status:** ⬜ Not Started
@@ -4418,6 +4421,7 @@ No runtime rollback required because no outage simulation or Ollama test is perf
 ---
 
 ### Step P1-015: LLM Routing Rules Implementation
+> ⚠️ STATUS: STALE — hermes-agent PyPI replaced by Hermes NousResearch fork. See ADR-035. Rewrite required before implementation.
 
 **Type:** Application
 **Status:** ⬜ Not Started
@@ -4570,6 +4574,7 @@ rm src/core/services/llm_router.py
 ---
 
 ### Step P1-016: SystemPromptMaster Deployment
+> ⚠️ STATUS: STALE — hermes-agent PyPI replaced by Hermes NousResearch fork. See ADR-035. Rewrite required before implementation.
 
 **Type:** Application
 **Status:** ⬜ Not Started
@@ -4910,6 +4915,7 @@ sudo systemctl daemon-reload
 ---
 
 ### Step P1-019: Service Health Check
+> ⚠️ STATUS: STALE — hermes-agent PyPI replaced by Hermes NousResearch fork. See ADR-035. Rewrite required before implementation.
 
 **Type:** Testing
 **Status:** ⬜ Not Started
@@ -5256,6 +5262,7 @@ echo "... (truncated)"
 ---
 
 ### Step P2-003: Bot Intents Configuration
+> ⚠️ STATUS: OBSOLETE — bot.py superseded by Hermes gateway (ADR-035 Phase 2). Do not execute. Hermes gateway handles Discord integration.
 **Type:** Application
 **Status:** ⬜ Not Started
 **Risk:** Low
@@ -5463,6 +5470,7 @@ scripts/run-discord-verify.sh tmp/verify-p2-010-commands-rest.py
 ---
 
 ### Steps P2-011 to P2-014: Embed Colors and Core Commands
+> ⚠️ STATUS: OBSOLETE — bot.py superseded by Hermes gateway (ADR-035 Phase 2). Do not execute. Hermes gateway handles Discord integration.
 **Type:** Application
 **Status:** ⏳ Partial (P2-011/P2-012 complete 2026-06-01; P2-013/P2-014 pending)
 **Risk:** Low
@@ -5549,6 +5557,7 @@ PYEOF
 ---
 
 ### Step P2-015: /safeword and HARD STOP Implementation
+> ⚠️ STATUS: OBSOLETE — bot.py superseded by Hermes gateway (ADR-035 Phase 2). Do not execute. Hermes gateway handles Discord integration.
 **Type:** Security
 **Status:** ⬜ Not Started
 **Risk:** High
@@ -5644,6 +5653,7 @@ python -c "from src.discord.cmd_safeword import activate_safe_mode, check_safe_w
 ---
 
 ### Steps P2-016 to P2-019: Startup Message, Service, Health Check, Notifications
+> ⚠️ STATUS: OBSOLETE — bot.py superseded by Hermes gateway (ADR-035 Phase 2). Do not execute. Hermes gateway handles Discord integration.
 **Type:** Application
 **Status:** ⬜ Not Started
 **Risk:** Medium
@@ -5658,7 +5668,7 @@ cat > src/discord/startup.py << 'PYEOF'
 import discord
 from src.discord.colors import Colors
 
-async def on_ready(client: discord.Client):
+async def on_ready(client: discord.Client):  # STALE: discord.Client → commands.Bot; P2 obsolete per ADR-035 Phase 2
     """Called when bot connects to Discord gateway."""
     channel = discord.utils.get(client.get_all_channels(), name="guinevere-status")
     if channel:
@@ -5674,6 +5684,7 @@ PYEOF
 ```
 
 **P2-017: guinevere-discord.service**
+> 🚨 BLOCKING WARNING: This step contains an inline bot.py template (45-line stub) that would DESTROY the production bot.py (562 lines) if executed. Step is OBSOLETE — Hermes gateway handles Discord gateway logic. DO NOT EXECUTE THIS STEP.
 ```bash
 cat > src/discord/bot.py << 'PYEOF'
 """Guinevere Discord Bot - Main entry point."""
@@ -5686,7 +5697,7 @@ from src.discord.colors import Colors
 
 logger = structlog.get_logger()
 
-class GuinevereBot(discord.Client):
+class GuinevereBot(discord.Client):  # STALE: discord.Client → commands.Bot; P2 obsolete per ADR-035 Phase 2
     def __init__(self):
         super().__init__(intents=get_intents())
         self.tree = app_commands.CommandTree(self)
@@ -5707,7 +5718,7 @@ class GuinevereBot(discord.Client):
         from src.discord.startup import on_ready
         await on_ready(self)
 
-bot = GuinevereBot()
+bot = GuinevereBot()  # STALE: GuinevereBot instantiation obsolete per ADR-035 Phase 2
 
 @bot.tree.command(name="status", description="Show Guinevere status")
 async def status(interaction: discord.Interaction):
@@ -5806,7 +5817,7 @@ SEV_ROUTING = {
     "SEV4": {"channel": "archive-logs", "color": Colors.NEUTRAL, "ping": False},
 }
 
-async def send_alert(client: discord.Client, severity: str, title: str, 
+async def send_alert(client: discord.Client, severity: str, title: str,   # STALE: discord.Client obsolete per ADR-035 Phase 2 
                      description: str, guild: discord.Guild):
     route = SEV_ROUTING.get(severity, SEV_ROUTING["SEV4"])
     channel = discord.utils.get(guild.text_channels, name=route["channel"])
@@ -8795,7 +8806,7 @@ With transactions parsed (P9-005) and classified (P9-006), the system needs to e
 - [ ] Redis DB5 BudgetEnforcer accessible: `uv run python -c "import redis; r=redis.Redis(port=6380, db=5, username='guinevere_core'); print(r.get('budget:current_month_total'))"`
 - [ ] Discord notification channel configured: `uv run python -c "from src.discord.bot import bot; print(bot.get_channel(YOUR_CHANNEL_ID))"`
 - [ ] Systemd timer directory writable: `ls /etc/systemd/system/guinevere-*.timer`
-- [ ] Python `asyncpg`, `redis.asyncio`, `discord.py` packages confirmed
+- [ ] Python `asyncpg`, `redis.asyncio`, `discord.py` packages confirmed  <!-- STALE: discord.py checklist item; post-cutover Hermes deps differ per ADR-035 -->
 
 #### Commands
 
@@ -8954,7 +8965,7 @@ psql -c "UPDATE financial.budget_categories SET current_spent = 0, is_frozen = f
 **Git Commit:** `feat(P9): pending`
 
 **Goal:** Implement two Discord slash commands — `/finance summary` for monthly financial overview with category breakdown and progress bars, and `/finance add` for manual transaction entry — both accessible only to Faiz (owner).
-**Dependencies:** P9-007 (budget tracker operational with real-time spend data), P9-006 (classifier running for manual transaction classification), P9-003 (BudgetRepository for querying category limits and current spend), existing Discord bot infrastructure (discord.py bot with command tree, running on VPS).
+**Dependencies:** P9-007 (budget tracker operational with real-time spend data), P9-006 (classifier running for manual transaction classification), P9-003 (BudgetRepository for querying category limits and current spend), existing Discord bot infrastructure (discord.py bot with command tree, running on VPS).  <!-- STALE: discord.py context; post-cutover Hermes gateway handles Discord per ADR-035 Phase 2 -->
 **Cost Impact:** $0/month (commands only; Discord bot already provisioned)
 **ADR References:** ADR-023 (Financial Data Integration — manual correction flow per decision outcome), ADR-022 (Communication Channel Strategy — Discord as primary control interface, per-channel contracts for auth and logging)
 **Acceptance Criteria:** AC-FIN-006 (Financial overview accessible via Discord slash commands), AC-DISCORD-002 (Discord slash commands registered, permission-checked, and documented)
@@ -9118,7 +9129,7 @@ The `/finance summary` command (P9-008) provides a quick overview. This step add
 - [ ] `financial.categories` lookups return valid data for all active categories
 - [ ] `financial.budgets` table exists and has budget entries for at least 5 categories
 - [ ] Discord bot is running and accepting slash commands (`/ping` returns OK)
-- [ ] Python environment has `discord.py` >= 2.3, `asyncpg`, `python-dateutil`
+- [ ] Python environment has `discord.py` >= 2.3, `asyncpg`, `python-dateutil`  <!-- STALE: discord.py prereq check; post-cutover Hermes deps differ per ADR-035 -->
 - [ ] `/finance summary` command works end-to-end (P9-008 verified)
 
 #### Commands
@@ -10983,7 +10994,7 @@ This is the P9 exit-gate test suite. It validates the complete financial pipelin
 
 - [ ] All P9-001 through P9-012 components are deployed and individually verified
 - [ ] Test database is isolated from production: separate PostgreSQL database or `financial` schema with `source='test'` filter
-- [ ] Python test packages: `pytest>=8.0`, `pytest-asyncio>=0.23`, `httpx>=0.27`, `discord.py>=2.3`
+- [ ] Python test packages: `pytest>=8.0`, `pytest-asyncio>=0.23`, `httpx>=0.27`, `discord.py>=2.3`  <!-- STALE: discord.py test dep; post-cutover Hermes deps differ per ADR-035 -->
 - [ ] Tasker webhook endpoint is reachable: `curl -X POST http://localhost:8000/api/webhooks/tasker/sms -d '{}'` returns non-5xx
 - [ ] Grafana API is reachable: `curl https://grafana.guinevere.ts.net/api/health` returns `200`
 - [ ] Redis DB5 has cost tracking data for provider bridge test
@@ -16540,7 +16551,7 @@ rm -rf docs/setup-evidence/P10/STEP-P10-016/
 - **Issue:** systemd kills before TimeoutStopSec (immediate SIGKILL)
   - **Solution:** Verify `SendSIGKILL=yes` is NOT overriding the timeout. Check that `TimeoutStopSec` is in the `[Service]` section, not `[Unit]`. Run `systemctl show guinevere-gateway | grep -E "TimeoutStop|KillSignal|SendSIGKILL"` to verify current settings. systemd version must be >= 220 for TimeoutStopSec support
 - **Issue:** Discord.py bot rejects shutdown coordination
-  - **Solution:** Discord.py (discord.ext.commands.Bot) has its own close() method. Call `await bot.close()` during shutdown phase 2, before closing Redis (Discord.py may use Redis for its own state). Register the bot reference via `register_pools(bot=bot)` and add bot close to `_graceful_shutdown()`
+  - **Solution:** Discord.py (discord.ext.commands.Bot) has its own close() method.  <!-- STALE: discord.py shutdown pattern; post-cutover Hermes manages lifecycle per ADR-035 --> Call `await bot.close()` during shutdown phase 2, before closing Redis (Discord.py may use Redis for its own state). Register the bot reference via `register_pools(bot=bot)` and add bot close to `_graceful_shutdown()`
 - **Issue:** Active request counter becomes negative (underflow)
   - **Solution:** This happens if `decrement_active_requests()` is called without matching `increment`. Check middleware ordering — ensure ShutdownMiddleware is the outermost middleware. Verify no exceptions skip the decrement (the try/finally should prevent this)
 - **Issue:** 503 response during drain doesn't include Retry-After header
@@ -20540,13 +20551,13 @@ print('Scaffold restored — file is empty')
 
 #### Context
 
-Currently Guinevere only has Discord as a messaging channel (`src/discord/bot.py` with 22 files). The Discord bot uses discord.py's `commands.Bot` framework with slash commands — there is no natural language processing, no media handling beyond basic embeds, and no conversation context management. The bot responds to explicit commands (`/status`, `/loop-start`, `/surveillance-status`) but does not engage in LLM-powered conversation. For P11 we need a channel-agnostic abstraction layer so that the ConversationalAgent (P11-006) does not need to know which channel a message originated from.
+Currently Guinevere only has Discord as a messaging channel (`src/discord/bot.py` with 22 files). The Discord bot uses discord.py's `commands.Bot` framework with slash commands  <!-- STALE: commands.Bot reference; post-cutover Hermes gateway replaces per ADR-035 Phase 2 --> — there is no natural language processing, no media handling beyond basic embeds, and no conversation context management. The bot responds to explicit commands (`/status`, `/loop-start`, `/surveillance-status`) but does not engage in LLM-powered conversation. For P11 we need a channel-agnostic abstraction layer so that the ConversationalAgent (P11-006) does not need to know which channel a message originated from.
 
 The `ChannelAdapter` abstract base class defines the contract: every channel must implement `connect()`, `disconnect()`, `send_message()`, `to_unified_message()`, and `from_unified_response()`. The `UnifiedMessage` dataclass normalizes all incoming messages into a standard format regardless of whether they arrive via WhatsApp's JID-based addressing (`628123456789@s.whatsapp.net`), Discord's user ID system, or future Gmail email addresses. This unified format includes `sender_id`, `content`, `timestamp`, `channel_type`, and an extensible `metadata` dict for channel-specific fields.
 
 This abstraction is critical for the entire multi-channel roadmap. P12 (Gmail) will implement `GmailAdapter`, P13 (X Auto Poster) will implement `XAdapter`, and P14 (Wearable) will implement `WearableAdapter`. All will produce `UnifiedMessage` objects that flow into the same ConversationalAgent pipeline. Without this step, each future channel would require its own bespoke integration with the agent loop, persona engine, and memory system — tripling the implementation effort for each new channel.
 
-The interface also enables cross-channel features: HARD STOP triggered on WhatsApp propagates to Discord via a shared Redis flag that all adapters poll (ADR-002). Message deduplication across channels uses `content_hash` on `UnifiedMessage` objects (SRS-IR-009). The Discord adapter refactor (future P11-012 or separate step) will implement the same `ChannelAdapter` interface, replacing the direct discord.py event handling with the unified pipeline.
+The interface also enables cross-channel features: HARD STOP triggered on WhatsApp propagates to Discord via a shared Redis flag that all adapters poll (ADR-002). Message deduplication across channels uses `content_hash` on `UnifiedMessage` objects (SRS-IR-009). The Discord adapter refactor (future P11-012 or separate step) will implement the same `ChannelAdapter` interface, replacing the direct discord.py event handling with the unified pipeline.  <!-- STALE: discord.py event handling; post-cutover Hermes gateway replaces per ADR-035 Phase 2 -->
 
 #### Pre-flight Checks
 - [ ] P11-001 completed: `src/channels/` directory exists with `__init__.py`
@@ -20954,7 +20965,7 @@ r.delete('guinevere:whatsapp:whitelist')
 
 #### Context
 
-**CRITICAL GAP:** Guinevere currently has NO conversational agent loop. The Discord bot (`src/discord/bot.py`) only processes slash commands (`/status`, `/loop-start`, `/surveillance-status`) via discord.py's command framework. The `/loop-start` command runs a 7-phase SDLC agent loop (`src/loops/`) which is a task execution pipeline, NOT an LLM-powered conversation system. There is no component that takes a natural language message from a user and generates a natural language response using the LLM. For P11, we MUST build a `ConversationalAgent` that bridges this gap.
+**CRITICAL GAP:** Guinevere currently has NO conversational agent loop. The Discord bot (`src/discord/bot.py`) only processes slash commands (`/status`, `/loop-start`, `/surveillance-status`) via discord.py's command framework.  <!-- STALE: discord.py command framework; post-cutover Hermes gateway replaces per ADR-035 Phase 2 --> The `/loop-start` command runs a 7-phase SDLC agent loop (`src/loops/`) which is a task execution pipeline, NOT an LLM-powered conversation system. There is no component that takes a natural language message from a user and generates a natural language response using the LLM. For P11, we MUST build a `ConversationalAgent` that bridges this gap.
 
 The `ConversationalAgent` receives a `UnifiedMessage` (from any `ChannelAdapter`) and orchestrates the following pipeline: (1) check HARD STOP flag via `HardStopHandler` — if triggered, return emergency response and do NOT call LLM, (2) classify intent — is this a natural language message or a `!` command? (3) for commands, delegate to `CommandHandler` (P11-008), (4) for natural language, load conversation context from `ContextManager` (P11-007 — last 10 messages sliding window), (5) recall relevant long-term memories via `recall_memories()` from the P3 memory pipeline, (6) assemble the LLM prompt with system prompt (Y4 persona from `src/persona/`), conversation history, relevant memories, and the current message, (7) call `LLMRouter` with the assembled prompt, (8) post-process the response (persona drift check, cost logging), (9) return the response string.
 
@@ -23935,7 +23946,7 @@ redis-cli -p 6380 --user guinevere_core -a "$REDIS_PASSWORD" \
 **Git Commit:** `feat(P11): pending`
 
 **Goal:** Implement a Discord bridge that mirrors all WhatsApp conversations to a designated private Discord channel (`#whatsapp-mirror`). Every incoming WhatsApp message from Faiz and every outgoing Guinevere response is forwarded to Discord as a rich embed showing: sender identity (Faiz/Guinevere), message content, WIB timestamp, and channel badge (WhatsApp). The bridge is invoked AFTER the WhatsApp response is sent (non-blocking) and provides Faiz a unified cross-channel audit trail.
-**Dependencies:** P11-008 (routing pipeline — bridge called after response sent), P2 (Discord bot operational — `src/discord/bot.py`, `GuinevereBot` with `commands.Bot`), P11-005 (WhatsAppAdapter — `src/channels/whatsapp/adapter.py` with `send_message()` and event handling)
+**Dependencies:** P11-008 (routing pipeline — bridge called after response sent), P2 (Discord bot operational — `src/discord/bot.py`, `GuinevereBot` with `commands.Bot`),  <!-- STALE: GuinevereBot/commands.Bot dependency; post-cutover Hermes gateway replaces per ADR-035 Phase 2 --> P11-005 (WhatsAppAdapter — `src/channels/whatsapp/adapter.py` with `send_message()` and event handling)
 **Cost Impact:** $0/month (uses existing Discord bot instance and guild channels)
 **ADR References:** ADR-022 (cross-channel sync — all channel activity visible on primary interface), ADR-015 (audit trail for surveillance data — WhatsApp messages classified as surveillance data requiring transparency)
 **Acceptance Criteria:** AC-COM-006 (cross-channel mirror — WhatsApp messages appear in Discord within 5 seconds), SRS-IR-009 (message dedup awareness — mirror includes `content_hash` for dedup correlation)
@@ -23950,7 +23961,7 @@ The bridge architecture is intentionally simple: a `DiscordMirrorBridge` class t
 The embed format follows the existing Guinevere Discord UX patterns established in P2. Colors reuse constants from `src/discord/colors.py`: green (`SUCCESS = 0x16A34A`) for incoming messages from Faiz, purple (`PRIMARY = 0x6B21A8`) for outgoing Guinevere responses. The footer uses the canonical `"Guinevere de Baroque"` branding. Timestamps are formatted in WIB (`UTC+7`) matching the existing `_format_wib_timestamp()` pattern from `src/discord/cmd_status.py`. The embed includes a `content_hash` field (truncated SHA-256, first 8 characters) for dedup correlation per SRS-IR-009.
 
 #### Pre-flight Checks
-- [ ] P2 Discord bot operational: `uv run python -c "from src.discord.bot import GuinevereBot; print('Bot class importable')"`
+- [ ] P2 Discord bot operational: `uv run python -c "from src.discord.bot import GuinevereBot; print('Bot class importable')"`  <!-- STALE: GuinevereBot import verification; post-cutover Hermes gateway replaces per ADR-035 Phase 2 -->
 - [ ] P11-005 WhatsAppAdapter implemented: `uv run python -c "from src.channels.whatsapp.adapter import WhatsAppAdapter; print('Adapter OK')"`
 - [ ] P11-008 routing pipeline exists with post-response hook: `grep -n "mirror\|bridge\|post_response" src/channels/whatsapp/router.py`
 - [ ] `UnifiedMessage` dataclass available: `uv run python -c "from src.channels.unified_message import UnifiedMessage, ChannelType; print('UnifiedMessage OK')"`
@@ -23965,7 +23976,7 @@ The embed format follows the existing Guinevere Discord UX patterns established 
 ```bash
 # 1. Verify all dependency modules are importable
 uv run python -c "
-from src.discord.bot import GuinevereBot
+from src.discord.bot import GuinevereBot  # STALE: GuinevereBot import; post-cutover Hermes gateway replaces per ADR-035 Phase 2
 from src.discord.colors import PRIMARY, SUCCESS, NEUTRAL, SURVEILLANCE
 from src.discord.notifications import to_discord_embed, NotificationEmbedData
 from src.channels.unified_message import UnifiedMessage, ChannelType
@@ -24020,7 +24031,7 @@ class MirrorEmbedData:
     channel_label: str = "WhatsApp"
 
 class DiscordMirrorBridge:
-    def __init__(bot: GuinevereBot, channel_id: int)
+    def __init__(bot: GuinevereBot, channel_id: int)  # STALE: GuinevereBot type hint; post-cutover Hermes gateway replaces per ADR-035 Phase 2
     async mirror_incoming(msg: UnifiedMessage) -> bool
     async mirror_outgoing(msg: UnifiedMessage, response: UnifiedResponse) -> bool
     def _build_embed(data: MirrorEmbedData) -> discord.Embed
@@ -24091,7 +24102,7 @@ sed -i '/DISCORD_MIRROR_CHANNEL_ID/d' .env.example
 - **Issue:** `discord.NotFound: Channel not found` when sending mirror embed
   - **Solution:** Verify `DISCORD_MIRROR_CHANNEL_ID` matches an existing text channel in guild `1510876414671323206`. Use `bot.get_channel(int(channel_id))` — returns `None` if channel doesn't exist or bot lacks permissions. Check bot has `View Channel` and `Send Messages` permissions on the target channel.
 - **Issue:** Mirror embed sends are rate-limited by Discord API (429 Too Many Requests)
-  - **Solution:** Discord rate limit for channel messages is ~5 messages per 5 seconds. If WhatsApp conversation is extremely active, implement a simple queue with `asyncio.Queue` and batch-send with 1-second intervals. Do NOT retry on 429 — discord.py handles rate limit backoff automatically.
+  - **Solution:** Discord rate limit for channel messages is ~5 messages per 5 seconds. If WhatsApp conversation is extremely active, implement a simple queue with `asyncio.Queue` and batch-send with 1-second intervals. Do NOT retry on 429 — discord.py handles rate limit backoff automatically.  <!-- STALE: discord.py rate limit reference; post-cutover Hermes gateway handles per ADR-035 Phase 2 -->
 - **Issue:** `ImportError: cannot import name 'DiscordMirrorBridge'` from `src.discord`
   - **Solution:** Verify `src/discord/whatsapp_mirror.py` exists and has correct class name. Check that `src/discord/__init__.py` does not need explicit export (lazy import from `router.py` is sufficient).
 - **Issue:** Bridge blocks WhatsApp response when Discord is slow
@@ -24116,7 +24127,7 @@ sed -i '/DISCORD_MIRROR_CHANNEL_ID/d' .env.example
 **Git Commit:** `feat(P11): pending`
 
 **Goal:** Implement a Discord notification system for WhatsApp connection lifecycle events and a `!wa-status` command that returns a rich status embed. Notifications fire on 6 distinct events: connection established, connection lost, reconnection failure, session expiry, HARD STOP trigger, and phone offline warning. The `!wa-status` command queries Neonize connection state, Redis session age, PostgreSQL conversation count (last 24h), Redis rate limit counters, and last message timestamp, returning all metrics in a single Discord embed.
-**Dependencies:** P11-018 (Discord mirror bridge infrastructure — `src/discord/whatsapp_mirror.py`), P11-003 (connection event handlers — `src/channels/whatsapp/neonize_client.py` with `ConnectedEv`/`DisconnectedEv`), P11-020 (reconnection handler — `src/channels/whatsapp/reconnection.py`), P2 (Discord bot — `src/discord/bot.py` with `GuinevereBot`, command prefix `!`)
+**Dependencies:** P11-018 (Discord mirror bridge infrastructure — `src/discord/whatsapp_mirror.py`), P11-003 (connection event handlers — `src/channels/whatsapp/neonize_client.py` with `ConnectedEv`/`DisconnectedEv`), P11-020 (reconnection handler — `src/channels/whatsapp/reconnection.py`), P2 (Discord bot — `src/discord/bot.py` with `GuinevereBot`, command prefix `!`)  <!-- STALE: GuinevereBot dependency; post-cutover Hermes gateway replaces per ADR-035 Phase 2 -->
 **Cost Impact:** $0/month (uses existing Discord bot, Redis, PostgreSQL — no new services)
 **ADR References:** ADR-022 (operational visibility — WhatsApp health visible on primary interface), ADR-032 (Observability — all subsystem health queryable via unified dashboard)
 **Acceptance Criteria:** AC-OPS-002 (observability — WhatsApp connection status visible in Discord without manual checking), AC-COM-007 (connection event notifications — all 6 lifecycle events produce Discord embeds within 10 seconds)
@@ -24128,7 +24139,7 @@ Faiz manages Guinevere primarily through Discord. When WhatsApp is running as a 
 
 The 6 notification events cover the full WhatsApp connection lifecycle: (1) connected — session authenticated and operational, (2) disconnected — connection lost unexpectedly, (3) reconnection failed — automatic retry exhausted, (4) session expired — Neonize session needs re-pairing, (5) HARD STOP triggered — safe word activated on WhatsApp channel, (6) phone offline warning — linked device offline >12 days (WhatsApp disconnects after 14 days). Each event maps to a specific severity level in the existing SEV matrix: connected = SEV3 (informational), disconnected = SEV1 (alert), reconnection failed = SEV0 (critical), session expired = SEV1 (alert), HARD STOP = SEV0 (critical, ping Faiz), phone offline = SEV2 (warning). SEV0 and SEV1 events automatically trigger Gotify fallback via the existing `send_fallback()` mechanism.
 
-The `!wa-status` command follows the text-prefix pattern already configured in `GuinevereBot` (`command_prefix="!"`) and mirrors the embed structure of the existing `/status` command (`src/discord/cmd_status.py`). However, unlike `/status` which is a slash command, `!wa-status` uses the text command pattern because WhatsApp-related commands may need to work in channels where slash commands are less convenient. The status embed queries 5 data sources: Neonize client state (connected/disconnected/reconnecting), Redis key `guinevere:wa:session:created_at` (session age), PostgreSQL conversation table (message count last 24h), Redis keys `guinevere:wa:ratelimit:*` (current rate limit counters), and Redis key `guinevere:wa:last_message_at` (last activity timestamp). All values are assembled into a single embed with 7 fields.
+The `!wa-status` command follows the text-prefix pattern already configured in `GuinevereBot` (`command_prefix="!"`)  <!-- STALE: GuinevereBot text-prefix pattern; post-cutover Hermes gateway replaces per ADR-035 Phase 2 --> and mirrors the embed structure of the existing `/status` command (`src/discord/cmd_status.py`). However, unlike `/status` which is a slash command, `!wa-status` uses the text command pattern because WhatsApp-related commands may need to work in channels where slash commands are less convenient. The status embed queries 5 data sources: Neonize client state (connected/disconnected/reconnecting), Redis key `guinevere:wa:session:created_at` (session age), PostgreSQL conversation table (message count last 24h), Redis keys `guinevere:wa:ratelimit:*` (current rate limit counters), and Redis key `guinevere:wa:last_message_at` (last activity timestamp). All values are assembled into a single embed with 7 fields.
 
 #### Pre-flight Checks
 - [ ] P11-018 mirror bridge implemented: `uv run python -c "from src.discord.whatsapp_mirror import DiscordMirrorBridge; print('Mirror OK')"`
@@ -24147,7 +24158,7 @@ The `!wa-status` command follows the text-prefix pattern already configured in `
 ```bash
 # 1. Verify all dependency modules are importable
 uv run python -c "
-from src.discord.bot import GuinevereBot
+from src.discord.bot import GuinevereBot  # STALE: GuinevereBot import; post-cutover Hermes gateway replaces per ADR-035 Phase 2
 from src.discord.notifications import send_alert, to_discord_embed, NotificationEmbedData, SEV_MATRIX
 from src.discord.colors import PRIMARY, ALERT, WARNING, SUCCESS, SURVEILLANCE, NEUTRAL
 from src.discord.gotify_fallback import send_fallback
@@ -24231,7 +24242,7 @@ WA_NOTIFICATION_EVENTS = {
 }
 
 class WhatsAppNotificationManager:
-    def __init__(bot: GuinevereBot)
+    def __init__(bot: GuinevereBot)  # STALE: GuinevereBot type hint; post-cutover Hermes gateway replaces per ADR-035 Phase 2
     async notify_connected(session_id: str, device: str) -> bool
     async notify_disconnected(reason: str, last_active: datetime) -> bool
     async notify_reconnect_failed(attempts: int, last_error: str) -> bool
@@ -24480,7 +24491,7 @@ from enum import StrEnum
 class DisconnectReason(StrEnum):
     """Categorized disconnect reasons for reconnection handler."""
     NETWORK_TIMEOUT = "network_timeout"       # Socket timeout, DNS failure, transient network
-    NEONIZE_INTERNAL = "neonize_internal"      # Neonize/Baileys internal error, fresh client may fix
+    NEONIZE_INTERNAL = "neonize_internal"      # Neonize internal error, fresh client may fix  <!-- STALE: removed Baileys reference per ADR-022 revision -->
     SESSION_EXPIRED = "session_expired"        # Session invalidated, QR re-pairing required
     PROTOCOL_VERSION_MISMATCH = "protocol_version_mismatch"  # WhatsApp protocol version outdated
     UNKNOWN = "unknown"                        # Unclassified — log for investigation
@@ -26176,7 +26187,7 @@ REAUTH_SCOPES = ["https://www.googleapis.com/auth/gmail.modify",
                  "https://www.googleapis.com/auth/gmail.labels"]
 
 class EmailReauthCommand(commands.Cog):
-    def __init__(self, bot: commands.Bot, token_manager):
+    def __init__(self, bot: commands.Bot, token_manager):  # STALE: commands.Bot type hint; post-cutover Hermes gateway replaces per ADR-035 Phase 2
         self.bot = bot
         self.token_manager = token_manager
         self._pending: dict[str, Flow] = {}
@@ -47675,7 +47686,7 @@ If < 28 days of data: display "Building baseline — X days remaining before cli
 
 Following existing Discord patterns (`cmd_mood.py`, `cmd_status.py`, `cmd_health_check.py`):
 - Frozen `@dataclass` for `EmbedData` + `EmbedField` (renderer-agnostic)
-- `to_discord_embed(data)` for discord.py conversion
+- `to_discord_embed(data)` for discord.py conversion  <!-- STALE: discord.py conversion utility; post-cutover Hermes plugin handles embed generation per ADR-035 Phase 2 -->
 - `_format_wib_timestamp(dt)` for WIB footer timestamps
 - Try/except with graceful degraded fallback messages
 
@@ -49481,7 +49492,7 @@ class HealthAlertDispatcher:
 
     def __init__(
         self,
-        bot_client: discord.Client,
+        bot_client: discord.Client,  # STALE: discord.Client obsolete per ADR-035 Phase 2
         redis_client: aioredis.Redis,
         faiz_user_id: int,
         *,
@@ -54174,7 +54185,7 @@ Implement the `GitContextTracker` to traverse the directory tree upward from the
 
 ## Context
 
-To provide rich dev context (Decision 2.1), the daemon needs to know not just what application is active, but what project and branch the user is working on. Decision 2.2 mandates Git traversal as the MVP approach, deferring VS Code extension integration to post-MVP.
+To provide rich dev context (Decision 2.1), the daemon needs to know not just what application is active, but what project and branch the user is working on. Decision 2.2 mandates Git traversal as the MVP approach, deferring VS Code extension integration to post-launch.  <!-- STALE: post-MVP → post-launch; deprecated terminology per ADR-034 -->
 
 The tracker must walk up the directory tree from the active window's file path (or current working directory) until it finds a `.git` folder. It then reads the `.git/HEAD` file to determine the current branch. Crucially, to comply with data minimization and security policies, it must NEVER read `.git/config`, `.git/credentials`, or any other file that might contain remote URLs, tokens, or personal information.
 
@@ -54411,7 +54422,7 @@ Remove-Item -Path "src\daemon\git_context.py" -Force -ErrorAction SilentlyContin
 
 ## AC References
 
-- **AC 2.2:** Git traversal MVP, VS Code extension post-MVP.
+- **AC 2.2:** Git traversal MVP, VS Code extension post-launch.  <!-- STALE: post-MVP → post-launch; deprecated terminology per ADR-034 -->
 - **Planner Scaffold:** Must traverse up for `.git`. Must read HEAD. Must produce repo-relative paths. Must NOT read `.git/config` or credentials. Forbidden patterns are absent.
 
 ---

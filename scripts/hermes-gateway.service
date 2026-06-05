@@ -1,0 +1,34 @@
+[Unit]
+Description=Hermes Agent Gateway (Discord)
+After=guinevere-core.service network.target
+Requires=guinevere-core.service
+
+[Service]
+Type=exec
+User=guinevere
+Group=guinevere
+WorkingDirectory=/home/guinevere/code/guinevere
+Environment=HOME=/home/guinevere
+Environment=PATH=/home/guinevere/.local/bin:/home/guinevere/code/guinevere/.venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=VIRTUAL_ENV=/home/guinevere/code/guinevere/.venv
+EnvironmentFile=/home/guinevere/.hermes/.env
+ExecStart=/home/guinevere/code/guinevere/.venv/bin/hermes gateway run --accept-hooks
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+Slice=guinevere.slice
+
+# Resource limits
+MemoryHigh=512M
+MemoryMax=1G
+CPUQuota=100%
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/guinevere/code/guinevere /home/guinevere/data /home/guinevere/logs /home/guinevere/evidence /home/guinevere/.hermes /home/guinevere/.local/state
+
+[Install]
+WantedBy=multi-user.target

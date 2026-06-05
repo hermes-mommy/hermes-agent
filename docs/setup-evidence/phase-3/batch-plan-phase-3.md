@@ -22,7 +22,7 @@
 | **P3-006** | Execute A/B test: 100 queries, recall quality gate | P3-002, P3-003, P3-005 | sequential | 0.5 day |
 | **P3-007** | Verify zero PG writes from Hermes (read-only enforcement) | P3-001, P3-004 | sequential | 0.5 day |
 | **P3-008** | Final integration verification and safety audit | ALL above | sequential | 0.5 day |
-| **P3-009** | Configure Hermes mirror sync (MEMORY.md/USER.md) | P3-001 | parallel (Wave 2) | 0.5 day |
+| **P3-009** | Configure Hermes mirror sync (MEMORY.md/USER.md) | P3-001, P3-003 | sequential (after P3-003) | 0.5 day |
 
 ---
 
@@ -31,8 +31,7 @@
 ```
 P3-001 (Refactor) ---+---> P3-002 (Compression)  --+
                      |                              +--> P3-006 (A/B Test) --> P3-008 (Final)
-                     +--> P3-003 (FTS5+Safety)    --+
-                     +--> P3-009 (Mirror Sync)
+                     +--> P3-003 (FTS5+Safety)    --+--> P3-009 (Mirror Sync)
 P3-004 (Mirror)  --------------------------------------> P3-007 (Zero PG Writes) --> P3-008
 P3-005 (A/B Infra) --------------------------------------> P3-006 (A/B Test)
 ```
@@ -42,8 +41,9 @@ P3-005 (A/B Infra) --------------------------------------> P3-006 (A/B Test)
 | Wave | Steps | Rationale |
 |---|---|---|
 | **Wave 1** (parallel) | P3-001, P3-004, P3-005 | Independent: code refactor, DB infrastructure, test tooling. No shared files. |
-| **Wave 2** (parallel) | P3-002, P3-003, P3-009 | Depend on P3-001 (new plugin interface). Can run in parallel with each other. No shared files. |
-| **Wave 3** (sequential) | P3-006, P3-007 | Depend on Wave 2 + P3-005. Must run after all enabling steps complete. |
+| **Wave 2** (parallel) | P3-002, P3-003 | Depend on P3-001 (new plugin interface). Can run in parallel with each other. No shared files. |
+| **Wave 2b** (sequential) | P3-009 | Depends on P3-003 (both modify `__init__.py` — v1.4 FIX: collision scan N1). Runs after P3-003 completes. |
+| **Wave 3** (sequential) | P3-006, P3-007 | Depend on Wave 2/2b + P3-005. Must run after all enabling steps complete. |
 | **Wave 4** (sequential) | P3-008 | Final integration gate. All prior steps must PASS. |
 
 ---
@@ -128,10 +128,10 @@ P3-005 (A/B Infra) --------------------------------------> P3-006 (A/B Test)
 | docs/README.md, ADR-Index | Parent-only shared docs | Parent handles doc updates after all steps complete. |
 | PostgreSQL schema | P3-004 adds RBAC role, P3-007 verifies | P3-004 owns schema changes. P3-007 is verification only. |
 | requirements.txt / pyproject.toml | P3-005 adds scipy | Single owner (P3-005). No conflict. |
-| plugins/memory/guinevere-memory/\_\_init\_\_.py | P3-001 creates, P3-002 tests (read), P3-003 adds safety gate imports | P3-001 creates. P3-003 writes safety gate code to **separate module** (`safety_gates.py`). P3-002 tests `__init__.py` (read-only verify of hook registration). `__init__.py` only imports from `safety_gates.py` — no inline safety gate code. No collision. |
+| plugins/memory/guinevere-memory/\_\_init\_\_.py | P3-001 creates, P3-002 tests (read), P3-003 adds safety gate imports, P3-009 adds extract_key_facts | P3-001 creates. P3-003 writes safety gate code to **separate module** (`safety_gates.py`). P3-002 tests `__init__.py` (read-only verify of hook registration). `__init__.py` only imports from `safety_gates.py` — no inline safety gate code. **v1.4 FIX (Auditor Tech N1)**: P3-009 also modifies `__init__.py` (adds extract_key_facts). P3-009 is now **sequential after P3-003** (Wave 2b), so no parallel write collision. |
 | plugins/memory/guinevere-memory/safety_gates.py | P3-003 creates | P3-003 sole owner. Independent from P3-002's verification of `__init__.py`. |
 
-**Result**: No write conflicts. Sequential dependencies properly enforce single ownership. P3-003 safety gate code lives in separate module to avoid read-after-write hazard with P3-002.
+**Result**: No write conflicts. Sequential dependencies properly enforce single ownership. P3-003 safety gate code lives in separate module to avoid read-after-write hazard with P3-002. v1.4 FIX: P3-009 `__init__.py` modification now sequential after P3-003 (Wave 2b) to prevent parallel write collision.
 
 ---
 
@@ -789,9 +789,11 @@ Several gaps from `07-MEMORY-BRIDGE-GAP.md` were originally recommended for Phas
 ### Wave 2 (Parallel, after P3-001)
 - [ ] P3-002: Verify compression at 70%
 - [ ] P3-003: Enable session_search FTS5 with safety gates
+
+### Wave 2b (Sequential, after P3-003)
 - [ ] P3-009: Configure Hermes mirror sync (MEMORY.md/USER.md)
 
-### Wave 3 (Sequential, after Wave 2 + P3-005)
+### Wave 3 (Sequential, after Wave 2/2b + P3-005)
 - [ ] P3-006: Execute A/B test (100 queries)
 - [ ] P3-007: Verify zero PG writes from Hermes
 
@@ -818,12 +820,13 @@ Several gaps from `07-MEMORY-BRIDGE-GAP.md` were originally recommended for Phas
 | 1.1 | 2026-06-04 | Guinevere (Parent Planner) | Auditor fix pass: (1) Safety gates moved to separate `safety_gates.py` module — resolves Wave 2 collision (Arch-A1). (2) Consent gate added to P3-001 prefetch/sync_turn with fail-closed pattern (Safety-S1). (3) DNR ID cache + PG classification enrichment specified for P3-003 (Safety-S2/S3). (4) RLS policies with classification ceiling + surveillance isolation added to P3-004 (Safety-S4, DBA-D2). (5) Safe-word logging documented (Safety-S5). (6) Explicit REVOKE INSERT/UPDATE/DELETE/TRUNCATE (DBA-D1). (7) Streaming replication config detailed with wal_level, max_wal_senders, ssl_mode (DBA-D3). (8) log_statement='mod' added to P3-007 scaffold (DBA-D4). (9) REDIS_PASSWORD, DISCORD_TOKEN, SOPS encryption added to secrets table (DBA-D5/D6). (10) Network isolation via Tailscale specified (DBA-D7). (11) state.db exfiltration addressed via RLS classification ceiling (DBA-D8). (12) Connection string logging rule added (DBA-D9). (13) 4 new caveats added. Ready for re-audit. |
 | 1.2 | 2026-06-04 | Guinevere (Parent Planner) | Second auditor fix pass (6 findings across 3 auditors): (1) All SQL table names fixed: `memory.episodic_memory` → `memory.episodes` (Safety S10, Tech T4). (2) RLS classification ceiling fixed: string comparison `classification_level <= 'Restricted'` replaced with IN-list `classification IN ('Public', 'Internal', 'Restricted')` because lexicographic ordering is wrong for classification enum (Safety S10). (3) A/B test statistical method fixed: `ttest_ind` → `ttest_rel` because queries are paired samples (Tech T5). (4) P3-009 added: Hermes mirror sync (MEMORY.md/USER.md) from canonical phase-3-memory.md Step 3.4 — was missing entirely (ADR C2). (5) Gap mapping rationale section added documenting why G-B3/G-B6/G-B7/G-B9/G-B10 shifted from Phase 1/2 to Phase 3 (ADR C6). (6) Section numbering updated (§13-§17). Ready for re-audit. |
 | 1.3 | 2026-06-05 | Guinevere (Parent Planner) | Third auditor fix pass (4 findings from Technical Accuracy re-audit; Memory Safety passed v1.2): (1) F1 HIGH: Fixed file path `src/hermes/memory/memory_bridge.py` → `src/hermes/memory_bridge.py` at 4 locations (Known State, §7.2, P3-001 scaffold, P3-009 scaffold). (2) F2 MEDIUM: Moved `extract_key_facts()` implementation target from deprecated `memory_bridge.py` to plugin module `plugins/memory/guinevere-memory/__init__.py` (P3-009 design + scaffold). (3) F3 LOW: Added P3-009 entries to §7.2 Files to MODIFY table (plugin \_\_init\_\_.py + config.yaml). (4) F4 MEDIUM: Added pre-requisite check for `memory_owner` role existence with fallback discovery via `pg_tables`, strengthened caveat 8. Ready for re-audit (Tech Accuracy + ADR-035 Compliance only; Memory Safety already PASS). |
+| 1.4 | 2026-06-05 | Guinevere (Parent Planner) | Fourth auditor fix pass (1 finding from Technical Accuracy re-audit on v1.3): (1) N1 HIGH: P3-009 moved from Wave 2 (parallel) to Wave 2b (sequential after P3-003) because both P3-003 and P3-009 modify `plugins/memory/guinevere-memory/__init__.py` — parallel write collision. Updated: step table (dependency now P3-001+P3-003), dependency map diagram, waves table, collision scan row + result note. Ready for re-audit (Tech Accuracy + ADR-035 Compliance only; Memory Safety already PASS on v1.2). |
 
 ### Approval
 
-This planner gate (v1.3) has been revised to address all findings from the third auditor review:
+This planner gate (v1.4) has been revised to address all findings from the fourth auditor review:
 1. Memory Safety Auditor: **PASS** on v1.2 — no re-audit needed
-2. Technical Accuracy Auditor (NEEDS REVIEW → 4 items fixed: file path corrected, extract_key_facts moved to plugin, §7.2 table updated, memory_owner pre-requisite added)
-3. ADR-035 Compliance Auditor: **INCOMPLETE** on v1.2 (session ended before report written) — needs fresh re-audit on v1.3
+2. Technical Accuracy Auditor: v1.3 found N1 (collision scan gap) → FIXED in v1.4 (P3-009 sequential after P3-003)
+3. ADR-035 Compliance Auditor: **INCOMPLETE** on v1.3 (session ended before report written) — needs fresh re-audit on v1.4
 
-**Re-audit required**: Tech Accuracy and ADR-035 Compliance auditors must re-review v1.3 and PASS before Wave 1 execution begins.
+**Re-audit required**: Tech Accuracy and ADR-035 Compliance auditors must re-review v1.4 and PASS before Wave 1 execution begins.

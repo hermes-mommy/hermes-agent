@@ -54,7 +54,7 @@ The safe word is a global user-autonomy override, not a persona flourish. In gen
 | Browser obscura primary + Playwright fallback | [`ADR-020`](adr/ADR-020-browser-automation-strategy.md) | Accepted |
 | Wearable integrations Expansion | [`ADR-021`](adr/ADR-021-wearable-integration-post-mvp.md) | Accepted |
 | Safe word is global user-autonomy override | [`ADR-002`](adr/ADR-002-user-autonomy-safe-word-enforcement.md) | Accepted with notes |
-| Redis DB0–DB5 canonical assignments | [`ADR-030`](adr/ADR-030-redis-db-assignments.md) | Accepted |
+| Redis DB0–DB5 canonical assignments | [`ADR-030`](adr/ADR-030-redis-db-assignments.md) | Accepted (Revised 2026-06-05) |
 | Database name is `guinevere` (not `guinevere_db`) | [`ADR-031`](adr/ADR-031-database-naming.md) | Accepted |
 | Backup storage: idcloudhost S3 primary + Cloudflare R2 secondary | [`ADR-032`](adr/ADR-032-backup-storage-strategy.md) | Accepted |
 | Hermes NousResearch hybrid migration architecture | [`ADR-035`](../../adr/ADR-035-hermes-migration.md) | Accepted |
@@ -92,7 +92,7 @@ The safe word is a global user-autonomy override, not a persona flourish. In gen
 | ADR-027 | Self-Hosted PostgreSQL | Accepted | HIGH | database, postgresql, self-host, budget, infrastructure | [`ADR-027-self-hosted-postgresql.md`](adr/ADR-027-self-hosted-postgresql.md) |
 | ADR-028 | LLM Router Outage — 9Router Combo Routing with Graceful Degradation | Superseded | MEDIUM | llm, fallback, graceful-degradation, resilience, 9router, deepseek, cockpit, opencode-go | [`ADR-028-llm-router-outage-graceful-degradation.md`](adr/ADR-028-llm-router-outage-graceful-degradation.md) |
 | ADR-029 | Self-Modification Automated Testing | Accepted | CRITICAL | self-modification, testing, rollback, safety, autonomy | [`ADR-029-self-modification-automated-testing.md`](adr/ADR-029-self-modification-automated-testing.md) |
-| ADR-030 | Redis DB Assignments (DB0–DB5) | Accepted | CRITICAL | redis, database, cache, queue, infrastructure | [`ADR-030-redis-db-assignments.md`](adr/ADR-030-redis-db-assignments.md) |
+| ADR-030 | Redis DB Assignments (DB0–DB5) | Accepted (Revised 2026-06-05: DB assignments reconciled with runtime) | CRITICAL | redis, database, cache, queue, infrastructure | [`ADR-030-redis-db-assignments.md`](adr/ADR-030-redis-db-assignments.md) |
 | ADR-031 | Database Naming Convention | Accepted | HIGH | database, postgresql, naming, infrastructure | [`ADR-031-database-naming.md`](adr/ADR-031-database-naming.md) |
 | ADR-032 | Backup Storage Strategy — idcloudhost S3 + Cloudflare R2 | Accepted | CRITICAL | backup, storage, s3, cloudflare, r2, idcloudhost, dr | [`ADR-032-backup-storage-strategy.md`](adr/ADR-032-backup-storage-strategy.md) |
 | ADR-033 | Browser Automation — Obscura CDP over Headless Chrome + Playwright | Accepted | MEDIUM | browser, obscura, cdp, playwright-core, stealth, p6-009 | [`ADR-033-browser-automation-obscura.md`](adr/ADR-033-browser-automation-obscura.md) |

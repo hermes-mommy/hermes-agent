@@ -4,7 +4,7 @@
 |-------|-------|
 | **Project** | Guinevere — Autonomous AI Companion & Engineering System |
 | **Status** | ✅ P0+P1+P2+P3+P4+P5+P5.5+P6+P7+P7.5+P8 Complete — MVP Infrastructure Complete. Production deployment pending. |
-| **Last Updated** | 2026-06-04 (ADR-035 Hermes NousResearch Migration Architecture — Proposed. 16 research reports + MASTER-RESTRUCTURE-PLAN + 2,315-line ADR complete. Pending Faiz approval.) |
+| **Last Updated** | 2026-06-05 (Phase 2 Discord Wave 4 Cutover COMPLETE — Hermes Agent gateway running on VPS, custom bot.py stopped+masked, Discord connected via 2 WS connections, safety plugin active Y4_BASELINE. Evidence: `docs/setup-evidence/hermes-phase2-discord/evidence-cutover.md`.) |
 | **Budget** | $30/month hard cap |
 | **Infrastructure** | Shared VPS (hostdata.id 4C/16GB Ubuntu 24.04) |
 | **Critical Path** | P0 → P1 → P3 → P5 |

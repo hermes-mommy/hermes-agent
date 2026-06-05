@@ -12,7 +12,7 @@
 discord:
   # Allowed users (comma-separated IDs in .env, mapped here as list)
   allowed_users:
-    - "<faiz-discord-user-id>"
+    - "1146639950654214264"
   
   # Allowed channels — bot only responds in these channels
   allowed_channels:
@@ -105,73 +105,49 @@ memory:
 # ==============================================================================
 # Safety Hooks Configuration
 # ==============================================================================
-# Note: Hook scripts are deployed separately (Agent C — S1.3)
-# This config section references them; actual scripts live in ~/.hermes/hooks/
+# PRIMARY SAFETY LAYER: Python plugin (guinevere-safety) handles ALL 10 safety
+# gates in-process via ctx.register_hook(). No shell hooks needed for:
+#   - HARD STOP (G01) → pre_llm_call plugin hook
+#   - Distress (G02) → pre_llm_call plugin hook
+#   - Drift (G03) → post_llm_call plugin hook
+#   - Recovery (G04) → pre_llm_call plugin hook
+#   - Forbidden (G05) → transform_llm_output plugin hook
+#   - Secrets (G06) → transform_llm_output plugin hook
+#   - Yandere boundary (G07) → pre_llm_call plugin hook
+#   - Yandere semantic (G08) → transform_llm_output plugin hook
+#   - Auth matrix (G09) → pre_tool_call plugin hook
+#
+# SHELL HOOKS (defense-in-depth only): These complement the Python plugin
+# for gates where the plugin's enforcement is deferred or observational-only.
+# Hermes v0.15.2 requires each hook event value to be a LIST of hook specs.
+# Valid events: pre_llm_call, post_llm_call, pre_tool_call, post_tool_call,
+#   transform_llm_output, on_session_start, pre_gateway_dispatch,
+#   pre_api_request, post_api_request, pre_approval_request,
+#   post_approval_response, on_session_end, on_session_finalize,
+#   on_session_reset, subagent_stop, transform_terminal_output,
+#   transform_tool_result
 
 hooks:
-  # Layer 1: HARD STOP intercept — 50ms, absolute block
-  pre_prompt:
-    event: pre_prompt
-    command: python3 ~/.hermes/hooks/hard_stop.py
-    timeout_ms: 50
-    on_failure: block
-    priority: 100
-    sandbox:
-      read_only_fs: true
-      memory_limit_mb: 64
-      network: none
-
-  # Drift detection — 100ms, warn on failure
-  post_prompt:
-    event: post_prompt
-    command: python3 ~/.hermes/hooks/drift_check.py
-    timeout_ms: 100
-    on_failure: warn
-    priority: 80
-    sandbox:
-      memory_limit_mb: 128
-
-  # Consent gate — 200ms, block, needs Redis + PG access
+  # Consent gate — defense-in-depth for G10.
+  # Plugin pre_tool_call has consent DEFERRED (needs Redis+SQLAlchemy in-process).
+  # This shell hook runs consent_gate.py which does real Redis+PG consent checks.
   pre_tool_call:
-    event: pre_tool_call
-    command: python3 ~/.hermes/hooks/consent_gate.py
-    timeout_ms: 200
-    on_failure: block
-    priority: 90
-    sandbox:
-      allowed_network:
-        - "localhost:6380"  # Redis
-        - "localhost:5433"  # PostgreSQL
+    - event: pre_tool_call
+      command: "python3 ~/.hermes/hooks/consent_gate.py"
+      timeout_ms: 200
+      on_failure: block
+      priority: 90
 
-  # DNR filter — 50ms, block
+  # DNR filter — defense-in-depth on tool results.
+  # Plugin post_tool_call is observational-only (logs tool usage).
+  # This shell hook runs dnr_filter.py which blocks tool results
+  # containing do-not-respond patterns.
   post_tool_call:
-    event: post_tool_call
-    command: python3 ~/.hermes/hooks/dnr_filter.py
-    timeout_ms: 50
-    on_failure: block
-    priority: 70
-    sandbox:
-      memory_limit_mb: 64
-
-  # Safety scan — 100ms, block
-  post_response:
-    event: post_response
-    command: python3 ~/.hermes/hooks/safety_scan.py
-    timeout_ms: 100
-    on_failure: block
-    priority: 60
-    sandbox:
-      memory_limit_mb: 128
-
-  # Error classifier — 50ms, warn only
-  on_error:
-    event: on_error
-    command: python3 ~/.hermes/hooks/error_classifier.py
-    timeout_ms: 50
-    on_failure: warn
-    priority: 10
-    sandbox:
-      memory_limit_mb: 64
+    - event: post_tool_call
+      command: "python3 ~/.hermes/hooks/dnr_filter.py"
+      timeout_ms: 50
+      on_failure: block
+      priority: 70
 
 # ==============================================================================
 # MCP Server Configuration

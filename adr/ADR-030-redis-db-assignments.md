@@ -86,22 +86,41 @@ Chosen option: **Canonicalize DB0–DB5 per APIIntegration v2.0**.
 
 | DB | Purpose | Eviction Policy | Persistence | Safety Notes |
 |---|---|---|---|---|
-| DB0 | Task queue | noeviction | AOF + RDB | Job queue integrity critical for autonomous loop |
-| DB1 | LLM cache | allkeys-lru | RDB only | Cache is disposable; LRU optimizes hit rate |
-| DB2 | Surveillance buffer | allkeys-lfu | AOF | Buffer for Android/Windows sync ingestion |
-| DB3 | Sessions / working memory | noeviction | AOF + RDB | **Safe-word state stored here** — must survive restarts |
-| DB4 | Pub/Sub | N/A (no persistence) | None | Ephemeral messaging; no keys persist |
-| DB5 | Rate limiting | allkeys-lru | RDB only | Sliding window counters; disposable on restart |
+| DB0 | Rate limiting, persona state, consent grants | noeviction | RDB + AOF | Rate limit 10/min/user (`conversational_handler.py`); `consent:grants` key (`consent.py`); persona FSM state (`cmd_punishment.py`, `cmd_reward.py`, `cmd_casual.py`, `cmd_focus.py`) |
+| DB1 | Memory recall | allkeys-lru | RDB only | PostgreSQL+pgvector query cache for recall pipeline |
+| DB2 | Surveillance buffer, consent cache | allkeys-lfu | AOF | Event buffer (`redis_buffer.py`, `consumer.py`); consent cache 60s TTL (`consent_gate.py`); replay detection (`replay.py`) |
+| DB3 | Agent state | noeviction | RDB only | Agent loop state, task metadata |
+| DB4 | Hermes session storage, Discord state | volatile-lru | RDB only | 2hr TTL, 20-turn limit (`session_adapter.py` REDIS_DB=4); session history (`cmd_new_session.py`, `cmd_history.py`) |
+| DB5 | Cost tracking, safety plugin state | noeviction | AOF + RDB | MCP cost tracker (`cost.py`, `budget.py`); `guinevere_safety` plugin state; DNR list; safe word cache; search tool counters (`brave_search.py`, `context7.py`, `exa_search.py`) |
 
-### Code Reference (from APIIntegration v2.0 §9.2)
+> **Updated 2026-06-05**: Redis DB assignments reconciled with runtime state during StepPrompts audit. Runtime code is authoritative. DB0-BD5 purposes shifted significantly from the original APIIntegration v2.0 reference — see table above for current assignments. ADR-035 references DB5 for Hermes safety plugin state and DB4 for Hermes session storage.
+
+### Code Reference (Runtime Authoritative — reconciled 2026-06-05)
 
 ```python
-REDIS_TASK_QUEUE = redis.Redis(connection_pool=pool, db=0)
-REDIS_LLM_CACHE  = redis.Redis(connection_pool=pool, db=1)
-REDIS_SURV_BUFFER = redis.Redis(connection_pool=pool, db=2)
-REDIS_SESSION    = redis.Redis(connection_pool=pool, db=3)
-REDIS_PUBSUB     = redis.Redis(connection_pool=pool, db=4)
-REDIS_RATELIMIT  = redis.Redis(connection_pool=pool, db=5)
+# Rate limiting, persona state, consent grants (DB0)
+# Used by: conversational_handler.py, cmd_consent.py, cmd_punishment.py, cmd_reward.py, cmd_casual.py, cmd_focus.py
+r_db0 = redis.Redis(host="localhost", port=6380, db=0)
+
+# Memory recall cache (DB1)
+# Used by: PostgreSQL+pgvector recall pipeline cache
+r_db1 = redis.Redis(host="localhost", port=6380, db=1)
+
+# Surveillance buffer, consent cache (DB2)
+# Used by: redis_buffer.py, consent_gate.py, consumer.py, replay.py, router.py
+r_db2 = redis.Redis(host="localhost", port=6380, db=2)
+
+# Agent state (DB3)
+# Used by: agent loop task metadata
+r_db3 = redis.Redis(host="localhost", port=6380, db=3)
+
+# Hermes session storage, Discord state (DB4)
+# Used by: session_adapter.py (REDIS_DB=4), cmd_new_session.py, cmd_history.py
+r_db4 = redis.Redis(host="localhost", port=6380, db=4)
+
+# Cost tracking, safety plugin state (DB5)
+# Used by: cost.py, budget.py, guinevere_safety plugin, brave_search.py, context7.py, exa_search.py
+r_db5 = redis.Redis(host="localhost", port=6380, db=5)
 ```
 
 ## Consequences
@@ -145,3 +164,4 @@ REDIS_RATELIMIT  = redis.Redis(connection_pool=pool, db=5)
 | Version | Date | Author | Changes |
 |---|---|---|---|
 | 1.0 | 2026-05-31 | Guinevere (Sisyphus) | Initial ADR canonicalizing Redis DB0–DB5 assignments from APIIntegration v2.0. |
+| 1.1 | 2026-06-05 | Guinevere (Sisyphus) | **Reconciled DB assignments with runtime code.** Runtime is authoritative. DB0: Rate limiting/persona state/consent (was Task queue). DB1: Memory recall (was LLM cache). DB2: Surveillance buffer/consent cache (unchanged). DB3: Agent state (was Sessions/working memory). DB4: Hermes sessions/Discord state (was Pub/Sub). DB5: Cost tracking/safety plugin state (was Rate limiting). See ADR-035 for Hermes DB5 safety state usage. Code reference block updated. |
