@@ -241,6 +241,37 @@ class TestHardStopGating:
         assert state.yandere_level == 0
         assert "HARD STOP" in state.hard_stop_reason
 
+    def test_exact_hard_stop_triggers_observe_safety_block(self) -> None:
+        """Hard stop exact trigger calls observe_safety_block."""
+        plugin = _make_safe_plugin()
+        with patch(
+            "src.hermes.safety_plugin.observe_safety_block",
+        ) as mock_obs:
+            plugin.pre_llm_call(
+                session_id="test-hs-obs-1",
+                user_message="HARD STOP",
+            )
+            mock_obs.assert_called_once()
+            args, _ = mock_obs.call_args
+            assert args[0] == "G01"
+            assert args[1].startswith("exact:")
+
+    def test_hard_stop_handler_triggers_observe_safety_block(self) -> None:
+        """Hard stop handler block calls observe_safety_block."""
+        plugin = _make_safe_plugin()
+        plugin._hard_stop_available = True
+        plugin._hard_stop_handler = MagicMock()
+        plugin._hard_stop_handler.check.return_value = True
+        plugin._hard_stop_handler.get_neutral_response.return_value = "neutral"
+        with patch(
+            "src.hermes.safety_plugin.observe_safety_block",
+        ) as mock_obs:
+            plugin.pre_llm_call(
+                session_id="test-hs-obs-2",
+                user_message="something that triggers handler",
+            )
+            mock_obs.assert_called_once_with("G01", "hard_stop_handler")
+
     def test_semantic_trigger_updates_session_state(self) -> None:
         """Semantic HARD STOP sets correct session state fields."""
         plugin = _make_safe_plugin()
@@ -403,6 +434,21 @@ class TestForbiddenPatterns:
             response_text="your safe word doesn't matter anyway",
         )
         assert result is None
+
+    def test_forbidden_critical_calls_observe_safety_block(self) -> None:
+        """CRITICAL forbidden match calls observe_safety_block."""
+        plugin = _make_safe_plugin()
+        with patch(
+            "src.hermes.safety_plugin.observe_safety_block",
+        ) as mock_obs:
+            result = plugin.transform_llm_output(
+                session_id="test-f-obs-1",
+                response_text="your safe word doesn't matter anyway",
+            )
+            assert result is None
+            mock_obs.assert_called_once()
+            args, _ = mock_obs.call_args
+            assert args[0] == "G05"
 
     def test_f04_high_isolation_pressure_is_rewritten(self) -> None:
         """F-04 (isolation pressure) is HIGH → rewritten, not blocked."""
@@ -687,6 +733,51 @@ class TestToolAuthGate:
         assert result["action"] == "block"
         assert "FORBIDDEN" in result["reason"]
 
+    def test_auth_forbidden_calls_observe_safety_block(self) -> None:
+        """Auth FORBIDDEN block calls observe_safety_block."""
+        plugin = _make_safe_plugin()
+        plugin._auth_available = True
+
+        auth_matrix_mock = sys.modules["src.mcp.auth_matrix"]
+        auth_matrix_mock.get_auth_level = MagicMock(
+            return_value=MockAuthLevel.FORBIDDEN,
+        )
+
+        with patch(
+            "src.hermes.safety_plugin.observe_safety_block",
+        ) as mock_obs:
+            plugin.pre_tool_call(
+                session_id="test-auth-obs-1",
+                tool_name="dangerous_tool",
+                args={"operation": "destroy"},
+            )
+            mock_obs.assert_called_once()
+            args, _ = mock_obs.call_args
+            assert args[0] == "G09"
+
+    def test_auth_unknown_calls_observe_safety_block(self) -> None:
+        """Auth unknown tool block calls observe_safety_block."""
+        plugin = _make_safe_plugin()
+        plugin._auth_available = True
+
+        auth_matrix_mock = sys.modules["src.mcp.auth_matrix"]
+        auth_matrix_mock.get_auth_level = MagicMock(
+            side_effect=KeyError("unknown"),
+        )
+
+        with patch(
+            "src.hermes.safety_plugin.observe_safety_block",
+        ) as mock_obs:
+            plugin.pre_tool_call(
+                session_id="test-auth-obs-2",
+                tool_name="nonexistent_tool",
+                args={},
+            )
+            mock_obs.assert_called_once()
+            args, _ = mock_obs.call_args
+            assert args[0] == "G09"
+            assert "UNKNOWN_TOOL" in args[1]
+
     def test_unknown_tool_blocked_fail_closed(self) -> None:
         """Unknown tool (KeyError from auth matrix) is blocked — fail-closed."""
         plugin = _make_safe_plugin()
@@ -785,6 +876,19 @@ DriftResult = namedtuple(
 
 class TestDriftDetection:
     """G03: Drift detection in post_llm_call."""
+
+    def test_post_llm_call_calls_observe_message_outgoing(self) -> None:
+        """post_llm_call calls observe_message('outgoing')."""
+        plugin = _make_safe_plugin()
+        plugin._drift_available = False
+        with patch(
+            "src.hermes.safety_plugin.observe_message",
+        ) as mock_msg:
+            plugin.post_llm_call(
+                session_id="test-msg-asst",
+                assistant_message="Hello",
+            )
+            mock_msg.assert_called_once_with("outgoing")
 
     def test_drift_detection_runs_on_assistant_message(self) -> None:
         """Drift detector computes hash and updates session state."""
@@ -1187,6 +1291,18 @@ class TestPostToolCall:
         )
         assert result is None
 
+    def test_post_tool_call_calls_observe_message_tool(self) -> None:
+        """post_tool_call calls observe_message('tool_result')."""
+        plugin = _make_safe_plugin()
+        with patch(
+            "src.hermes.safety_plugin.observe_message",
+        ) as mock_msg:
+            plugin.post_tool_call(
+                session_id="test-msg-tool",
+                tool_name="read_file",
+            )
+            mock_msg.assert_called_once_with("tool_result")
+
 
 class TestApiRequestError:
     """api_request_error hook tests."""
@@ -1371,3 +1487,236 @@ class TestTransformLlmOutputEdges:
             response_text="safe word doesn't work",
         )
         assert result is None
+
+
+# =============================================================================
+# B8 Metrics: observer calls from safety plugin
+# =============================================================================
+
+
+class TestB8MetricsObservers:
+    """Prove that safety plugin calls metric observers at block points."""
+
+    def test_hard_stop_exact_calls_observe_safety_block(self) -> None:
+        """HARD STOP exact trigger calls observe_safety_block(G01, ...)."""
+        plugin = _make_safe_plugin()
+        with patch(
+            "src.hermes.safety_plugin.observe_safety_block",
+        ) as mock_obs:
+            plugin.pre_llm_call(
+                session_id="b8-test-hs-exact",
+                user_message="HARD STOP",
+            )
+            mock_obs.assert_called_once()
+            args = mock_obs.call_args[0]
+            assert args[0] == "G01"
+            assert "exact:" in args[1]
+
+    def test_hard_stop_semantic_calls_observe_safety_block(self) -> None:
+        """Semantic HARD STOP calls observe_safety_block(G01, ...)."""
+        plugin = _make_safe_plugin()
+        with patch(
+            "src.hermes.safety_plugin.observe_safety_block",
+        ) as mock_obs:
+            plugin.pre_llm_call(
+                session_id="b8-test-hs-sem",
+                user_message="stop being my assistant now",
+            )
+            mock_obs.assert_called_once()
+            args = mock_obs.call_args[0]
+            assert args[0] == "G01"
+
+    def test_hard_stop_handler_calls_observe_safety_block(self) -> None:
+        """HardStopHandler delegation calls observe_safety_block(G01, ...)."""
+        plugin = _make_safe_plugin()
+        plugin._hard_stop_available = True
+        plugin._hard_stop_handler = MagicMock()
+        plugin._hard_stop_handler.check.return_value = True
+        plugin._hard_stop_handler.get_neutral_response.return_value = "neutral"
+
+        with patch(
+            "src.hermes.safety_plugin.observe_safety_block",
+        ) as mock_obs:
+            plugin.pre_llm_call(
+                session_id="b8-test-hs-handler",
+                user_message="some text that triggers handler",
+            )
+            mock_obs.assert_called_once()
+            args = mock_obs.call_args[0]
+            assert args[0] == "G01"
+            assert args[1] == "hard_stop_handler"
+
+    def test_forbidden_critical_calls_observe_safety_block(self) -> None:
+        """CRITICAL forbidden pattern calls observe_safety_block(G05, ...)."""
+        plugin = _make_safe_plugin()
+        with patch(
+            "src.hermes.safety_plugin.observe_safety_block",
+        ) as mock_obs:
+            plugin.transform_llm_output(
+                session_id="b8-test-forbidden",
+                response_text="your safe word doesn't work at all",
+            )
+            mock_obs.assert_called_once()
+            args = mock_obs.call_args[0]
+            assert args[0] == "G05"
+            assert "F-01" in args[1]
+
+    def test_auth_forbidden_calls_observe_safety_block(self) -> None:
+        """Auth FORBIDDEN tool calls observe_safety_block(G09, ...)."""
+        plugin = _make_safe_plugin()
+        plugin._auth_available = True
+
+        auth_matrix_mock = sys.modules["src.mcp.auth_matrix"]
+        auth_matrix_mock.get_auth_level = MagicMock(
+            return_value=MockAuthLevel.FORBIDDEN,
+        )
+
+        with patch(
+            "src.hermes.safety_plugin.observe_safety_block",
+        ) as mock_obs:
+            plugin.pre_tool_call(
+                session_id="b8-test-auth",
+                tool_name="dangerous_tool",
+                args={"operation": "destroy"},
+            )
+            mock_obs.assert_called_once()
+            args = mock_obs.call_args[0]
+            assert args[0] == "G09"
+            assert "FORBIDDEN" in args[1]
+
+    def test_auth_unknown_calls_observe_safety_block(self) -> None:
+        """Unknown tool calls observe_safety_block(G09, ...)."""
+        plugin = _make_safe_plugin()
+        plugin._auth_available = True
+
+        auth_matrix_mock = sys.modules["src.mcp.auth_matrix"]
+        auth_matrix_mock.get_auth_level = MagicMock(
+            side_effect=KeyError("unknown"),
+        )
+
+        with patch(
+            "src.hermes.safety_plugin.observe_safety_block",
+        ) as mock_obs:
+            plugin.pre_tool_call(
+                session_id="b8-test-unknown",
+                tool_name="nonexistent_tool",
+                args={},
+            )
+            mock_obs.assert_called_once()
+            args = mock_obs.call_args[0]
+            assert args[0] == "G09"
+            assert "UNKNOWN_TOOL" in args[1]
+
+    def test_d3_distress_calls_observe_safety_block(self) -> None:
+        """D3 distress block calls observe_safety_block(G02, ...)."""
+        plugin = _make_safe_plugin()
+        plugin._distress_available = True
+        # Reset the detector mock (shared across tests) to clear any side_effect
+        plugin._distress_detector.detect.side_effect = None
+
+        signal = DistressSignal(
+            detected_level=MockDistressLevel(3, "D3_SEVERE"),
+            matched_patterns=["crisis"],
+            confidence=0.90,
+        )
+        plugin._distress_detector.detect.return_value = signal
+
+        with patch(
+            "src.hermes.safety_plugin.observe_safety_block",
+        ) as mock_obs:
+            plugin.pre_llm_call(
+                session_id="b8-test-distress",
+                user_message="I am in crisis",
+            )
+            mock_obs.assert_called_once()
+            args = mock_obs.call_args[0]
+            assert args[0] == "G02"
+            assert "DISTRESS" in args[1]
+
+    def test_yandere_violation_calls_observe_safety_block(self) -> None:
+        """Y6 yandere violation calls observe_safety_block(G07, ...)."""
+        plugin = _make_safe_plugin()
+        plugin._yandere_available = True
+        plugin._yandere_engine = MagicMock()
+        plugin._yandere_engine.get_effective_level.return_value = MockYandereLevel(
+            6,
+            "Y6_ABSOLUTE",
+        )
+
+        with patch(
+            "src.hermes.safety_plugin.observe_safety_block",
+        ) as mock_obs:
+            plugin.pre_llm_call(
+                session_id="b8-test-yandere",
+                user_message="Normal text",
+            )
+            mock_obs.assert_called_once()
+            args = mock_obs.call_args[0]
+            assert args[0] == "G07"
+            assert "YANDERE_SAFETY_VIOLATION" in args[1]
+
+    def test_on_session_start_calls_set_session_count(self) -> None:
+        """on_session_start calls set_session_count with current count."""
+        plugin = _make_safe_plugin()
+        # Use a dedicated test-only plugin to avoid shared-state interference
+        with patch(
+            "src.hermes.safety_plugin.set_session_count",
+        ) as mock_set:
+            plugin.on_session_start(session_id="b8-test-session")
+            # set_session_count is called at least once (plugin init or on_session_start)
+            assert mock_set.call_count >= 1
+            # At least one call should have value >= 1
+            found_valid = any(
+                args[0][0] >= 1 for args in mock_set.call_args_list
+            )
+            assert found_valid, "No call to set_session_count had count >= 1"
+
+    def test_pre_llm_call_calls_observe_message_incoming(self) -> None:
+        """pre_llm_call with user_message calls observe_message('incoming')."""
+        plugin = _make_safe_plugin()
+        with patch(
+            "src.hermes.safety_plugin.observe_message",
+        ) as mock_msg:
+            plugin.pre_llm_call(
+                session_id="b8-test-msg-in",
+                user_message="Hello there",
+            )
+            mock_msg.assert_called_once_with("incoming")
+
+    def test_pre_tool_call_calls_observe_message_tool_call(self) -> None:
+        """pre_tool_call calls observe_message('tool_call')."""
+        plugin = _make_safe_plugin()
+        with patch(
+            "src.hermes.safety_plugin.observe_message",
+        ) as mock_msg:
+            plugin.pre_tool_call(
+                session_id="b8-test-msg-tc",
+                tool_name="reader",
+                args={},
+            )
+            mock_msg.assert_called_once_with("tool_call")
+
+    def test_post_tool_call_calls_observe_message_tool_result(self) -> None:
+        """post_tool_call calls observe_message('tool_result')."""
+        plugin = _make_safe_plugin()
+        with patch(
+            "src.hermes.safety_plugin.observe_message",
+        ) as mock_msg:
+            plugin.post_tool_call(
+                session_id="b8-test-msg-tr",
+                tool_name="reader",
+                args={},
+            )
+            mock_msg.assert_called_once_with("tool_result")
+
+    def test_transform_llm_output_calls_observe_message_outgoing(self) -> None:
+        """transform_llm_output calls observe_message('outgoing')."""
+        plugin = _make_safe_plugin()
+        with patch(
+            "src.hermes.safety_plugin.observe_message",
+        ) as mock_msg:
+            plugin.transform_llm_output(
+                session_id="b8-test-msg-out",
+                response_text="Hello world",
+            )
+            mock_msg.assert_called_once_with("outgoing")

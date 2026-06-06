@@ -24,6 +24,9 @@ from src.core.services.llm_metrics import (
     observe_cost,
     observe_fallback,
     observe_latency,
+    observe_message,
+    observe_safety_block,
+    set_session_count,
     start_llm_metrics_server,
 )
 
@@ -33,7 +36,7 @@ from src.core.services.llm_metrics import (
 
 
 class TestMetricFamilyDefinitions:
-    """Verify that all four metric families exist with correct names."""
+    """Verify that all metric families exist with correct names."""
 
     def test_llm_calls_total_definition(self) -> None:
         output = generate_latest().decode("utf-8")
@@ -54,6 +57,21 @@ class TestMetricFamilyDefinitions:
         output = generate_latest().decode("utf-8")
         assert "# HELP hermes_fallback_activations_total" in output
         assert "# TYPE hermes_fallback_activations_total counter" in output
+
+    def test_safety_blocks_total_definition(self) -> None:
+        output = generate_latest().decode("utf-8")
+        assert "# HELP hermes_safety_blocks_total" in output
+        assert "# TYPE hermes_safety_blocks_total counter" in output
+
+    def test_session_count_definition(self) -> None:
+        output = generate_latest().decode("utf-8")
+        assert "# HELP hermes_session_count" in output
+        assert "# TYPE hermes_session_count gauge" in output
+
+    def test_message_count_total_definition(self) -> None:
+        output = generate_latest().decode("utf-8")
+        assert "# HELP hermes_message_count_total" in output
+        assert "# TYPE hermes_message_count_total counter" in output
 
 
 # =========================================================================
@@ -89,6 +107,21 @@ class TestObserversProduceOutput:
         observe_fallback("ds/deepseek-v4-flash", "guinevere")
         output = generate_latest().decode("utf-8")
         assert 'hermes_fallback_activations_total{from_model="ds/deepseek-v4-flash",to_model="guinevere"}' in output
+
+    def test_observe_safety_block(self) -> None:
+        observe_safety_block("G01", "exact:HARD STOP")
+        output = generate_latest().decode("utf-8")
+        assert 'hermes_safety_blocks_total{gate="G01",reason="exact:HARD STOP"}' in output
+
+    def test_set_session_count(self) -> None:
+        set_session_count(3)
+        output = generate_latest().decode("utf-8")
+        assert "hermes_session_count" in output
+
+    def test_observe_message(self) -> None:
+        observe_message("incoming")
+        output = generate_latest().decode("utf-8")
+        assert 'hermes_message_count_total{direction="incoming"}' in output
 
 
 class TestObserverValues:
@@ -145,6 +178,54 @@ class TestObserverValues:
         assert len(matching) >= 1
         observed = sum(s.value for s in matching)
         assert observed >= 2.0
+
+    def test_observe_safety_block_increments_counter(self) -> None:
+        observe_safety_block("G01", "test:block")
+        observe_safety_block("G01", "test:block")
+
+        output = generate_latest().decode("utf-8")
+        families = list(text_string_to_metric_families(output))
+
+        safety_families = [f for f in families if f.name == "hermes_safety_blocks"]
+        assert len(safety_families) == 1
+
+        samples = list(safety_families[0].samples)
+        matching = [s for s in samples if s.labels == {"gate": "G01", "reason": "test:block"}]
+        assert len(matching) >= 1
+        observed = sum(s.value for s in matching)
+        assert observed >= 2.0
+
+    def test_set_session_count_sets_gauge(self) -> None:
+        set_session_count(5)
+        set_session_count(3)
+
+        output = generate_latest().decode("utf-8")
+        families = list(text_string_to_metric_families(output))
+
+        session_families = [f for f in families if f.name == "hermes_session_count"]
+        assert len(session_families) == 1
+
+        samples = list(session_families[0].samples)
+        assert any(s.value == 3.0 for s in samples)
+
+    def test_observe_message_increments_counter(self) -> None:
+        observe_message("incoming")
+        observe_message("incoming")
+        observe_message("outgoing")
+
+        output = generate_latest().decode("utf-8")
+        families = list(text_string_to_metric_families(output))
+
+        msg_families = [f for f in families if f.name == "hermes_message_count"]
+        assert len(msg_families) == 1
+
+        samples = list(msg_families[0].samples)
+        incoming = [s for s in samples if s.labels == {"direction": "incoming"}]
+        outgoing = [s for s in samples if s.labels == {"direction": "outgoing"}]
+        assert len(incoming) >= 1
+        assert len(outgoing) >= 1
+        assert sum(s.value for s in incoming) >= 2.0
+        assert sum(s.value for s in outgoing) >= 1.0
 
 
 # =========================================================================
@@ -273,3 +354,122 @@ class TestLLMRouterMetricsIntegration:
         # CORE_REASONING chain: CORE_REASONING → SUB_AGENT → FALLBACK
         # After CORE_REASONING fails, fallback is from ds/deepseek-v4-flash to ds/deepseek-v4-flash (SUB_AGENT)
         assert first_call_args[0] == "ds/deepseek-v4-flash"
+
+
+# =========================================================================
+# 5. B8 Metrics: safety_blocks_total, session_count, message_count_total
+# =========================================================================
+
+
+class TestB8MetricFamilyDefinitions:
+    """Verify that the three B8 metric families exist with correct names."""
+
+    def test_safety_blocks_total_definition(self) -> None:
+        output = generate_latest().decode("utf-8")
+        assert "# HELP hermes_safety_blocks_total" in output
+        assert "# TYPE hermes_safety_blocks_total counter" in output
+
+    def test_session_count_definition(self) -> None:
+        output = generate_latest().decode("utf-8")
+        assert "# HELP hermes_session_count" in output
+        assert "# TYPE hermes_session_count gauge" in output
+
+    def test_message_count_total_definition(self) -> None:
+        output = generate_latest().decode("utf-8")
+        assert "# HELP hermes_message_count_total" in output
+        assert "# TYPE hermes_message_count_total counter" in output
+
+    def test_no_gateway_up_defined(self) -> None:
+        """hermes_gateway_up must NOT be emitted from this module."""
+        output = generate_latest().decode("utf-8")
+        assert "hermes_gateway_up" not in output
+
+
+class TestB8ObserverHelpers:
+    """Call each B8 observer and verify the metric name appears in output."""
+
+    def test_observe_safety_block(self) -> None:
+        observe_safety_block("G01", "exact:HARD STOP")
+        output = generate_latest().decode("utf-8")
+        assert 'hermes_safety_blocks_total{gate="G01",reason="exact:HARD STOP"}' in output
+
+    def test_set_session_count(self) -> None:
+        set_session_count(3)
+        output = generate_latest().decode("utf-8")
+        assert "hermes_session_count" in output
+        # Gauge value should be 3.0
+        assert "hermes_session_count 3.0" in output
+
+    def test_observe_message_incoming(self) -> None:
+        observe_message("incoming")
+        output = generate_latest().decode("utf-8")
+        assert 'hermes_message_count_total{direction="incoming"}' in output
+
+    def test_observe_message_outgoing(self) -> None:
+        observe_message("outgoing")
+        output = generate_latest().decode("utf-8")
+        assert 'hermes_message_count_total{direction="outgoing"}' in output
+
+    def test_observe_message_tool_call(self) -> None:
+        observe_message("tool_call")
+        output = generate_latest().decode("utf-8")
+        assert 'hermes_message_count_total{direction="tool_call"}' in output
+
+    def test_observe_message_tool_result(self) -> None:
+        observe_message("tool_result")
+        output = generate_latest().decode("utf-8")
+        assert 'hermes_message_count_total{direction="tool_result"}' in output
+
+
+class TestB8ObserverValues:
+    """Verify that observer calls actually change metric values."""
+
+    def test_safety_blocks_increments_counter(self) -> None:
+        observe_safety_block("G01", "test-reason")
+        observe_safety_block("G01", "test-reason")
+
+        output = generate_latest().decode("utf-8")
+        families = list(text_string_to_metric_families(output))
+
+        safety_families = [f for f in families if f.name == "hermes_safety_blocks"]
+        assert len(safety_families) == 1
+
+        samples = list(safety_families[0].samples)
+        matching = [
+            s
+            for s in samples
+            if s.labels == {"gate": "G01", "reason": "test-reason"}
+        ]
+        assert len(matching) >= 1
+        observed = sum(s.value for s in matching)
+        assert observed >= 2.0
+
+    def test_session_count_gauge_can_be_set(self) -> None:
+        set_session_count(5)
+        output = generate_latest().decode("utf-8")
+        assert "hermes_session_count 5.0" in output
+
+        set_session_count(0)
+        output = generate_latest().decode("utf-8")
+        assert "hermes_session_count 0.0" in output
+
+    def test_message_count_increments_counter(self) -> None:
+        observe_message("incoming")
+        observe_message("incoming")
+        observe_message("outgoing")
+
+        output = generate_latest().decode("utf-8")
+        families = list(text_string_to_metric_families(output))
+
+        message_families = [f for f in families if f.name == "hermes_message_count"]
+        assert len(message_families) == 1
+
+        samples = list(message_families[0].samples)
+        incoming = sum(
+            s.value for s in samples if s.labels == {"direction": "incoming"}
+        )
+        outgoing = sum(
+            s.value for s in samples if s.labels == {"direction": "outgoing"}
+        )
+        assert incoming >= 2.0
+        assert outgoing >= 1.0

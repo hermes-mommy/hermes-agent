@@ -2,7 +2,7 @@
   "id": null,
   "uid": "guinevere-hermes",
   "title": "Guinevere Hermes Gateway",
-  "description": "Hermes gateway monitoring - up status, LLM calls, latency, cost, safety, and pending instrumentation placeholders",
+  "description": "Hermes metrics target monitoring - scrape status, LLM calls, latency, cost, process-correct safety instrumentation, sessions, and message throughput. The up{job=\"hermes\"} panel reflects the metrics target, not authoritative gateway process liveness.",
   "schemaVersion": 39,
   "timezone": "Asia/Jakarta",
   "tags": ["guinevere", "hermes"],
@@ -30,7 +30,7 @@
   "panels": [
     {
       "id": 1,
-      "title": "Gateway Status",
+      "title": "Metrics Target Status (not gateway process liveness)",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -86,6 +86,7 @@
         },
         "overrides": []
       },
+      "description": "Prometheus scrape status for the Hermes metrics target on job=\"hermes\". This is not an authoritative Hermes Agent gateway process-liveness metric; hermes_gateway_up remains intentionally blocked until emitted by the gateway process itself.",
       "options": {
         "colorMode": "background",
         "graphMode": "none",
@@ -316,7 +317,7 @@
     },
     {
       "id": 6,
-      "title": "Safety Blocks (Pending Hermes Instrumentation)",
+      "title": "Safety Blocks Rate",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -331,7 +332,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(hermes_safety_blocks_total[5m])) or vector(0)",
+          "expr": "sum(rate(hermes_safety_blocks_total[5m]))",
           "legendFormat": "blocks/s",
           "datasource": {
             "type": "prometheus",
@@ -362,7 +363,7 @@
         },
         "overrides": []
       },
-      "description": "Safety block rate. Requires hermes_safety_blocks_total metric from Hermes-native instrumentation (Phase 7c). Currently returns 0 if metric is absent.",
+      "description": "Process-correct safety block rate emitted by GuinevereSafetyPlugin via hermes_safety_blocks_total{gate,reason}. This metric is local instrumentation only and does not imply final Phase 7 completion.",
       "options": {
         "colorMode": "background",
         "graphMode": "area",
@@ -376,7 +377,7 @@
     },
     {
       "id": 7,
-      "title": "HARD STOP Events (Pending Hermes Instrumentation)",
+      "title": "HARD STOP Safety Blocks (24h)",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -391,7 +392,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(increase(hermes_hard_stop_events_total[24h])) or vector(0)",
+          "expr": "sum(increase(hermes_safety_blocks_total{gate=\"G01\"}[24h]))",
           "legendFormat": "events (24h)",
           "datasource": {
             "type": "prometheus",
@@ -422,7 +423,7 @@
         },
         "overrides": []
       },
-      "description": "HARD STOP event count over last 24 hours. Requires hermes_hard_stop_events_total metric from Hermes-native instrumentation (Phase 7c). Currently returns 0 if metric is absent.",
+      "description": "HARD STOP blocks over the last 24 hours derived from hermes_safety_blocks_total{gate=\"G01\"}. No separate hermes_hard_stop_events_total metric is emitted in this safe subset.",
       "options": {
         "colorMode": "background",
         "graphMode": "none",
@@ -436,7 +437,7 @@
     },
     {
       "id": 8,
-      "title": "Memory Recall Latency (Pending Hermes Instrumentation)",
+      "title": "Safety Plugin Sessions",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -451,8 +452,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "(rate(hermes_llm_latency_seconds_sum[5m]) / rate(hermes_llm_latency_seconds_count[5m])) or vector(0)",
-          "legendFormat": "avg latency (s)",
+          "expr": "hermes_session_count",
+          "legendFormat": "active safety sessions",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -461,7 +462,7 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "s",
+          "unit": "none",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -482,7 +483,7 @@
         },
         "overrides": []
       },
-      "description": "Average LLM latency as a proxy for memory recall health. Hermes-native hermes_memory_recall_latency_seconds pending instrumentation (Phase 7c).",
+      "description": "Active safety-plugin session gauge emitted by GuinevereSafetyPlugin via hermes_session_count. This tracks local plugin session state, not Discord session persistence.",
       "options": {
         "colorMode": "value",
         "graphMode": "area",
@@ -496,7 +497,7 @@
     },
     {
       "id": 9,
-      "title": "Model Call Rate (Pending Per-Model Breakdown)",
+      "title": "Message Throughput by Direction",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -511,8 +512,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "rate(hermes_llm_calls_total[5m])",
-          "legendFormat": "calls/s",
+          "expr": "sum(rate(hermes_message_count_total[5m])) by (direction)",
+          "legendFormat": "{{direction}}",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -542,7 +543,7 @@
         },
         "overrides": []
       },
-      "description": "Aggregate LLM call rate. Per-model hermes_model_calls_total metric pending instrumentation (Phase 7c).",
+      "description": "Process-correct message throughput emitted by GuinevereSafetyPlugin via hermes_message_count_total{direction}. Directions include incoming, outgoing, tool_call, and tool_result.",
       "options": {
         "colorMode": "value",
         "graphMode": "area",

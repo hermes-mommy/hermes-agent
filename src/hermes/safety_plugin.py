@@ -31,6 +31,12 @@ import structlog
 
 logger: Final = structlog.get_logger(__name__)
 
+# Observer helpers for B8 process-correct metrics.
+from src.core.services.llm_metrics import (
+    observe_message,
+    observe_safety_block,
+    set_session_count,
+)
 
 # =============================================================================
 # Module-level safety data — Phase 1 specification
@@ -480,6 +486,7 @@ class GuinevereSafetyPlugin:
         if not text.strip():
             return None
 
+        observe_message("incoming")
         text_lower = text.lower().strip()
 
         # --- G01: HARD STOP detection (exact triggers) ---
@@ -498,6 +505,7 @@ class GuinevereSafetyPlugin:
                     session_id=session_id,
                     trigger=trigger,
                 )
+                observe_safety_block("G01", f"exact:{trigger}")
                 return {
                     "action": "block",
                     "reason": f"HARD_STOP_EXACT:{trigger}",
@@ -519,6 +527,7 @@ class GuinevereSafetyPlugin:
                     session_id=session_id,
                     pattern_index=i,
                 )
+                observe_safety_block("G01", f"semantic:{i}")
                 return {
                     "action": "block",
                     "reason": f"HARD_STOP_SEMANTIC:{i}",
@@ -540,6 +549,7 @@ class GuinevereSafetyPlugin:
                         "gate_01_hard_stop_handler",
                         session_id=session_id,
                     )
+                    observe_safety_block("G01", "hard_stop_handler")
                     return {
                         "action": "block",
                         "reason": "HARD_STOP_HANDLER",
@@ -623,6 +633,10 @@ class GuinevereSafetyPlugin:
                     )
                     # D3/D4 — block the LLM call
                     if distress_int >= 3:
+                        observe_safety_block(
+                            "G02",
+                            f"DISTRESS_{signal.detected_level.name}",
+                        )
                         return {
                             "action": "block",
                             "reason": f"DISTRESS_{signal.detected_level.name}",
@@ -668,6 +682,7 @@ class GuinevereSafetyPlugin:
                         session_id=session_id,
                         error=str(exc),
                     )
+                    observe_safety_block("G07", "YANDERE_SAFETY_VIOLATION")
                     return {
                         "action": "block",
                         "reason": "YANDERE_SAFETY_VIOLATION",
@@ -696,6 +711,8 @@ class GuinevereSafetyPlugin:
                 ``assistant_message``, ``response``, ``model``, etc.
         """
         session_id: str = kwargs.get("session_id", "default")
+
+        observe_message("outgoing")
 
         assistant_message: str | None = kwargs.get("assistant_message")
         response: str | None = kwargs.get("response")
@@ -783,6 +800,8 @@ class GuinevereSafetyPlugin:
         session_id: str = kwargs.get("session_id", "default")
         tool_name: str = kwargs.get("tool_name", "unknown")
 
+        observe_message("tool_call")
+
         # --- Gate 10: Consent gate (deferred) ---
         logger.debug(
             "gate_10_consent_deferred",
@@ -817,6 +836,10 @@ class GuinevereSafetyPlugin:
                         operation=operation,
                         auth_level=auth_level.value,
                     )
+                    observe_safety_block(
+                        "G09",
+                        f"AUTH_{auth_level.name}:{tool_name}:{operation}",
+                    )
                     return {
                         "action": "block",
                         "reason": f"AUTH_{auth_level.name}:{tool_name}:{operation}",
@@ -832,6 +855,7 @@ class GuinevereSafetyPlugin:
                     session_id=session_id,
                     tool_name=tool_name,
                 )
+                observe_safety_block("G09", f"AUTH_UNKNOWN_TOOL:{tool_name}")
                 return {
                     "action": "block",
                     "reason": f"AUTH_UNKNOWN_TOOL:{tool_name}",
@@ -861,6 +885,7 @@ class GuinevereSafetyPlugin:
         session_id: str = kwargs.get("session_id", "default")
         tool_name: str = kwargs.get("tool_name", "unknown")
 
+        observe_message("tool_result")
         logger.debug(
             "post_tool_call_observational",
             session_id=session_id,
@@ -894,6 +919,7 @@ class GuinevereSafetyPlugin:
         if not response_text:
             return None
 
+        observe_message("outgoing")
         text = response_text
 
         # --- G05: Forbidden patterns ---
@@ -909,6 +935,7 @@ class GuinevereSafetyPlugin:
                         description=description,
                         matched=matched_text[:80],
                     )
+                    observe_safety_block("G05", f"{pattern_id}:{description}")
                     return None  # Block the response entirely
                 else:
                     # HIGH severity — rewrite (remove matched content)
@@ -1035,6 +1062,7 @@ class GuinevereSafetyPlugin:
                 self._session_states[session_id] = SessionSafetyState(
                     session_id=session_id,
                 )
+                set_session_count(len(self._session_states))
                 logger.info(
                     "session_safety_initialized",
                     session_id=session_id,
@@ -1045,6 +1073,8 @@ class GuinevereSafetyPlugin:
                     "session_safety_already_exists",
                     session_id=session_id,
                 )
+
+        set_session_count(len(self._session_states))
 
 
 # =============================================================================

@@ -6,13 +6,22 @@ Exposes the following metrics on ``localhost:9191/metrics``:
 - ``hermes_llm_latency_seconds`` — histogram of call duration.
 - ``hermes_llm_cost_usd_total`` — accumulated cost in USD.
 - ``hermes_fallback_activations_total`` — fallback chain activations.
+- ``hermes_safety_blocks_total{gate,reason}`` — counter of safety blocks.
+- ``hermes_session_count`` — gauge of active Hermes sessions.
+- ``hermes_message_count_total{direction}`` — counter of messages by direction.
+
+.. note::
+   ``hermes_gateway_up`` is intentionally **not** defined here.  Ownership of
+   the gateway-liveness metric belongs to the real Hermes Agent process, not
+   the core/FastAPI metrics server (port 9191).  Defining it here would
+   falsely represent gateway process health.
 
 The HTTP server runs in a background daemon thread and is started via
 :func:`start_llm_metrics_server`.
 """
 from __future__ import annotations
 
-from prometheus_client import Counter, Histogram, start_http_server
+from prometheus_client import Counter, Gauge, Histogram, start_http_server
 
 # ---------------------------------------------------------------------------
 # Metric families
@@ -41,6 +50,23 @@ FALLBACK_ACTIVATIONS_TOTAL = Counter(
     "hermes_fallback_activations_total",
     "Total fallback activations, partitioned by from_model and to_model",
     ["from_model", "to_model"],
+)
+
+SAFETY_BLOCKS_TOTAL = Counter(
+    "hermes_safety_blocks_total",
+    "Total safety blocks, partitioned by gate and reason",
+    ["gate", "reason"],
+)
+
+SESSION_COUNT = Gauge(
+    "hermes_session_count",
+    "Current number of active Hermes sessions tracked by the safety plugin",
+)
+
+MESSAGE_COUNT_TOTAL = Counter(
+    "hermes_message_count_total",
+    "Total messages processed, partitioned by direction",
+    ["direction"],
 )
 
 # ---------------------------------------------------------------------------
@@ -88,3 +114,26 @@ def observe_cost(model: str, cost_usd: float) -> None:
 def observe_fallback(from_model: str, to_model: str) -> None:
     """Record a fallback activation from *from_model* to *to_model*."""
     FALLBACK_ACTIVATIONS_TOTAL.labels(from_model=from_model, to_model=to_model).inc()
+
+
+def observe_safety_block(gate: str, reason: str) -> None:
+    """Increment the safety blocks counter for *gate* with *reason*.
+
+    *gate* is the safety gate identifier (e.g. ``"G01"``).
+    *reason* is a short description of the block reason.
+    """
+    SAFETY_BLOCKS_TOTAL.labels(gate=gate, reason=reason).inc()
+
+
+def set_session_count(count: int) -> None:
+    """Set the current Hermes session count gauge to *count*."""
+    SESSION_COUNT.set(count)
+
+
+def observe_message(direction: str) -> None:
+    """Increment the message counter for *direction*.
+
+    *direction* is typically ``"incoming"``, ``"outgoing"``,
+    ``"tool_call"``, or ``"tool_result"``.
+    """
+    MESSAGE_COUNT_TOTAL.labels(direction=direction).inc()
