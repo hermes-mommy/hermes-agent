@@ -3,8 +3,8 @@
 | Field | Value |
 |-------|-------|
 | **Project** | Guinevere — Autonomous AI Companion & Engineering System |
-| **Status** | ✅ P0+P1+P2+P3+P4+P5+P5.5+P6+P7+P7.5+P8 Complete — MVP Infrastructure Complete. Production deployment pending. |
-| **Last Updated** | 2026-06-06 (ADR-035 Phase 5 Hermes Migration 5.1-5.8 implemented and parent-verified: SOUL.md §A-§J complete, five Guinevere skills installed, drift baseline reset, PersonaPlugin bridge registered locally, Hermes cron rituals corrected/verified, persona module migration verified, final 18-gate evidence written. Remaining closure gates: post-implementation auditor wave, Redis transcript incident disposition by Faiz, deployment/restart, commit/push. Evidence: `docs/setup-evidence/phase-5/evidence-phase-5.md`, `security-incident-5-2-redis-transcript.md`.) |
+| **Status** | ✅ P0+P1+P2+P3+P4+P5+P5.5+P6+P7+P7.5+P8 Complete — MVP infrastructure implemented and Phase 5 v2 evidence/auditor/deploy gates reconciled. Commit/push remains pending. |
+| **Last Updated** | 2026-06-06 (ADR-035 Phase 5 Hermes Migration 5.1-5.8 implemented and parent-verified with v2 evidence: SOUL.md §A-§J complete at 508 lines, five Guinevere skills enabled/content-verified, drift baseline hash `b8d55fe72f657c93b497e8f5001c7035faf4fa7ab7174b68a25c2ee1cafe9740` synchronized, PersonaPlugin/Redis DB5 bridge verified, native Hermes cron rituals registered/verified with midnight `local` delivery, persona module migration verified, five v2 auditor reports reconciled, and controlled PersonaPlugin VPS deploy + Hermes gateway restart/smoke passed with runtime registration `hook_count=4`. G-17 is PASS-RESCOPED to the current two pre-cutover safety hooks; the old seven-hook target is deferred to later cutover. Remaining closure gate: git-master commit/push workflow. Evidence: `docs/setup-evidence/phase-5/evidence-phase-5.md`, `docs/setup-evidence/phase-5/verification-5-8-v2.md`, `docs/setup-evidence/phase-5/verification-5-deploy-v2.md`, `security-incident-5-2-redis-transcript.md`.) |
 | **Budget** | $30/month hard cap |
 | **Infrastructure** | Shared VPS (hostdata.id 4C/16GB Ubuntu 24.04) |
 | **Critical Path** | P0 → P1 → P3 → P5 |
@@ -264,16 +264,16 @@
 
 | Step | Scope | Status | Evidence |
 |---|---|---|---|
-| 5.1 | VPS `SOUL.md` completion (§A-§J, Y4/Y5/Y6, HARD STOP, prompt-injection defense) | ✅ Parent-verified | `docs/setup-evidence/phase-5/verification-5-1.md` |
-| 5.2 | Drift baseline reset to finalized SOUL SHA-256 | ✅ Functional / security disposition pending | `docs/setup-evidence/phase-5/verification-5-2.md`, `docs/setup-evidence/phase-5/security-incident-5-2-redis-transcript.md` |
-| 5.3 | Five priority Hermes skills (`hardstop`, `consent`, `yandere`, `mood`, `rituals`) + custom discovery smoke test | ✅ Parent-verified | `docs/setup-evidence/phase-5/verification-5-3-preflight.md`, `docs/setup-evidence/phase-5/verification-5-3.md` |
-| 5.4 | PersonaPlugin bridge (`src/hermes/plugins/persona_plugin.py`) + local registration package | ✅ Parent-verified | `docs/setup-evidence/phase-5/verification-5-4.md` |
-| 5.5 | Hermes cron ritual configuration with midnight suppression | ✅ Parent-verified | `docs/setup-evidence/phase-5/verification-5-5.md` |
-| 5.6 | Ritual verification; fixed invalid `hermes run` plan syntax to `hermes chat -Q -q` | ✅ Parent-verified | `docs/setup-evidence/phase-5/verification-5-6.md` |
-| 5.7 | Persona module migration; APScheduler retired from active ritual path | ✅ Parent-verified | `docs/setup-evidence/phase-5/verification-5-7.md` |
-| 5.8 | Final 18-gate evidence | ⚠️ 13 PASS / 2 conditional / 2 blocked / 1 fail before this PROGRESS sync | `docs/setup-evidence/phase-5/evidence-phase-5.md` |
+| 5.1 | VPS `SOUL.md` completion (§A-§J, Y4/Y5/Y6, HARD STOP, prompt-injection defense) | ✅ Parent-verified v2 | `docs/setup-evidence/phase-5/verification-5-1-v2.md` |
+| 5.2 | Drift baseline reset to finalized SOUL SHA-256 | ✅ Parent-verified v2 | `docs/setup-evidence/phase-5/verification-5-2-v2.md`, `docs/setup-evidence/phase-5/security-incident-5-2-redis-transcript.md` |
+| 5.3 | Five priority Hermes skills (`hardstop`, `consent`, `yandere`, `mood`, `rituals`) + custom discovery/content reconciliation | ✅ Parent-verified v2 | `docs/setup-evidence/phase-5/verification-5-3-content-reconciliation.md` |
+| 5.4 | PersonaPlugin/Redis DB5 bridge + local plugin/FSM verification | ✅ Parent-verified v2; VPS deploy/restart later passed in OG-6 | `docs/setup-evidence/phase-5/verification-5-4-v2.md`, `docs/setup-evidence/phase-5/verification-5-deploy-v2.md` |
+| 5.5 | Native Hermes cron ritual registration with midnight `local` delivery | ✅ Parent-verified v2 | `docs/setup-evidence/phase-5/verification-5-5-v2.md` |
+| 5.6 | Ritual verification for native Hermes cron jobs and midnight isolation | ✅ Parent-verified v2 | `docs/setup-evidence/phase-5/verification-5-6-v2.md` |
+| 5.7 | Persona module migration; APScheduler retired from active ritual path | ✅ Parent-verified v2 | `docs/setup-evidence/phase-5/verification-5-7-v2.md` |
+| 5.8 | Final 18-gate + five-auditor v2 synthesis + OG-6 deploy/smoke | ✅ 17 PASS / 1 PASS-RESCOPED / 0 FAIL; OG-6 PASS | `docs/setup-evidence/phase-5/evidence-phase-5.md`, `docs/setup-evidence/phase-5/verification-5-8-v2.md`, `docs/setup-evidence/phase-5/verification-5-deploy-v2.md` |
 
-**Remaining Phase 5 closure gates**: post-implementation auditor wave (G-16), Faiz decision for Redis transcript exposure disposition (G-14/security), deploy/restart, commit/push, final report.
+**Remaining Phase 5 closure gate**: git-master commit/push workflow and final report. Controlled PersonaPlugin VPS deploy + Hermes restart/smoke passed in `verification-5-deploy-v2.md`. G-17 is PASS-RESCOPED to the current two pre-cutover safety hooks; the old seven-hook target is deferred to later cutover.
 
 ## P6: MCP Tools (21 steps)
 *ADRs: ADR-020, ADR-033 | Cost: $1/mo avg | Deps: P5 complete*
