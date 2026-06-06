@@ -13,10 +13,9 @@ while importing ``FastMCP`` from the third-party ``mcp`` library.
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable
-from contextlib import asynccontextmanager
+from collections.abc import AsyncGenerator, Callable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from pathlib import Path
-from typing import Any, AsyncIterator
 
 import structlog
 
@@ -42,11 +41,11 @@ logger = structlog.get_logger()
 # ---------------------------------------------------------------------------
 
 
-def _build_lifespan() -> Callable[..., Any]:
+def _build_lifespan() -> Callable[[FastMCP], AbstractAsyncContextManager[None]]:
     """Build an async lifespan context-manager for the FastMCP server."""
 
     @asynccontextmanager
-    async def lifespan(server: FastMCP) -> AsyncIterator[None]:  # noqa: ARG001
+    async def lifespan(server: FastMCP) -> AsyncGenerator[None, None]:  # noqa: ARG001
         """Handle server startup and graceful shutdown."""
         logger.info("mcp_server_starting")
 
@@ -61,7 +60,7 @@ def _build_lifespan() -> Callable[..., Any]:
                 logger.warning("auth_matrix_incomplete")
             else:
                 logger.info("auth_matrix_verified")
-        except Exception as matrix_err:
+        except ImportError as matrix_err:
             logger.warning(
                 "auth_matrix_verification_failed",
                 error=str(matrix_err),
@@ -87,10 +86,12 @@ def create_server(name: str = "guinevere-mcp") -> FastMCP:
 
     server = FastMCP(
         name=name,
+        host="127.0.0.1",
+        port=8090,
         lifespan=_build_lifespan(),
     )
 
-    logger.info("mcp_server_created", name=name)
+    logger.info("mcp_server_created", name=name, host="127.0.0.1", port=8090)
     return server
 
 
@@ -100,4 +101,4 @@ def create_server(name: str = "guinevere-mcp") -> FastMCP:
 
 if __name__ == "__main__":
     server = create_server()
-    server.run()
+    server.run(transport="streamable-http")
