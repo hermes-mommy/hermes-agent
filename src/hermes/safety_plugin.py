@@ -19,6 +19,8 @@ Hook mapping:
 
 from __future__ import annotations
 
+import importlib
+import os
 import re
 import threading
 import time
@@ -177,6 +179,16 @@ _COMPILED_FORBIDDEN: Final[list[tuple[re.Pattern[str], str, str, str, str]]] = (
 
 
 # =============================================================================
+# Redis DB5 connection constants (canonical — matched to persona_plugin)
+# =============================================================================
+
+_REDIS_HOST: Final[str] = "localhost"
+_REDIS_PORT: Final[int] = 6380
+_REDIS_DB: Final[int] = 5
+_REDIS_USERNAME: Final[str] = "guinevere_core"
+_REDIS_SOCKET_TIMEOUT: Final[float] = 2.0
+
+# =============================================================================
 # Per-session safety state
 # =============================================================================
 
@@ -298,6 +310,38 @@ class GuinevereSafetyPlugin:
                 if hasattr(state, key):
                     setattr(state, key, value)
             state.last_check_timestamp = time.time()
+
+    # -------------------------------------------------------------------------
+    # Redis DB5 sync helpers
+    # -------------------------------------------------------------------------
+
+    def _sync_distress_to_redis(self, distress_level: int) -> None:
+        """Sync distress state to Redis DB5 (graceful, non-blocking).
+
+        Uses the same lazy ``importlib.import_module("redis")`` pattern as
+        ``persona_plugin.py`` for graceful degradation. This is a best-effort
+        sync — failures are logged at debug level and never block.
+        """
+        try:
+            redis_mod = importlib.import_module("redis")
+            r = redis_mod.Redis(
+                host=_REDIS_HOST,
+                port=_REDIS_PORT,
+                db=_REDIS_DB,
+                username=_REDIS_USERNAME,
+                password=os.environ.get("REDIS_PASSWORD", ""),
+                socket_timeout=_REDIS_SOCKET_TIMEOUT,
+                decode_responses=True,
+            )
+            r.set("guinevere:distress_state", str(distress_level))
+            r.close()
+        except Exception:
+            logger.debug(
+                "safety_plugin_redis_sync_skipped",
+                key="guinevere:distress_state",
+                value=distress_level,
+                exc_info=True,
+            )
 
     # -------------------------------------------------------------------------
     # Lazy safety module initialization
@@ -556,6 +600,8 @@ class GuinevereSafetyPlugin:
             try:
                 signal = self._distress_detector.detect(text)
                 distress_int = int(signal.detected_level)
+
+                self._sync_distress_to_redis(distress_int)
 
                 self._update_session_state(
                     session_id,
