@@ -55,13 +55,18 @@ providers:
     key_env: NINEROUTER_API_KEY
     model: ds/deepseek-v4-flash
 
-# NOTE: gpt-5.5 removed — 9Router token invalidated (HTTP 401)
-# Re-add as fallback when token is refreshed:
-# fallback_providers:
-#   - name: ninerouter-fallback
-#     base_url: http://localhost:20128/v1
-#     key_env: NINEROUTER_API_KEY
-#     model: cx/gpt-5.5
+# Fallback chain — tried in order when primary fails (rate-limit, 5xx, connection errors)
+# cx/gpt-5.5 is degraded (codex OAuth expired 2026-05-15) but Hermes skips to next on 404
+# guinevere is the operational VPS 9Router combo
+fallback_providers:
+  - provider: custom
+    model: cx/gpt-5.5
+    base_url: http://localhost:20128/v1
+    key_env: NINEROUTER_API_KEY
+  - provider: custom
+    model: guinevere
+    base_url: http://localhost:20128/v1
+    key_env: NINEROUTER_API_KEY
 
 # Monthly budget tracking (informational — not read by Hermes)
 budget:
@@ -139,6 +144,17 @@ hooks:
   # Plugin pre_tool_call has consent DEFERRED (needs Redis+SQLAlchemy in-process).
   # This shell hook runs consent_gate.py which does real Redis+PG consent checks.
   pre_tool_call:
+    # Budget gate — fail-closed LLM cost check (Pillar 5, Phase 6).
+    # Runs before consent gate (priority 100 > 90). Uses Redis Lua to check
+    # monthly $30 cap and per-tool daily caps. Any Redis/Lua error = block.
+    - event: pre_tool_call
+      command: "python3 ~/.hermes/hooks/budget_check.py"
+      timeout_ms: 500
+      on_failure: block
+      priority: 100
+    # Consent gate — defense-in-depth for G10.
+    # Plugin pre_tool_call has consent DEFERRED (needs Redis+SQLAlchemy in-process).
+    # This shell hook runs consent_gate.py which does real Redis+PG consent checks.
     - event: pre_tool_call
       command: "python3 ~/.hermes/hooks/consent_gate.py"
       timeout_ms: 200
