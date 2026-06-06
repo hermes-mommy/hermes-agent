@@ -59,6 +59,7 @@ class DriftDetector:
     """
 
     DEFAULT_THRESHOLD: Final[float] = 0.10
+    SOUL_BASELINE_HASH: Final[str] = "b8d55fe72f657c93b497e8f5001c7035faf4fa7ab7174b68a25c2ee1cafe9740"
 
     def __init__(
         self,
