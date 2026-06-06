@@ -328,6 +328,7 @@ class TestFailClosed:
             payload = cast(dict[str, object], mock_write.call_args[0][0])
             assert payload["action"] == "block"
             assert "Redis down" in cast(str, payload["reason"])
+            assert "budget_check_failed" in cast(str, payload["reason"])
 
     def test_lua_script_load_fail_closed(self) -> None:
         """When ``load_script`` raises, callers must propagate."""
@@ -527,6 +528,7 @@ class TestBudgetCheckMain:
             payload = cast(dict[str, object], mock_write.call_args[0][0])
             assert payload["action"] == "block"
             assert "Redis down" in cast(str, payload.get("reason", ""))
+            assert "budget_check_failed" in cast(str, payload.get("reason", ""))
 
     def test_lua_execution_error_blocks(self) -> None:
         """When Lua execution raises, main must block."""
@@ -547,6 +549,7 @@ class TestBudgetCheckMain:
             payload = cast(dict[str, object], mock_write.call_args[0][0])
             assert payload["action"] == "block"
             assert "error" in cast(str, payload.get("reason", "")).lower()
+            assert "budget_check_failed" in cast(str, payload.get("reason", ""))
 
 
 # =========================================================================

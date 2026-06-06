@@ -13,29 +13,39 @@ import logging
 import os
 import sys
 import time
+from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 # ── Redis imports — optional, fail gracefully if unavailable ──────────────────
-# Use plain names for exception binding; types are unified at the `except` site
-# so that callers catch a stable tuple regardless of redis availability.
+# These are intentionally dynamic so hook scripts can still fail-closed on hosts
+# where the redis package is missing.
 
 _redis_connection_error: tuple[type[BaseException], ...] = (OSError,)
 _redis_timeout_error: tuple[type[BaseException], ...] = (OSError,)
-_REDIS_AVAILABLE: bool = False
+_redis_available: bool = False
+_redis_module: Any | None = None
+_redis_retry_cls: Any | None = None
+_redis_backoff_cls: Any | None = None
+_redis_pool_cls: Any | None = None
 
 try:
-    import redis  # noqa: I202
-    from redis.backoff import ExponentialBackoff  # noqa: I202
-    from redis.connection import ConnectionPool as _RedisConnectionPool  # noqa: I202
+    import redis as _imported_redis  # noqa: I202
+    from redis.backoff import ExponentialBackoff as _ImportedBackoff  # noqa: I202
+    from redis.connection import ConnectionPool as _ImportedConnectionPool  # noqa: I202
     from redis.exceptions import ConnectionError as _RedisConnErr  # noqa: I202
     from redis.exceptions import TimeoutError as _RedisTimeoutErr  # noqa: I202
-    from redis.retry import Retry  # noqa: I202
+    from redis.retry import Retry as _ImportedRetry  # noqa: I202
 
-    _REDIS_AVAILABLE = True
+    _redis_available = True
+    _redis_module = _imported_redis
+    _redis_retry_cls = _ImportedRetry
+    _redis_backoff_cls = _ImportedBackoff
+    _redis_pool_cls = _ImportedConnectionPool
     _redis_connection_error = (OSError, _RedisConnErr)
     _redis_timeout_error = (OSError, _RedisTimeoutErr)
 except ImportError:
@@ -44,7 +54,20 @@ except ImportError:
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-REDIS_URL: str = os.environ.get("GUINEVERE_REDIS_URL", "redis://localhost:6380/5")
+def _build_redis_url() -> str:
+    """Build the Redis DB5 URL without exposing credential values."""
+    explicit_url = os.environ.get("GUINEVERE_REDIS_URL")
+    if explicit_url:
+        return explicit_url
+
+    password = os.environ.get("REDIS_PASSWORD")
+    if password:
+        return f"redis://guinevere_core:{quote(password, safe='')}@localhost:6380/5"
+
+    return "redis://localhost:6380/5"
+
+
+REDIS_URL: str = _build_redis_url()
 """Redis connection URL for DB5. Override via GUINEVERE_REDIS_URL env var."""
 
 REDIS_CONNECT_TIMEOUT_S: float = 2.0
@@ -59,18 +82,18 @@ LOG_DIR: Path = Path.home() / ".hermes" / "logs" / "hooks"
 LOG_MAX_BYTES: int = 10 * 1024 * 1024  # 10 MB
 LOG_BACKUP_COUNT: int = 3
 
-_pool: _RedisConnectionPool | None = None if _REDIS_AVAILABLE else None
+_pool: Any | None = None
 """Module-level Redis connection pool (lazy, singleton)."""
 
 
 # ── Redis ─────────────────────────────────────────────────────────────────────
 
 
-def get_redis_connection() -> redis.Redis | None:
+def get_redis_connection() -> Any | None:
     """Return a Redis connection to DB5 with pooling and retry logic.
 
     Returns:
-        ``redis.Redis`` instance on success, ``None`` if Redis is unavailable
+        Redis client instance on success, ``None`` if Redis is unavailable
         or the ``redis`` package is not installed.
 
     Connection settings:
@@ -81,13 +104,21 @@ def get_redis_connection() -> redis.Redis | None:
     """
     global _pool  # noqa: PLW0603
 
-    if not _REDIS_AVAILABLE:
+    if not _redis_available:
+        return None
+
+    if (
+        _redis_module is None
+        or _redis_retry_cls is None
+        or _redis_backoff_cls is None
+        or _redis_pool_cls is None
+    ):
         return None
 
     if _pool is None:
         try:
-            retry = Retry(ExponentialBackoff(), retries=3)
-            _pool = _RedisConnectionPool.from_url(
+            retry = _redis_retry_cls(_redis_backoff_cls(), retries=3)
+            _pool = _redis_pool_cls.from_url(
                 REDIS_URL,
                 socket_connect_timeout=REDIS_CONNECT_TIMEOUT_S,
                 socket_timeout=REDIS_SOCKET_TIMEOUT_S,
@@ -101,7 +132,7 @@ def get_redis_connection() -> redis.Redis | None:
             return None
 
     try:
-        client = redis.Redis(connection_pool=_pool)
+        client = _redis_module.Redis(connection_pool=_pool)
         # Quick health-check ping (fast path)
         client.ping()
         return client
@@ -221,7 +252,7 @@ class TimingError(Exception):
 
 
 @contextmanager
-def timing_guard(max_ms: float, label: str = "operation") -> None:
+def timing_guard(max_ms: float, label: str = "operation") -> Generator[None, None, None]:
     """Context manager that logs a warning if the block exceeds *max_ms*.
 
     Does **not** interrupt execution — only measures elapsed wall time.

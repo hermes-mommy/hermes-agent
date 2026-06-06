@@ -178,7 +178,7 @@ def main() -> None:
         )
         write_stdout_json({
             "action": "block",
-            "reason": "Budget check unavailable (Redis down)",
+            "reason": "Budget check unavailable (Redis down) — budget_check_failed",
         })
         sys.exit(1)
 
@@ -203,7 +203,7 @@ def main() -> None:
         _log.exception("Budget check error for %s — blocking fail-closed", tool_name)
         write_stdout_json({
             "action": "block",
-            "reason": "Budget check error",
+            "reason": "Budget check error — budget_check_failed",
         })
         sys.exit(1)
 
