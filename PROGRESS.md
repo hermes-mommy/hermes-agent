@@ -3,8 +3,8 @@
 | Field | Value |
 |-------|-------|
 | **Project** | Guinevere — Autonomous AI Companion & Engineering System |
-| **Status** | ✅ P0+P1+P2+P3+P4+P5+P5.5+P6+P7+P7.5+P8 Complete — MVP infrastructure implemented and Phase 5 v2 evidence/auditor/deploy gates reconciled. Commit/push remains pending. |
-| **Last Updated** | 2026-06-06 (ADR-035 Phase 5 Hermes Migration 5.1-5.8 implemented and parent-verified with v2 evidence: SOUL.md §A-§J complete at 508 lines, five Guinevere skills enabled/content-verified, drift baseline hash `b8d55fe72f657c93b497e8f5001c7035faf4fa7ab7174b68a25c2ee1cafe9740` synchronized, PersonaPlugin/Redis DB5 bridge verified, native Hermes cron rituals registered/verified with midnight `local` delivery, persona module migration verified, five v2 auditor reports reconciled, and controlled PersonaPlugin VPS deploy + Hermes gateway restart/smoke passed with runtime registration `hook_count=4`. G-17 is PASS-RESCOPED to the current two pre-cutover safety hooks; the old seven-hook target is deferred to later cutover. Remaining closure gate: git-master commit/push workflow. Evidence: `docs/setup-evidence/phase-5/evidence-phase-5.md`, `docs/setup-evidence/phase-5/verification-5-8-v2.md`, `docs/setup-evidence/phase-5/verification-5-deploy-v2.md`, `security-incident-5-2-redis-transcript.md`.) |
+| **Status** | ✅ P0+P1+P2+P3+P4+P5+P5.5+P6+P7+P7.5+P8 Complete — MVP infrastructure implemented and ADR-035 Phase 6 LLM routing/budget enforcement implemented, deployed, runtime-verified, and audited PASS. Commit/push remains pending for this working tree. |
+| **Last Updated** | 2026-06-06 (ADR-035 Phase 6 Hermes Migration LLM Routing implemented and parent-verified: primary `ds/deepseek-v4-flash` via 9Router `localhost:20128`, fallback chain `cx/gpt-5.5` + `guinevere` via 9Router, `CostTracker.record_cost()` wired after successful LLM responses with fail-closed `RuntimeError("LLM cost tracking failed")`, Redis DB5 cost keys updated by 100/100 VPS prompt test, fail-closed budget hook registered at priority 100 with `budget_check_failed` proof, Prometheus LLM metrics exposed on `localhost:9191`, `hermes-gateway` and `guinevere-core` active, and three direct parent auditor gates PASS. Evidence: `docs/setup-evidence/phase-6/plan.md`, `docs/setup-evidence/phase-6/STEP-9/verification.md`, `docs/setup-evidence/phase-6/STEP-10/implementation-report.md`, `docs/setup-evidence/phase-6/STEP-12/routing/auditor-gate.md`, `docs/setup-evidence/phase-6/STEP-12/cost/auditor-gate.md`, `docs/setup-evidence/phase-6/STEP-12/adr/auditor-gate.md`.) |
 | **Budget** | $30/month hard cap |
 | **Infrastructure** | Shared VPS (hostdata.id 4C/16GB Ubuntu 24.04) |
 | **Critical Path** | P0 → P1 → P3 → P5 |
@@ -274,6 +274,22 @@
 | 5.8 | Final 18-gate + five-auditor v2 synthesis + OG-6 deploy/smoke | ✅ 17 PASS / 1 PASS-RESCOPED / 0 FAIL; OG-6 PASS | `docs/setup-evidence/phase-5/evidence-phase-5.md`, `docs/setup-evidence/phase-5/verification-5-8-v2.md`, `docs/setup-evidence/phase-5/verification-5-deploy-v2.md` |
 
 **Remaining Phase 5 closure gate**: git-master commit/push workflow and final report. Controlled PersonaPlugin VPS deploy + Hermes restart/smoke passed in `verification-5-deploy-v2.md`. G-17 is PASS-RESCOPED to the current two pre-cutover safety hooks; the old seven-hook target is deferred to later cutover.
+
+### ADR-035 Phase 6 Hermes Migration — LLM Routing & Budget Enforcement (2026-06-06)
+
+| Gate | Scope | Status | Evidence |
+|---|---|---|---|
+| 6.1 | 9Router primary config | ✅ Parent-verified | `docs/setup-evidence/phase-6/STEP-6/verification.md` |
+| 6.2 | Fallback chain via 9Router | ✅ Parent-verified | `docs/setup-evidence/phase-6/STEP-6/verification.md` |
+| 6.3-6.5 | Budget hook fail-closed + deployment/config | ✅ Parent-verified | `docs/setup-evidence/phase-6/STEP-4/verification.md`, `docs/setup-evidence/phase-6/STEP-5/verification.md`, `docs/setup-evidence/phase-6/STEP-10/implementation-report.md` |
+| 6.6-6.6A | SSE cleanup + CostTracker wiring | ✅ Parent-verified | `docs/setup-evidence/phase-6/STEP-2/verification.md`, `docs/setup-evidence/phase-6/STEP-3/verification.md` |
+| 6.7 | Redis DB5 cost keys | ✅ Runtime-verified | `docs/setup-evidence/phase-6/STEP-9/verification.md` |
+| 6.8 | Prometheus LLM metrics | ✅ Runtime-verified | `docs/setup-evidence/phase-6/STEP-7/verification.md`, `docs/setup-evidence/phase-6/STEP-8/verification.md` |
+| 6.9 | Runtime restart + audit gates | ✅ PASS | `docs/setup-evidence/phase-6/STEP-8/verification.md`, `docs/setup-evidence/phase-6/STEP-12/routing/auditor-gate.md`, `docs/setup-evidence/phase-6/STEP-12/cost/auditor-gate.md`, `docs/setup-evidence/phase-6/STEP-12/adr/auditor-gate.md` |
+
+**Phase 6 result**: PASS — DeepSeek primary via 9Router `localhost:20128`, two fallbacks configured through 9Router, budget hook active/fail-closed, CostTracker updates Redis DB5 after LLM responses, 100/100 VPS prompts passed with zero SSE artifacts/direct provider calls, metrics exposed on `localhost:9191`, and three auditor gates PASS.
+
+**Phase 6 caveats / follow-ups**: `cx/gpt-5.5` remains known-degraded until Codex credentials are refreshed; forced hard-cap proof blocks fail-closed through `budget_check_failed` rather than clean `MONTHLY_BLOCKED`; improve monthly-block reporting in a follow-up. Phase 7 readiness: YES.
 
 ## P6: MCP Tools (21 steps)
 *ADRs: ADR-020, ADR-033 | Cost: $1/mo avg | Deps: P5 complete*
