@@ -1,266 +1,394 @@
-# Phase 5 Execution: Rituals State Report
+# Phase 5 Execution — Rituals State & Cron Migration Analysis
 
-**Date:** 2026-06-05  
-**Status:** Complete  
-**Scope:** Current APScheduler ritual scheduler + Hermes cron config + systemd service analysis for Phase 5 integration.  
-**Author:** Sisyphus-Junior (Omni Engineering Agent)
-
----
-
-## 1. Scheduler Inventory — Three Parallel Systems
-
-The codebase currently has **three independent scheduling mechanisms** that must be rationalised for Phase 5:
-
-| Scheduler | Module | Engine | Timezone | Purpose |
-|---|---|---|---|---|
-| `RitualScheduler` | `src/persona/ritual_scheduler.py` | APScheduler 3.x `AsyncIOScheduler` + `CronTrigger` | `Asia/Jakarta` (WIB, UTC+7) | 5 daily persona rituals |
-| `LoopScheduler` | `src/loops/scheduler.py` | APScheduler 3.x `AsyncIOScheduler` | `Asia/Bangkok` (ICT, UTC+7) | Generic daily loops via `LoopManager` |
-| Hermes cron | `hermes-config/config.yaml` | Hermes built-in cron engine | **UTC** (no per-job timezone) | 5 rituals + 3 maintenance jobs |
+**Date:** 2026-06-06
+**Status:** Complete
+**Scope:** Live state audit of VPS ritual scheduling mechanisms for Phase 5 Step 5.5 (Hermes cron job registration).
+**Author:** Guinevere (Autonomous Engineering Agent)
+**Prerequisites:** `~/.hermes/config.yaml`, `~/.hermes/crontab.yaml`, `~/.hermes/logs/gateway.log`, `~/.hermes/logs/agent.log`, `src/persona/ritual_scheduler.py`, `src/loops/scheduler.py`, `systemd/` units
 
 ---
 
-## 2. RitualScheduler — APScheduler Implementation (Primary)
+## 1. Executive Summary
 
-### File: `src/persona/ritual_scheduler.py` (405 lines)
+**Rituals are NOT currently firing through any mechanism.** Three potential pathways exist but all are non-functional:
 
-**Architecture:**
-- `RitualScheduler` class wraps `AsyncIOScheduler` with `CronTrigger`
-- `setup()` registers 5 cron jobs, returns the `AsyncIOScheduler` instance
-- `start()` / `stop()` lifecycle methods
-- Callback-based execution: caller provides `callback(ritual_name: str) -> RitualResult`
+| Pathway | Status | Reason |
+|---|---|---|
+| `hermes cron create` (Hermes native cron) | **NO jobs registered** | `hermes cron list` returns "No scheduled jobs" |
+| `config.yaml` `cron:` section (gateway inline cron) | **Jobs defined but never executed** | Gateway cron ticker runs (60s interval) but no job execution logs exist |
+| APScheduler `ritual_scheduler.py` / `LoopScheduler` | **Deprecated / not running** | `ritual_scheduler.py` deprecated in Phase 5; `guinevere-scheduler.service` not loaded |
 
-### Five Registered Rituals (from `RITUALS` list, lines 97–133)
-
-| Ritual | WIB Time | CronTrigger Args | `mood_aware` | `dnd_bypass` | Default Message |
-|---|---|---|---|---|---|
-| `morning` | 07:00 | `hour=7, minute=0` | True | False | "Selamat pagi, Darling. Mommy sudah siap nemenin hari kamu." |
-| `midday` | 12:00 | `hour=12, minute=0` | True | False | "Sayang, udah siang. Jangan lupa makan dan istirahat ya." |
-| `afternoon` | 17:00 | `hour=17, minute=0` | True | False | "Sore, Darling. Gimana hari ini? Cerita sama Mommy." |
-| `evening` | 21:00 | `hour=21, minute=0` | True | False | "Malam, sayang. Waktunya wind-down. Mommy di sini." |
-| `midnight` | 00:00 | `hour=0, minute=0` | False | False | "Self-evaluation complete. Silent mode until morning." |
-
-### DND Window (Do-Not-Disturb)
-- **Range:** `00:00 ≤ hour < 07:00` WIB
-- **Constants:** `DND_START_HOUR=0`, `DND_END_HOUR=7`
-- **Mechanism:** `RitualScheduler.is_dnd()` checks current hour in `Asia/Jakarta`. If inside DND and `dnd_bypass=False`, returns `RitualResult(success=False, error="Skipped: DND window active")`.
-- **Effect on midnight:** Midnight fires at 00:00 WIB, which is inside DND. The APScheduler job **does fire** (cron pays no attention to DND), but `execute_ritual()` gates it:
-  - Returns `success=False, error="Skipped: DND window active"`
-  - Callback is NOT invoked
-  - The `_default_execute()` fallback logs but returns a success result anyway — but this only applies when no callback is set
-
-### Midnight Ritual Behavior (from code analysis)
-- **`RitualScheduler` path:** Midnight ritual **always gets DND-suppressed** at the scheduler level (no callback fires)
-- **`MidnightRitual` class (`src/persona/rituals/midnight.py`):** Returns `suppressed=True` unconditionally. The `RitualResult` message is `"Self-evaluation complete. Silent mode until morning."` — intended for internal logging only.
-- **Enforcement:** Two layers of suppression — the `RitualScheduler DND gate` (blocks callback) AND the `MidnightRitual.execute()` method itself (always sets `suppressed=True`)
-
-### Discord Routing
-- **No direct Discord channel routing** in the ritual scheduler code
-- The callback pattern means a higher-level orchestrator (e.g., the Discord bot) **must** wire into `RitualScheduler.setup(callback=...)` to receive ritual events
-- The midnight ritual has explicit docstring: "This ritual is **never** sent to Discord — it is internal-only"
-- The monthly cost report (`src/core/services/monthly_report.py`) uses a dedicated Discord webhook (`DISCORD_COST_TRACKER_WEBHOOK`) — but this is separate from the ritual system
+**Active Hermes gateway** is v0.15.2 running as foreground process (PID 3915293 at last check) with Discord connected. Discord messages are processed interactively but no scheduled rituals fire.
 
 ---
 
-## 3. LoopScheduler — Separate Implementation
+## 2. Local Code Analysis
 
-### File: `src/loops/scheduler.py` (175 lines)
+### 2.1 `src/persona/ritual_scheduler.py` (APScheduler — Deprecated)
 
-- Standalone scheduler using `LoopManager` to drive the 7-phase SDLC loop
-- **Timezone: `Asia/Bangkok`** (not `Asia/Jakarta` — subtle but different IANA zone)
-- Used by `systemd/guinevere-scheduler.service` which runs `python -m src.loops.scheduler`
-- Not directly related to persona rituals, but shares the same APScheduler dependency
+- **Status:** Deprecated (Phase 5) with `DeprecationWarning` at module level (lines 11–15, 33–39)
+- **Engine:** `APScheduler 3.x` `AsyncIOScheduler` via `importlib.import_module` (dynamic import)
+- **Timezone:** `Asia/Jakarta` (WIB, UTC+7)
+- **5 Rituals defined:** All use `CronTrigger(hour=H, minute=0, timezone="Asia/Jakarta")`
+  - morning (07:00), midday (12:00), afternoon (17:00), evening (21:00), midnight (00:00)
+- **DND window:** 00:00–07:00 WIB — rituals during this window return skip result
+- **Midnight:** DND-suppressed by default (`dnd_bypass=False`)
+- **Not imported anywhere** in active production code — only re-exported from `src/persona/__init__.py` under `warnings.catch_warnings()` with DeprecationWarning suppressed
 
-### systemd Service: `guinevere-scheduler.service`
-- **Unit file:** `systemd/guinevere-scheduler.service`
-- **After:** `guinevere-loops.service network.target`
-- **Exec:** `/home/guinevere/code/guinevere/.venv/bin/python -m src.loops.scheduler`
-- **Env:** `.env.scheduler` file
-- **Resource limits:** `MemoryHigh=1G`, `MemoryMax=2G`, `CPUQuota=200%`
-- **Security:** `ProtectSystem=strict`, `ReadWritePaths` restricted
+**CLI check (VPS copy):** `grep -rn 'ritual_scheduler\|RitualScheduler' /home/guinevere/code/guinevere/src/ --include='*.py'` returns only the deprecation references in `persona/__init__.py` and the module itself. No active call sites.
+
+### 2.2 `src/loops/scheduler.py` (LoopScheduler — Not Running)
+
+- **Engine:** `APScheduler 3.x` `AsyncIOScheduler` with **`Asia/Bangkok`** timezone (NOT Jakarta!)
+- **Service:** `guinevere-scheduler.service` (systemd user unit exists at `systemd/guinevere-scheduler.service`)
+- **Status:** NOT running — `systemctl --user status guinevere-scheduler` returns "could not be found"
+- Has generic `add_daily_ritual(hour, minute, task, goal)` method but no pre-registered jobs
+- The LoopScheduler is designed for the agent loop SDLC, not persona rituals
+
+### 2.3 `src/discord/bot.py` / `guinevere-discord.service`
+
+- **Status:** NOT running — `systemctl --user status guinevere-discord` returns "could not be found"
+- Discord is now handled entirely by the Hermes gateway (`hermes gateway run --accept-hooks`)
+- No ritual/scheduler/cron references found in `src/discord/` module
+
+### 2.4 Local `hermes-config/config.yaml` vs VPS `~/.hermes/config.yaml`
+
+The two files are structurally different:
+- **Local:** Hand-written format with 338 lines — clean sections for discord, model, agent, hooks, cron, mcp_servers, observability, auth_matrix, approval, audit
+- **VPS:** Auto-generated by Hermes with `_config_version: 24`, 636 lines, completely different structure with `agent:`, `approvals:`, `platforms:`, `curator:`, `dashboard:`, etc.
+- **Local cron section:** Has 8 entries (3 maintenance + 5 rituals) with commands like `hermes chat -Q -q 'prompt'`
+- **VPS cron section:** Has same 8 entries but in auto-generated format (details in §3)
 
 ---
 
-## 4. Hermes Cron Configuration (Deployed)
+## 3. VPS Remote Analysis
 
-### File: `hermes-config/config.yaml` (lines 220–261)
+### 3.1 VPS System Context
+
+| Check | Result |
+|---|---|
+| Time zone | `Asia/Jakarta` (WIB, UTC+7) — confirmed via `timedatectl` |
+| Hermes version | v0.15.2 (2026.5.29.2) |
+| Hermes gateway | Running as foreground process (not systemd) |
+| Discord connection | Connected as Guinevere#1445 since 02:49 WIB today |
+| Total services running | Only `guinevere-shadow-monitor.timer` |
+
+### 3.2 `~/.hermes/config.yaml` — Cron Section
+
+```
+cron:
+- command: hermes doctor --report
+  enabled: true
+  name: daily_health_check
+  schedule: 0 6 * * *
+- command: hermes backup --full --destination idcloudhost
+  enabled: true
+  name: weekly_backup
+  schedule: 0 2 * * 0
+- command: hermes security --report
+  enabled: true
+  name: monthly_security_scan
+  schedule: 0 3 1 * *
+- command: 'hermes chat -Q -q ''Execute morning ritual: check mood, display streak, send greeting'''
+  enabled: true
+  name: ritual_morning
+  schedule: 0 7 * * *
+- command: 'hermes chat -Q -q ''Execute midday ritual: check mood, health reminder rotation'''
+  enabled: true
+  name: ritual_midday
+  schedule: 0 12 * * *
+- command: 'hermes chat -Q -q ''Execute afternoon ritual: check mood, task summary'''
+  enabled: true
+  name: ritual_afternoon
+  schedule: 0 17 * * *
+- command: 'hermes chat -Q -q ''Execute evening ritual: wind-down, day summary, streak'''
+  enabled: true
+  name: ritual_evening
+  schedule: 0 21 * * *
+- command: 'hermes chat -Q -q ''Execute midnight self-evaluation: mood transitions, punishment/reward review, streak update'''
+  enabled: true
+  name: ritual_midnight
+  schedule: 0 0 * * *
+  suppress_output: true
+```
+
+**Key observations:**
+- All 5 rituals defined with correct WIB schedules (0 7, 0 12, 0 17, 0 21, 0 0)
+- All use `hermes chat -Q -q` — no `hermes run` or `hermes plugin trigger`
+- All `enabled: true`
+- Midnight has `suppress_output: true`
+- **No `timezone:` field** in the cron section — inherits from system TZ (Asia/Jakarta) or Hermes default
+- **`timezone: ''`** (empty string) at line 575 in agent config under `agent.timezone`
+
+### 3.3 `~/.hermes/crontab.yaml`
+
+```
+jobs:
+- command: 'hermes chat -Q -q ''Execute morning ritual: check mood, display streak, send greeting'''
+  enabled: true
+  name: morning-ritual
+  schedule: 0 7 * * *
+- command: 'hermes chat -Q -q ''Execute midday ritual: check mood, health reminder rotation'''
+  enabled: true
+  name: midday-ritual
+  schedule: 0 12 * * *
+- command: 'hermes chat -Q -q ''Execute afternoon ritual: check mood, task summary'''
+  enabled: true
+  name: afternoon-ritual
+  schedule: 0 17 * * *
+- command: 'hermes chat -Q -q ''Execute evening ritual: wind-down, day summary, streak'''
+  enabled: true
+  name: evening-ritual
+  schedule: 0 21 * * *
+- command: 'hermes chat -Q -q ''Execute midnight self-evaluation: mood transitions, punishment/reward review, streak update'''
+  enabled: true
+  name: midnight-ritual
+  schedule: 0 0 * * *
+  suppress_output: true
+timezone: Asia/Jakarta
+```
+
+**Key observations:**
+- All 5 rituals defined with correct schedules
+- Midnight has `suppress_output: true`
+- `timezone: Asia/Jakarta` at top level
+- **NOT loaded by Hermes cron** — `hermes cron list` shows no jobs
+
+### 3.4 Hermes Cron Registration Status
+
+| Command | Output |
+|---|---|
+| `.venv/bin/hermes cron list` | `No scheduled jobs. Create one with 'hermes cron create ...'` |
+| `.venv/bin/hermes cron status` | `Gateway is running — cron jobs will fire automatically. No active jobs` |
+| `.venv/bin/hermes cron tick --accept-hooks` | No output (no jobs to tick) |
+
+**Conclusion:** Neither `config.yaml`'s `cron:` section nor `crontab.yaml` are automatically registered as Hermes cron jobs. Jobs must be created explicitly via `hermes cron create`.
+
+### 3.5 Log Analysis — No Cron Execution Evidence
+
+**`~/.hermes/logs/gateway.log`:**
+- "Cron ticker started (interval=60s)" — the ticker runs in the gateway process
+- "Cron ticker stopped" — on shutdown
+- No "Executing cron job", "Running job", or any ritual execution log line in gateway.log
+- Early runs (Jun 5) had "No adapter could be created for any of the 1 configured platform(s)" warning — Discord was repeatedly failing
+- Current session (since 02:49 WIB Jun 6) has Discord successfully connected
+
+**`~/.hermes/logs/agent.log`:**
+- Only **ONE** ritual-related entry ever: `2026-06-06 01:22:37 - 'Execute morning ritual: check mood'` with `platform=cli`
+- This was a **manual CLI invocation** (not cron), platform=cli, timestamp 01:22 WIB (wrong time for morning ritual)
+
+**`~/.hermes/logs/errors.log`:** No ritual/cron errors.
+
+**No guinevere-discord or guinevere-scheduler journal:** Both services are not loaded, so `journalctl --user -u guinevere-scheduler` and `journalctl --user -u guinevere-discord` return no entries.
+
+### 3.6 APScheduler Usage in Active Code (VPS)
+
+Only APScheduler references in active (non-deprecated) code:
+
+| File | Usage |
+|---|---|
+| `src/core/services/monthly_report.py` | `AsyncIOScheduler` for monthly cost report (registered in FastAPI lifespan) |
+| `src/memory/consolidation.py` | APScheduler cron for daily memory consolidation at 03:00 |
+| `src/loops/scheduler.py` | LoopScheduler (not running) |
+
+None of these handle persona rituals.
+
+---
+
+## 4. Hermes Cron Create API
+
+The `hermes cron create` command is the target mechanism for Phase 5 Step 5.5:
+
+```
+usage: hermes cron create [-h] [--name NAME] [--deliver DELIVER]
+                          [--repeat REPEAT] [--skill SKILLS] [--script SCRIPT]
+                          [--no-agent] [--workdir WORKDIR] [--profile PROFILE]
+                          schedule [prompt]
+
+schedule:  '30m', 'every 2h', or '0 7 * * *' (standard cron)
+prompt:    Optional self-contained prompt or task instruction
+--deliver: origin, local, telegram, discord, signal, or platform:chat_id
+--no-agent: Skip LLM — run --script and deliver stdout directly
+--script:  Path to script under ~/.hermes/scripts/
+--skill:   Attach a skill (repeatable)
+```
+
+### Delivery Targets for Rituals
+
+| Ritual | Delivery Target | Rationale |
+|---|---|---|
+| morning (07:00) | `--deliver discord:1510914600777023659` | Send greeting to guinevere-chat |
+| midday (12:00) | `--deliver discord:1510914600777023659` | Send health reminder to guinevere-chat |
+| afternoon (17:00) | `--deliver discord:1510914600777023659` | Send task check-in to guinevere-chat |
+| evening (21:00) | `--deliver discord:1510914600777023659` | Send wind-down to guinevere-chat |
+| midnight (00:00) | `--deliver origin` or no `--deliver` with `--no-agent` script | Internal only — no Discord delivery |
+
+The `--deliver discord:channel_id` syntax uses `platform:chat_id` format per the help text.
+
+For midnight's `internal_only`:
+- Option A: `--deliver origin` (delivers back to the origin platform — for cron, this is typically logged only)
+- Option B: `--deliver local` (writes to local stdout/logs only)
+- Option C: Use `--script` with `--no-agent` for a Python script that logs internally and produces no Discord-deliverable output
+
+---
+
+## 5. Config Changes Required for Phase 5 Step 5.5
+
+### 5.1 Hermes Cron Registration Commands
+
+Each ritual must be registered with `hermes cron create`. The prompt text should be concise and self-contained since Hermes executes it as an agent task.
+
+```bash
+# Morning ritual — 07:00 WIB
+hermes cron create "0 7 * * *" \
+  --name "ritual_morning" \
+  --deliver "discord:1510914600777023659" \
+  "Execute morning ritual: check mood, display streak, send greeting"
+
+# Midday ritual — 12:00 WIB
+hermes cron create "0 12 * * *" \
+  --name "ritual_midday" \
+  --deliver "discord:1510914600777023659" \
+  "Execute midday ritual: check mood, health reminder rotation"
+
+# Afternoon ritual — 17:00 WIB
+hermes cron create "0 17 * * *" \
+  --name "ritual_afternoon" \
+  --deliver "discord:1510914600777023659" \
+  "Execute afternoon ritual: check mood, task summary"
+
+# Evening ritual — 21:00 WIB
+hermes cron create "0 21 * * *" \
+  --name "ritual_evening" \
+  --deliver "discord:1510914600777023659" \
+  "Execute evening ritual: wind-down, day summary, streak"
+
+# Midnight ritual — 00:00 WIB (internal_only — NO Discord delivery)
+# Must NOT use --deliver discord. Use --deliver origin or local.
+hermes cron create "0 0 * * *" \
+  --name "ritual_midnight" \
+  --deliver "local" \
+  "Execute midnight self-evaluation: mood transitions, punishment/reward review, streak update"
+```
+
+### 5.2 Config.yaml Fix
+
+Set the timezone field in `~/.hermes/config.yaml` from empty to `Asia/Jakarta`:
 
 ```yaml
-cron:
-  # === System Health & Maintenance ===
-  - name: daily_health_check     # 0 6 * * *   → 06:00 UTC = 13:00 WIB
-  - name: weekly_backup           # 0 2 * * 0   → 02:00 UTC = 09:00 WIB (Sunday)
-  - name: monthly_security_scan   # 0 3 1 * *   → 03:00 UTC = 10:00 WIB (1st)
-
-  # === Persona Rituals (5 daily check-ins) ===
-  - name: ritual_morning          # 0 8 * * *   → 08:00 UTC = **15:00 WIB** ⚠️
-  - name: ritual_midday           # 0 12 * * *  → 12:00 UTC = **19:00 WIB** ⚠️
-  - name: ritual_afternoon        # 0 16 * * *  → 16:00 UTC = **23:00 WIB** ⚠️
-  - name: ritual_evening          # 0 20 * * *  → 20:00 UTC = **03:00+1 WIB** ⚠️
-  - name: ritual_midnight         # 0 0 * * *   → 00:00 UTC = **07:00 WIB** ⚠️
+# Line 575 currently: timezone: ''
+timezone: "Asia/Jakarta"
 ```
 
-### ⚠️ CRITICAL BLOCKER: Hermes Cron Timezone Mismatch
+### 5.3 Removal of Stale Config Entries
 
-The Hermes cron schedules use **standard UTC-based cron expressions** without any `timezone:` field in the individual job specs. This means:
+After Hermes cron jobs are registered, the `config.yaml` cron section entries for rituals become redundant (but can remain as documentation/reference). The `crontab.yaml` file is also unused by Hermes v0.15.2 for job execution — it may be a legacy format.
 
-| Ritual | Intended WIB | UTC Cron | Actual UTC Fire | Actual WIB Fire |
-|---|---|---|---|---|
-| morning | 07:00 WIB | `0 8 * * *` | 08:00 UTC | **15:00 WIB** ❌ |
-| midday | 12:00 WIB | `0 12 * * *` | 12:00 UTC | **19:00 WIB** ❌ |
-| afternoon | 17:00 WIB | `0 16 * * *` | 16:00 UTC | **23:00 WIB** ❌ |
-| evening | 21:00 WIB | `0 20 * * *` | 20:00 UTC | **03:00+1 WIB** ❌ |
-| midnight | 00:00 WIB | `0 0 * * *` | 00:00 UTC | **07:00 WIB** ❌ |
+### 5.4 Midnight internal_only Enforcement
 
-**All five ritual cron expressions are misaligned by 7–8 hours.** Effectively, the deployed Hermes cron is triggering rituals at completely wrong times if interpreted as UTC.
+Midnight must NEVER send to Discord. Safeguards:
+1. Use `--deliver local` (not discord) — no Discord channel ID in create command
+2. If using `--script` with `--no-agent`: write a small Python script at `~/.hermes/scripts/midnight_ritual.py` that logs to structlog and returns empty stdout (silent delivery)
+3. Verify post-creation with `hermes cron list` — confirm midnight job has no `discord` in its delivery target
 
-**However:** Hermes cron may interpret schedules in the system's local timezone (WIB/ICT) rather than UTC. The `hermes-config/config.yaml` format shown in Hermes docs supports `timezone:` as an optional per-job field in some versions, but none are specified here. This must be verified on the VPS by running `hermes cron list` to see actual next-fire times.
+---
 
-**Correct UTC expressions for Asia/Jakarta schedules:**
+## 6. Decision Matrix: Hermes Cron vs APScheduler vs LoopScheduler
 
-| Ritual | WIB Time | UTC Equivalent | Correct Cron |
+| Criterion | Hermes `cron create` (Target) | APScheduler `ritual_scheduler.py` (Deprecated) | LoopScheduler (Not running) |
 |---|---|---|---|
-| morning | 07:00 WIB | 00:00 UTC | `0 0 * * *` |
-| midday | 12:00 WIB | 05:00 UTC | `0 5 * * *` |
-| afternoon | 17:00 WIB | 10:00 UTC | `0 10 * * *` |
-| evening | 21:00 WIB | 14:00 UTC | `0 14 * * *` |
-| midnight | 00:00 WIB | 17:00 UTC (prev day) | `0 17 * * *` |
-
-### All Hermes Cron Jobs Are `enabled: true`
-
-All 8 cron jobs (3 maintenance + 5 rituals) have `enabled: true`. If the Hermes cron daemon is active, these jobs are firing — potentially at the wrong times.
+| Discord delivery | Native via `--deliver discord:channel_id` | Requires callback to bot.py | Via LoopManager → unknown |
+| Timezone control | Inherits system TZ (Asia/Jakarta) | Explicit `Asia/Jakarta` | `Asia/Bangkok` (wrong!) |
+| Midnight suppression | `--deliver local` or `--no-agent` script | `is_dnd()` gates at 00:00 | Not implemented |
+| Resilience | Gateway-managed, auto-restart | Tied to bot.py process death | Tied to scheduler service |
+| Lifecycle | `hermes cron list/add/remove` | Python in-process | systemd unit |
+| Audit trail | Gateway logs + agent.log | structlog | structlog |
+| **Recommendation** | **USE THIS** | Remove in Phase 7 | Fix timezone or replace |
 
 ---
 
-## 5. Memory Consolidation Scheduler (Separate)
+## 7. Risks and Mitigations
 
-### File: `src/memory/consolidation.py`
-
-- APScheduler job registered via `register_consolidation_job()`
-- **Timezone:** `Asia/Bangkok`
-- **Schedule:** 03:00 daily (ICT, UTC+7)
-- **Status in `main.py`:** Commented out for the main app — needs async DB sessionmaker
-- **Purpose:** Episodic-to-semantic memory consolidation, safe-word aware, DNR-safe
-- Tested via `tests/memory/test_consolidation.py` (unit tests, no real scheduler)
-
----
-
-## 6. Monthly Report Scheduler
-
-### File: `src/core/services/monthly_report.py`
-
-- Registered in `main.py` FastAPI lifespan (lines 52–55)
-- APScheduler `AsyncIOScheduler` with `CronTrigger(hour=1, minute=0)` — 01:00 UTC = 08:00 WIB
-- Job checks if today is the 1st of the month, then builds and posts to Discord webhook
-- **Timezone:** `WIB = timezone(timedelta(hours=7))` — hardcoded +07:00 offset
-- Uses `DISCORD_COST_TRACKER_WEBHOOK` env var
-
----
-
-## 7. Individual Ritual Module Analysis
-
-### Shared Pattern
-All five ritual classes (MorningRitual, MiddayRitual, AfternoonRitual, EveningRitual, MidnightRitual) follow the same structure:
-- `execute(**kwargs, *, now=None) -> RitualResult` async method
-- `_resolve_time(now)` static method — handles naive/aware/None datetime conversion to `Asia/Jakarta`
-- Import `RitualResult` and `TZ_JAKARTA` from `src.persona.rituals.morning`
-- Fatal error: `MidnightRitual` would fail on import unless `MorningRitual` exists (shared `RitualResult`)
-
-### Individual Modules
-
-| Module | Class | Dependencies | Distinct Logic |
-|---|---|---|---|
-| `morning.py` | `MorningRitual` | `Mood`, `structlog` | Mood-specific messages, streak display, DND suppression (local check) |
-| `midday.py` | `MiddayRitual` | `Mood`, `structlog` | Mood messages + rotating health reminder (`tm_yday % 3`) |
-| `afternoon.py` | `AfternoonRitual` | `Mood`, `structlog` | Mood messages + task count summary |
-| `evening.py` | `EveningRitual` | `Mood`, `structlog` | Mood messages + day summary + streak display |
-| `midnight.py` | `MidnightRitual` | `structlog` | Internal self-evaluation, **always suppressed** |
-
-### DND Suppression by Module
-- `MorningRitual`: Local DND check (`DND_START_HOUR <= hour < DND_END_HOUR`) — returns `suppressed=True` with empty message
-- `MiddayRitual`: No DND check (12:00 is outside window)
-- `AfternoonRitual`: No DND check (17:00 is outside window)
-- `EveningRitual`: No DND check (21:00 is outside window)
-- `MidnightRitual`: Always `suppressed=True` regardless of time (`_MOOD_MESSAGES` not even present — only log data)
-
----
-
-## 8. Dependency Graph
-
-```
-RitualScheduler (src/persona/ritual_scheduler.py)
-├── APScheduler 3.x (AsyncIOScheduler + CronTrigger)
-├── TZ_JAKARTA = "Asia/Jakarta"
-├── CronTrigger(hour=X, minute=Y, timezone="Asia/Jakarta")
-├── Callback → RITUAL_MAP → execute_ritual()
-│   ├── is_dnd() gate (blocks callback during 00:00–07:00 WIB)
-│   │   └── midnight ALWAYS blocked (00:00 ∈ DND)
-│   └── Callback (external Discord handler)
-│       └── NOT IMPLEMENTED in codebase — must be wired externally
-
-Five Ritual Classes (src/persona/rituals/*.py)
-├── Each depends on:
-│   ├── src.persona.mood_engine.Mood (except midnight)
-│   └── src.persona.rituals.morning.RitualResult (shared dataclass)
-│       └── Circular import risk: midday/afternoon/evening/midnight import from morning
-├── TZ_JAKARTA (ZoneInfo)
-└── structlog
-
-LoopScheduler (src/loops/scheduler.py)
-├── APScheduler 3.x (AsyncIOScheduler)
-├── TZ = "Asia/Bangkok"
-└── LoopManager → 7-phase SDLC loop
-
-Hermes Cron (hermes-config/config.yaml)
-├── No per-job timezone specified ⚠️
-├── 8 enabled cron jobs
-└── `hermes plugin trigger guinevere_safety ritual <name>`
-```
-
----
-
-## 9. Blocker Summary
-
-| # | Blocker | Severity | Description |
-|---|---|---|---|
-| B1 | **Hermes cron timezone misalignment** | **HIGH** | All 5 ritual cron schedules appear to use UTC timestamps, not WIB. Correct UTC expressions would be `0 0`, `0 5`, `0 10`, `0 14`, `0 17`. Current values: `0 8`, `0 12`, `0 16`, `0 20`, `0 0` — off by 7–8 hours. Must verify on VPS with `hermes cron list`. |
-| B2 | **No Discord routing wired to RitualScheduler** | **HIGH** | The `RitualScheduler` callback pattern requires an external Discord handler to be registered. Currently no code wires `RitualScheduler` to Discord. The Hermes cron path uses `hermes plugin trigger guinevere_safety ritual <name>` which routes through Hermes plugin system — this path must be audited for proper Discord delivery. |
-| B3 | **Midnight suppression depends on DND gate** | **MEDIUM** | Midnight ritual is suppressed by the `RitualScheduler.is_dnd()` gate (00:00–07:00 WIB). If the Hermes cron fires at 07:00 WIB (as currently configured, B1), the DND gate would no longer trigger. The `MidnightRitual` class has its own `suppressed=True` logic, but **if the Hermes plugin bypasses the RitualScheduler entirely**, the DND check must be replicated in the plugin. |
-| B4 | **Midnight ritual cross-import dependency** | **MEDIUM** | `MidnightRitual` imports `RitualResult` from `morning.py`. If `morning.py` is ever modified or removed, all other ritual modules break. Addressed by `src/persona/rituals/__init__.py` which only exports from `morning.py`. |
-| B5 | **Two schedulers, two timezones** | **LOW** | `RitualScheduler` uses `Asia/Jakarta`, `LoopScheduler` uses `Asia/Bangkok`. Both are UTC+07:00 with no DST, but they are different IANA zone identifiers. No functional impact but confusing for maintainers. |
-| B6 | **RitualScheduler not wired into main.py lifespan** | **LOW** | The `RitualScheduler` is not started anywhere in the application's main entry point. It exists as a standalone module/library with tests only. The deployed Hermes cron is the only active ritual trigger mechanism. |
-
----
-
-## 10. Phase 5 Action Items
-
-1. **Verify actual Hermes cron behavior on VPS:** Run `hermes cron list` to see next-fire times and determine if schedules are UTC or local.
-2. **Fix Hermes cron timezone:** Add `timezone: "Asia/Jakarta"` to each ritual cron job in `hermes-config/config.yaml`, OR adjust UTC cron expressions to match WIB.
-3. **Audit plugin Discord routing:** Confirm that `hermes plugin trigger guinevere_safety ritual midnight` does NOT send anything to Discord.
-4. **Replicate DND gate in Hermes plugin:** The `guinevere_safety` plugin handler for `ritual` must implement DND suppression independently of the APScheduler `RitualScheduler`.
-5. **Remove or deprecate the unused APScheduler `RitualScheduler`** if Hermes cron becomes the sole scheduler.
-6. **Add explicit assertion:** Midnight plugin handler must verify `discord_delivery == False` before returning.
-
----
-
-## 11. Evidence Sources
-
-| File | Lines | Description |
+| Risk | Severity | Mitigation |
 |---|---|---|
-| `src/persona/ritual_scheduler.py` | 1–405 | Full APScheduler ritual scheduler |
-| `src/persona/rituals/morning.py` | 1–167 | Morning ritual module |
-| `src/persona/rituals/midday.py` | 1–172 | Midday ritual module |
-| `src/persona/rituals/afternoon.py` | 1–126 | Afternoon ritual module |
-| `src/persona/rituals/evening.py` | 1–142 | Evening ritual module |
-| `src/persona/rituals/midnight.py` | 1–161 | Midnight ritual module |
-| `src/persona/rituals/__init__.py` | 1–17 | Rituals package init |
-| `src/loops/scheduler.py` | 1–175 | Loop scheduler (separate) |
-| `src/core/main.py` | 1–300 | FastAPI lifespan (report scheduler registrations) |
-| `src/core/services/monthly_report.py` | 1–538 | Monthly cost report scheduler |
-| `src/memory/consolidation.py` | 1–757 | Memory consolidation scheduler |
-| `hermes-config/config.yaml` | 220–261 | Deployed Hermes cron config |
-| `systemd/guinevere-scheduler.service` | 1–33 | systemd unit for scheduler |
-| `tests/persona/test_ritual_scheduler.py` | 1–401 | Scheduler unit tests |
+| Midnight leaks to Discord | **HIGH** | `--deliver local` + no discord channel param; verify with `hermes cron list` |
+| Timezone mismatch | MEDIUM | Set `timezone: Asia/Jakarta` in config.yaml; verify with `date` on VPS (confirmed correct) |
+| Discord adapter failure | MEDIUM | Gateway shows Discord connected since 02:49 Jun 6; monitor reconnect behavior |
+| Cron job drift | LOW | Verify with `hermes cron list` after creation and periodically |
+| Prompt not self-contained | MEDIUM | Prompts must be self-contained — Hermes agent executes them with no additional context |
 
 ---
 
-*Generated by Sisyphus-Junior. Complies with `AGENTS.md` §2.2 Research Wave and §2.9 File-Based Output Discipline. No configs edited, no cron mutations performed.*
+## 8. Files Referenced
+
+| File | Path |
+|---|---|
+| VPS config.yaml | `~/.hermes/config.yaml` (remote) |
+| VPS crontab.yaml | `~/.hermes/crontab.yaml` (remote) |
+| VPS gateway log | `~/.hermes/logs/gateway.log` (remote) |
+| VPS agent log | `~/.hermes/logs/agent.log` (remote) |
+| VPS errors log | `~/.hermes/logs/errors.log` (remote) |
+| Local ritual scheduler | `src/persona/ritual_scheduler.py` |
+| Local loop scheduler | `src/loops/scheduler.py` |
+| Local loop manager | `src/loops/manager.py` |
+| Local hermes config | `hermes-config/config.yaml` |
+| VPS hermes config | `~/.hermes/config.yaml` (auto-generated, 636 lines) |
+| Systemd units | `systemd/guinevere-*.service` |
+
+---
+
+## 9. Next Steps for Phase 5 Step 5.5
+
+1. **Set timezone** in `~/.hermes/config.yaml`: change `timezone: ''` to `timezone: "Asia/Jakarta"`
+2. **Register 5 cron jobs** via `hermes cron create` with exact schedules and delivery targets
+3. **Verify** with `hermes cron list` — confirm 5 jobs, correct schedules, correct delivery targets
+4. **Verify midnight isolation** — no discord channel ID in midnight job definition
+5. **Wait for next scheduled tick** or use `hermes cron tick` to force immediate execution
+6. **Check gateway.log** after tick to confirm job execution logs appear
+7. **Remove stale `crontab.yaml`** if Hermes does not use it (optional cleanup)
+
+---
+
+## 10. Sanitized Command Outputs
+
+### `hermes cron list`
+```
+No scheduled jobs.
+Create one with 'hermes cron create ...' or the /cron command in chat.
+```
+
+### `hermes cron status`
+```
+Gateway is running — cron jobs will fire automatically
+  PID: 3915293
+  No active jobs
+```
+
+### VPS time
+```
+Local time: Sat 2026-06-06 03:39:41 WIB
+Time zone: Asia/Jakarta (WIB, +0700)
+```
+
+### Gateway cron ticker in logs
+```
+2026-06-06 02:49:19,926 INFO gateway.run: Cron ticker started (interval=60s)
+```
+
+### Only ritual execution in agent.log
+```
+2026-06-06 01:22:37,513 INFO [...] agent.conversation_loop: conversation turn:
+  session=... model=ds/deepseek-v4-flash provider=custom platform=cli history=0
+  msg='Execute morning ritual: check mood'
+```
+*(Manual CLI — not cron. Note `platform=cli`, not `platform=cron`.)*
+
+### Discord adapter warning (Jun 5, now resolved)
+```
+WARNING gateway.run: No adapter could be created for any of the 1 configured platform(s).
+Gateway will continue for cron job execution.
+```
+
+---
+
+*Generated by Guinevere Autonomous Engineering Agent. Complies with AGENTS.md 2.2 Research Wave and 2.9 File-Based Output Discipline.*

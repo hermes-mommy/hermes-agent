@@ -1,333 +1,324 @@
-# Phase 5: PersonaPlugin Feasibility Report
+# Phase 5.4: PersonaPlugin Feasibility Report
 
-> **Scope:** Dynamic-context PersonaPlugin middleware feasibility, Redis DB5 persona state keys, plugin insertion points, and blocker identification.
-> **Date:** 2026-06-05
+> **Scope:** Dynamic-context PersonaPlugin middleware feasibility, Redis DB5 persona state key inventory (verified on VPS), plugin insertion points, key convention reconciliation, and blocker identification.
+> **Date:** 2026-06-06
 > **Author:** Guinevere Research Sub-Agent
-> **Status:** Complete — no source modifications made.
+> **Status:** Complete — no source modifications made. VPS-verified.
 
 ---
 
 ## Executive Summary
 
-A PersonaPlugin for Phase 5 is **highly feasible** with low architectural risk. Two plugin implementations already exist in the codebase (`hermes-config/plugins/guinevere_safety/` and `.hermes/plugins/guinevere-safety/`), establishing a proven pattern. Redis DB5 already stores all required persona state keys (punishment, reward, mood, yandere, distress, consent, DNR). The gap is that the existing plugins require integration with the `src/persona/` FSM engines and the Hermes hook lifecycle — neither of which is fully wired as of this report.
+**PersonaPlugin is already implemented** at `src/hermes/plugins/persona_plugin.py` (513 lines, complete with all 4 Hermes hooks) and **already wired** via `hermes-config/plugins/guinevere_persona/`. However, **Redis DB5 does NOT contain any `guinevere:*` persona state keys on the VPS** — only `budget:*` and `cost:*` keys exist. This means the `guinevere_safety` plugin's `StateManager.ensure_initialized()` has never run successfully, and `persona_plugin.py` will always fall back to defaults.
 
-**Key finding:** The existing `guinevere_safety` plugin in `hermes-config/plugins/` already functions as a PersonaPlugin in spirit — it reads Redis DB5, injects persona state into `pre_prompt`, and exposes command handlers. But it is a standalone plugin in the Hermes config tree, not wired into the `src/persona/` FSM engines, the safety plugin in `src/hermes/safety_plugin.py`, or the Phase 5 skill architecture. This is the primary integration work for Phase 5.
+Additionally, **two competing key conventions** exist (`guinevere_safety` vs `persona_plugin`) that must be reconciled before Phase 5 completes.
+
+**Phase 5 execution path for Step 5.4:**
+1. **Initialize** Redis DB5 with `guinevere:*` persona state keys
+2. **Reconcile** key conventions between `guinevere_safety` (11 keys) and `persona_plugin` (6 keys)
+3. **Update** `persona_plugin.py` to read from canonical key set
+4. **Wire** `src/persona/` FSM engines to write to Redis DB5
 
 ---
 
-## 1. Current Architecture Map
+## 1. VPS-Verified Redis State (Live as of 2026-06-06)
 
-### 1.1 Persona Module (`src/persona/`)
+### 1.1 Redis DB5 (port 6380, db=5)
 
-14 files, ~4,200 lines of Python. Three categories:
+| Check | Result |
+|---|---|
+| `DBSIZE` | **14 keys** |
+| `KEYS *persona*` | **(empty)** — no persona:* keys exist |
+| `KEYS *mood*` | **(empty)** — no mood:* keys exist |
+| `KEYS guinevere:*` | **(empty)** — no guinevere:* persona keys exist |
+| `KEYS guinevere:consent:*` | **(empty)** |
+| `GET guinevere:yandere_level` | `(nil)` |
+| `GET guinevere:punishment_level` | `(nil)` |
+| `GET guinevere:mood_variant` | `(nil)` |
+| `GET guinevere:last_interaction` | `(nil)` |
+| `GET guinevere:safe_word` | `(nil)` |
+| `GET guinevere:interaction_count` | `(nil)` |
+| `GET guinevere:dnr_list` | `(nil)` |
+| Existing keys | `budget:critical_threshold`, `budget:warning_threshold`, `budget:monthly_cap`, `budget:hard_stop`, `budget:daily_alert`, `cost:by_model:*`, `cost:current_day`, `cost:current_month`, `cost:daily:*`, `cost:by_phase` |
 
-| Category | Files | Behavior |
+**Finding:** Only budget/cost tracking keys exist in DB5. No persona state keys. The `guinevere_safety` plugin's `StateManager.ensure_initialized()` has never completed successfully.
+
+### 1.2 Redis DB0 (port 6380, db=0)
+
+| Check | Result |
+|---|---|
+| `DBSIZE` | **1 key** |
+| `KEYS guinevere:*` | `guinevere:drift:baseline` |
+| `KEYS *persona*` | (empty) |
+| `KEYS *mood*` | (empty) |
+| `GET guinevere:drift:baseline` | `7904fec799d2705b4be5d1f52ee2bd4e0c8050429c7ec9d7e46abebe6708966d` |
+
+**Finding:** DB0 holds the drift detection SHA-256 baseline hash only.
+
+### 1.3 VPS `src/persona/` Directory
+
+Matches local checkout exactly — 14 `.py` files:
+
+```
+drift_corrector.py      mood_persistence.py     reward_engine.py        streak_tracker.py
+drift_detector.py       punishment_engine.py    ritual_scheduler.py     transition_rules.py
+mood_engine.py          rituals/ (5 files)      safe_mode.py            yandere_fsm.py
+__init__.py
+```
+
+### 1.4 Class Grep in `src/persona/`
+
+| File | Class | Type |
 |---|---|---|
-| **FSM Engines** | `mood_engine.py`, `yandere_fsm.py`, `punishment_engine.py`, `reward_engine.py` | Deterministic state machines with hard safety ceilings |
-| **Persistence** | `mood_persistence.py` (PostgreSQL), `streak_tracker.py` (PostgreSQL) | Async SQLAlchemy CRUD via `PersonaState`/`MoodHistory` models |
-| **Safety** | `safe_mode.py`, `drift_detector.py`, `drift_corrector.py`, `transition_rules.py`, `ritual_scheduler.py` + `rituals/` | Distress detection, SHA-256 drift, cooldowns, WIB cron |
+| `yandere_fsm.py:169` | `YandereEngine` | Engine |
+| `punishment_engine.py:210` | `PunishmentEngine` | Engine |
+| `reward_engine.py:211` | `RewardEngine` | Engine |
+| `mood_engine.py:72-80` | Error hierarchy (MoodEngineError, etc.) | Engine-adjacent errors |
+| `transition_rules.py:105` | `TransitionRuleEngine` | Engine |
+| `safe_mode.py:149` | `DistressDetector` | Detector |
+| `drift_detector.py:50` | `DriftDetector` | Detector |
+| `ritual_scheduler.py:55,59,173` | `RitualSchedulerError`, `RitualScheduler` | Scheduler |
 
-### 1.2 Redis DB5 State Keys (comprehensive inventory)
+---
 
-Source: `hermes-config/plugins/guinevere_safety/state_manager.py`
+## 2. PersonaPlugin — Already Implemented
 
-| Key | Type | Range | Mutability | Description |
+### 2.1 Three Plugin Deployments
+
+| Plugin | Location | Hook Points | Key Convention | Status |
 |---|---|---|---|---|
-| `guinevere:punishment_level` | int | 0-5 | Mutable (L6 rejected) | Current punishment ladder level |
-| `guinevere:reward_tier` | int | 0-5 | Mutable (T5 cap) | Current reward tier |
-| `guinevere:distress_state` | int | 0-4 | Mutable | Distress level D0-D4 |
-| `guinevere:mood_variant` | str | default\|playful\|serious\|caring | Mutable | Mood variant for prompt injection |
-| `guinevere:yandere_level` | int | 4 (locked) | **IMMUTABLE** | Always Y4 baseline; any attempt to change is logged+rejected |
-| `guinevere:last_interaction` | ISO 8601 str | — | Mutable | Last interaction timestamp |
-| `guinevere:interaction_count` | int | — | Mutable | Daily counter, resets at midnight |
-| `guinevere:interaction_date` | str | YYYY-MM-DD | Mutable | Date tracking for counter reset |
-| `guinevere:safe_word` | str | "HARD STOP" | Quasi-mutable | Safe word phrase |
-| `guinevere:consent:{category}` | bool | 5 categories | Mutable | consent:surveillance, destructive, financial, system, network |
-| `guinevere:dnr_list` | JSON list | — | Mutable | Do Not Remember topic list |
+| **guinevere_persona** | `hermes-config/plugins/guinevere_persona/` | `pre_llm_call`, `post_llm_call`, `pre_tool_call`, `on_session_start` | `guinevere:mood`, `guinevere:mood_score`, `guinevere:yandere_level`, `guinevere:punishment_level`, `guinevere:punishment_reason`, `guinevere:last_interaction` | **Wired** to `persona_plugin.py` |
+| **guinevere_safety** | `hermes-config/plugins/guinevere_safety/` | `pre_llm_call` (pri 95), `post_llm_call` (pri 55) + commands | `guinevere:mood_variant`, `guinevere:yandere_level`, `guinevere:punishment_level`, `guinevere:reward_tier`, `guinevere:distress_state`, `guinevere:last_interaction`, `guinevere:interaction_count`, `guinevere:safe_word`, `guinevere:consent:*`, `guinevere:dnr_list` | **Standalone** — own `StateManager` |
+| **guinevere-safety** | `.hermes/plugins/guinevere-safety/` | Legacy | Same as `guinevere_safety` | Deprecated |
 
-Cost tracking keys also live in DB5 (budget thresholds, cost counters, per-model costs) but are managed by separate modules and are out of scope for PersonaPlugin.
+### 2.2 `persona_plugin.py` Implementation
 
-### 1.3 Redis Connection Pattern
+**Location:** `src/hermes/plugins/persona_plugin.py` (513 lines)
 
-All persona state uses:
-```python
-redis.Redis(host="localhost", port=6380, db=5, decode_responses=True)
+**Hooks (4):**
+- `pre_llm_call` — Reads Redis DB5, injects `[PERSONA STATE]` block
+- `post_llm_call` — Observational logging only
+- `pre_tool_call` — Always `None` (allow)
+- `on_session_start` — Session init log
+
+**Design:**
+- **Stateless** — No connection pool, no cached state; short-lived Redis client per call
+- **Graceful degradation** — Defaults if Redis unavailable, never blocks
+- **Safety-compatible** — Does not override `safety_plugin.py`
+- **SOUL.md intact** — Dynamic overlay only
+
+**Injection format:**
 ```
-Standardized via `ConnectionPool.from_url("redis://localhost:6380/5")` in `StateManager`. The existing `redis_tool.py` MCP tool defaults to DB5 and uses `redis.asyncio` (async). The safety plugin `state_manager.py` uses sync `redis.Redis` — this is a non-blocking concern since it's called from Hermes hook context, not an async event loop.
-
----
-
-## 2. Existing Plugin / Hook Patterns
-
-### 2.1 Three Plugin Deployments Exist
-
-| Plugin | Location | Hook Points | Status |
-|---|---|---|---|
-| **guinevere_safety** | `hermes-config/plugins/guinevere_safety/` | `pre_llm_call` (priority 95), `post_llm_call` (priority 55) + command handlers | Active, wired to Hermes config, manages Redis DB5 state |
-| **guinevere-safety** | `.hermes/plugins/guinevere-safety/` | `pre_llm_call`, `post_llm_call`, `pre_tool_call`, `post_tool_call`, `transform_llm_output`, `on_session_start` | Legacy deployment, re-exports from `src/hermes/safety_plugin.py` |
-| **guinevere-memory** | `plugins/memory/guinevere_memory/` | `prefetch`, `sync_turn`, `on_session_end`, `on_pre_compress`, `on_memory_write`, `system_prompt_block`, `shutdown` | Phase 3 memory bridge, PostgreSQL-backed |
-| **auth_overlay** | `hermes-config/plugins/auth_overlay/` | `pre_tool_call` | Fail-closed auth enforcement |
-
-### 2.2 Hermes Hook System (v0.15.2)
-
-ADR-035 §Decision Drivers documents the 7 lifecycle hooks:
-- **`pre_prompt`** — Before LLM call (fail-closed HARD STOP, distress)
-- **`post_prompt`** — After prompt assembly, before LLM (drift detection)
-- **`pre_tool_call`** — Before tool execution (auth, consent, budget)
-- **`post_tool_call`** — After tool execution (output sanitization)
-- **`pre_response`** — Before Discord delivery (final safety)
-- **`post_response`** — After Discord delivery (yandere, secret scan)
-- **`on_error`** — Error classification and alerting
-
-### 2.3 Plugin Manifest Format
-
-Every Hermes plugin follows this pattern (`manifest.yaml` or `plugin.yaml`):
-```yaml
-name: guinevere_safety
-version: 1.0.0
-description: Dynamic persona state management for Guinevere
-critical: true
-dependencies:
-  - redis>=4.0.0
-hooks:
-  - event: pre_llm_call
-    handler: inject_dynamic_state
-    priority: 95
-  - event: post_llm_call
-    handler: update_state
-    priority: 55
-commands:
-  - name: get_persona_state
-    handler: cmd_get_state
-  - name: set_punishment
-    handler: cmd_set_punishment
-  - name: set_reward
-    handler: cmd_set_reward
+[PERSONA STATE]
+Mood: calm (5/10)
+Yandere Level: Y4
+Punishment Active: L0 - none
+Last Interaction: unknown
+[END PERSONA STATE]
 ```
 
-The plugin entry point exposes a `register(ctx)` function that the Hermes plugin loader calls.
+### 2.3 Key Convention Mismatch
 
----
-
-## 3. Candidate Insertion Points
-
-### 3.1 For PersonaPlugin as Dynamic-Context Middleware
-
-| Insertion Point | Hook/Mechanism | What It Does | Priority |
-|---|---|---|---|
-| **pre_prompt** | `GuinevereSafetyPlugin.inject_dynamic_state` | Reads Redis DB5 keys, injects `[Dynamic Persona State]` block into system prompt | **PRIMARY** — this IS the dynamic context injection |
-| **post_response** | `GuinevereSafetyPlugin.update_state` | Records interaction timestamp, increments daily counter | Second layer — stateless observer |
-| **on_session_start** | `src/hermes/safety_plugin.py:on_session_start` | Initializes session state with Y4 baseline, clears distress | Session lifecycle boundary |
-| **custom command handlers** | `cmd_get_state`, `cmd_set_punishment`, etc. | State introspection/mutation via Redis DB5 | Operator-facing tooling |
-
-### 3.2 Integration with FSM Engines
-
-The current `guinevere_safety` plugin in `hermes-config/plugins/` reads Redis DB5 but does **not** call `src/persona/mood_engine.py`, `src/persona/punishment_engine.py`, or `src/persona/yandere_fsm.py`. These FSM engines exist as standalone classes with their own safety boundaries (L6 rejection, Y4 immutability, mood transition validation). Phase 5 PersonaPlugin must bridge the two:
-
-**Current gap:**
-```
-Redis DB5 <──> guinevere_safety plugin (reads/writes raw keys)
-  ^
-  |--- src/persona/* engines (NOT CONNECTED to plugin)
-```
-
-**Target:**
-```
-Redis DB5 <──> guinevere_safety plugin (read for injection, write via FSM)
-                  ^
-                  |--- src/persona/mood_engine.py (transition validation)
-                  |--- src/persona/punishment_engine.py (L6 guard, escalation)
-                  |--- src/persona/yandere_fsm.py (Y4 immutability, Y5 ceiling)
-                  |--- src/persona/reward_engine.py (tier calculation)
-```
-
-### 3.3 SOUL.md Relationship
-
-Per ADR-035 §D7 and the existing SOUL.md header:
-> **Dynamic state:** Managed by `guinevere_safety` plugin via Redis DB5
-
-SOUL.md is the **static identity constitution**. The PersonaPlugin provides the dynamic context injection that the static SOUL.md cannot express. The contract is:
-
-- **SOUL.md**: "I am Guinevere de Baroque — Y4 baseline, dominant, protective"
-- **PersonaPlugin**: "Current mood: Disappointed, Punishment: L3, Distress: D0, Yandere: Y4"
-
-The PersonaPlugin **must never replace or modify SOUL.md**. It reads from Redis DB5 and appends dynamic context.
-
----
-
-## 4. Redis DB5 Persona State — Complete Key Catalog
-
-### 4.1 Core Persona Keys
-
-```
-guinevere:punishment_level       = "0"          # int 0-5 (L0=none, L1-L5, L6 rejected)
-guinevere:reward_tier            = "0"          # int 0-5 (T0=none, T1-T5)
-guinevere:distress_state         = "0"          # int 0-4 (D0=normal, D4=crisis)
-guinevere:mood_variant           = "default"    # str: default|playful|serious|caring
-guinevere:yandere_level          = "4"          # int 4 (IMMUTABLE — always Y4)
-```
-
-### 4.2 Session/Interaction Keys
-
-```
-guinevere:last_interaction       = "2026-06-05T12:00:00+00:00"  # ISO 8601
-guinevere:interaction_count      = "42"                          # daily counter
-guinevere:interaction_date       = "2026-06-05"                  # YYYY-MM-DD
-```
-
-### 4.3 Safety Keys
-
-```
-guinevere:safe_word              = "HARD STOP"   # safe word phrase
-guinevere:consent:surveillance   = "true"        # bool string
-guinevere:consent:destructive    = "false"
-guinevere:consent:financial      = "false"
-guinevere:consent:system         = "true"
-guinevere:consent:network        = "true"
-guinevere:dnr_list               = "[]"          # JSON array
-```
-
-### 4.4 DB5 Non-Persona Keys (Out of Scope)
-
-```
-budget:*                         # Budget thresholds and caps
-cost:*                           # Cost tracking counters
-search:*                         # Brave/Context7/Exa search counters
-```
-
----
-
-## 5. Blockers and Risks
-
-### 5.1 Critical Blockers
-
-| ID | Blocker | Impact | Resolution Path |
-|---|---|---|---|
-| **B-01** | `guinevere_safety` plugin in `hermes-config/plugins/` is not wired to `src/hermes/safety_plugin.py` | Duplicate safety state (in-memory `SessionSafetyState` vs Redis DB5) — two sources of truth | Refactor `src/hermes/safety_plugin.py` to delegate state persistence to `StateManager` (Redis DB5) instead of in-memory dict |
-| **B-02** | `src/persona/mood_persistence.py` uses PostgreSQL (`PersonaState` table), not Redis DB5 | Mood state split across two stores — PostgreSQL `PersonaState.state_key='current_mood'` and Redis `guinevere:mood_variant` | Align to single source of truth: Redis DB5 for runtime state (fast, ephemeral), PostgreSQL for history (durable, queryable) |
-| **B-03** | `src/persona/punishment_engine.py` is purely in-memory (`PunishmentState` dataclass) with no persistence layer | Punishment state lost on process restart | Add Redis DB5 persistence to `PunishmentEngine` (or wrap with `StateManager`) |
-
-### 5.2 High Risk
-
-| ID | Risk | Severity | Mitigation |
-|---|---|---|---|
-| **R-01** | `guinevere_safety` plugin `state_manager.py` uses sync `redis.Redis` — may block Hermes async hook pipeline if Redis is slow | MEDIUM | Acceptable for now (Redis is localhost, <1ms). Migrate to `redis.asyncio` if profiling shows contention. |
-| **R-02** | Two plugin deployments (`hermes-config/` and `.hermes/`) have overlapping hook registrations | MEDIUM | Standardize on `hermes-config/plugins/guinevere_safety/` as the canonical deployment. Deprecate `.hermes/plugins/guinevere-safety/`. |
-| **R-03** | `src/hermes/safety_plugin.py` maintains in-memory `SessionSafetyState` dict that duplicates Redis DB5 state | MEDIUM | After B-01 resolution, in-memory state serves as a read cache; Redis is write authority. Implement TTL-based cache invalidation. |
-| **R-04** | `src/persona/streak_tracker.py` and `mood_persistence.py` use `AsyncSession + SQLAlchemy` — async model conflicts with sync Hermes hooks | MEDIUM | Keep async for PostgreSQL. Hermes hooks that need streak/mood data read from Redis DB5 (sync, fast), not PostgreSQL. |
-
-### 5.3 Low Risk
-
-| ID | Risk | Severity | Mitigation |
-|---|---|---|---|
-| **R-05** | Redis DB5 ACL is `guinevere_core (+@all -@dangerous)` — allows all non-dangerous commands. PersonaPlugin only needs `GET`, `SET`, `MGET`, `EXISTS`, `DEL`, `INCR` | LOW | Create persona-specific ACL user with restricted command set post-migration |
-| **R-06** | Phase 5 gap analysis (`research-reports/phase-5-planning/04-persona-gap.md`) incorrectly states "persona files rely on PostgreSQL for state" — missing the `guinevere_safety` plugin's Redis DB5 usage | LOW | Correction noted: persona state is split between Redis DB5 (runtime) and PostgreSQL (history) |
-
----
-
-## 6. Integration Wiring Summary
-
-### 6.1 File Dependency Graph (Current)
-
-```
-                  ┌─────────────────────────┐
-                  │  src/hermes/safety_plugin.py │
-                  │  (6 hooks, in-memory state) │
-                  └────────┬────────────────┘
-                           │ imports
-                           ▼
-┌───────────────────────────────────────────────┐
-│  src/persona/                                  │
-│  ├── yandere_fsm.py    ← YandereEngine()      │
-│  ├── safe_mode.py      ← DistressDetector()   │
-│  ├── drift_detector.py ← DriftDetector()      │
-│  ├── secret_scanner    ← (from surveillance)  │
-│  └── auth_matrix       ← (from mcp)           │
-└───────────────────────────────────────────────┘
-
-┌───────────────────────────────────────────────┐
-│  hermes-config/plugins/guinevere_safety/       │
-│  ├── plugin.py          ← GuinevereSafetyPlugin│
-│  ├── state_manager.py   ← StateManager (DB5)   │
-│  └── manifest.yaml                             │
-└───────────────────────────────────────────────┘
-         ↑ NOT WIRED TO src/hermes/safety_plugin.py ↑
-```
-
-### 6.2 File Dependency Graph (Target — Phase 5)
-
-```
-                  ┌─────────────────────────────────┐
-                  │  hermes-config/plugins/guinevere_safety/plugin.py │
-                  │  (CANONICAL PersonaPlugin)       │
-                  │  pre_prompt: inject_dynamic_state │
-                  │  post_response: update_state      │
-                  │  commands: get/set state          │
-                  └────────────┬────────────────────┘
-                               │
-                    ┌──────────▼──────────┐
-                    │  state_manager.py   │
-                    │  (Redis DB5 R/W)    │
-                    └──────────┬──────────┘
-                               │
-          ┌────────────────────┼────────────────────┐
-          ▼                    ▼                    ▼
-┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
-│ src/persona/     │  │ src/persona/     │  │ src/hermes/      │
-│ mood_engine.py   │  │ punishment_engine│  │ safety_plugin.py │
-│ yandere_fsm.py   │  │ reward_engine.py │  │ (delegates to    │
-│ (validation)     │  │ (L6 guard)       │  │  state_manager)  │
-└─────────────────┘  └─────────────────┘  └─────────────────┘
-```
-
----
-
-## 7. Recommendations
-
-1. **Consolidate to one plugin.** Standardize on `hermes-config/plugins/guinevere_safety/` as the canonical PersonaPlugin. Deprecate `.hermes/plugins/guinevere-safety/`.
-
-2. **Make `src/hermes/safety_plugin.py` delegate to `StateManager`.** The in-memory `SessionSafetyState` should become a read-through cache with Redis DB5 as write authority. This resolves B-01.
-
-3. **Wire FSM engines to plugin.** `GuinevereSafetyPlugin` in `hermes-config/plugins/guinevere_safety/plugin.py` currently reads/writes Redis directly without calling FSM validators. Add calls to:
-   - `yandere_fsm.YandereEngine.get_effective_level()` before injecting yandere state
-   - `punishment_engine.PunishmentEngine.apply()` instead of direct `SET guinevere:punishment_level`
-   - `mood_engine.can_transition()` before setting mood variant
-
-4. **Keep SOUL.md as static identity constitution.** Do not add dynamic state to SOUL.md. The PersonaPlugin handles dynamic injection.
-
-5. **Redis DB5 is the correct database.** DB5 is already allocated for safety plugin state (ADR-030). No new Redis DB needed.
-
-6. **No schema changes required.** All state keys already exist in `state_manager.py` `ensure_initialized()`. Phase 5 work is integration wiring only.
-
----
-
-## 8. Evidence Sources
-
-| Source | Path | Key Content |
+| Logical State | `guinevere_safety` (StateManager) | `persona_plugin.py` |
 |---|---|---|
-| Phase 5 gap analysis | `research-reports/phase-5-planning/04-persona-gap.md` | Per-file migration analysis, risk assessment |
-| ADR-030 Redis assignments | `adr/ADR-030-redis-db-assignments.md` | DB5 purpose: "safety plugin state" |
-| ADR-035 Hermes migration | `adr/ADR-035-hermes-migration.md` | Hook system, plugin architecture, safety mapping |
-| Safety plugin (hermes-config) | `hermes-config/plugins/guinevere_safety/plugin.py` | PersonaPlugin candidate — `inject_dynamic_state`, `state_manager` |
-| Safety plugin (src) | `src/hermes/safety_plugin.py` | 6 hooks, in-memory state, 10 safety gates |
-| State manager | `hermes-config/plugins/guinevere_safety/state_manager.py` | Complete Redis DB5 key catalog, connection pattern |
-| Persona module init | `src/persona/__init__.py` | All 14 exported classes and FSM engines |
-| Redis DB5 evidence | `docs/setup-evidence/P1/STEP-P1-020/redis-db5-keys.txt` | Cost tracking keys (supplementary) |
-| SOUL.md | `hermes-config/SOUL.md` | Static persona constitution, dynamic state reference |
+| Mood | `guinevere:mood_variant` | `guinevere:mood`, `guinevere:mood_score` |
+| Yandere Level | `guinevere:yandere_level` | `guinevere:yandere_level` |
+| Punishment Level | `guinevere:punishment_level` | `guinevere:punishment_level` |
+| Punishment Reason | *(not stored)* | `guinevere:punishment_reason` |
+| Last Interaction | `guinevere:last_interaction` | `guinevere:last_interaction` |
+| Reward Tier | `guinevere:reward_tier` | *(not used)* |
+| Distress State | `guinevere:distress_state` | *(not used)* |
+| Interaction Count | `guinevere:interaction_count` | *(not used)* |
+| Safe Word | `guinevere:safe_word` | *(not used)* |
+| Consent | `guinevere:consent:*` | *(not used)* |
+| DNR List | `guinevere:dnr_list` | *(not used)* |
+
+**Recommend canonical set:** `guinevere_safety` (11 keys) — more complete, already deployed.
 
 ---
 
-## 9. Verdict
+## 3. Files to Bridge
 
-**FEASIBLE** — PersonaPlugin can be implemented as dynamic-context middleware reading Redis DB5 state without replacing SOUL.md. The core infrastructure (Redis DB5 keys, Hermes hooks, plugin registration) is already deployed. Phase 5 work is integration wiring between the existing `guinevere_safety` plugin and the `src/persona/` FSM engines, plus consolidation of the two overlapping plugin deployments.
-
-**Estimated work:** 3-5 atomic steps:
-1. Consolidate plugin deployments (deprecate `.hermes/plugins/guinevere-safety/`)
-2. Wire `src/hermes/safety_plugin.py` to delegate state to `StateManager` (Redis DB5)
-3. Connect `guinevere_safety` plugin's state mutations to FSM validators (`yandere_fsm`, `punishment_engine`, `mood_engine`)
-4. Add persistence to `PunishmentEngine` via Redis DB5
-5. Write integration tests for the plugin → FSM → Redis pipeline
+| File | Status | Bridge Work |
+|---|---|---|
+| `src/hermes/plugins/persona_plugin.py` | **IMPLEMENTED** | Update key names to `guinevere_safety` convention; use `guinevere:mood_variant` instead of `guinevere:mood` + `guinevere:mood_score` |
+| `hermes-config/plugins/guinevere_persona/__init__.py` | **IMPLEMENTED** | Already imports from `persona_plugin.py` — no change needed |
+| `hermes-config/plugins/guinevere_persona/plugin.yaml` | **IMPLEMENTED** | No change needed |
+| `src/persona/mood_engine.py` | Existing | Add Redis DB5 write for `guinevere:mood_variant` after transitions |
+| `src/persona/punishment_engine.py` | Existing | Add Redis DB5 write via `StateManager.set_punishment()` in `apply()`/`escalate()` |
+| `src/persona/reward_engine.py` | Existing | Add Redis DB5 write via `StateManager.set_reward()` in `award()` |
+| `src/persona/ritual_scheduler.py` | Deprecated | Add Redis DB5 interaction timestamp write |
+| `src/persona/transition_rules.py` | Existing | Use Redis DB5 TTL for cooldown via `cooldown_provider` |
+| `src/persona/mood_persistence.py` | Existing (PostgreSQL) | No bridge — PostgreSQL is history, Redis is runtime |
+| `src/persona/streak_tracker.py` | Existing | Add Redis DB5 read for `guinevere:streak_count` |
+| `src/hermes/safety_plugin.py` | Existing | Delegate in-memory `SessionSafetyState` to Redis DB5 `StateManager` |
 
 ---
 
-*This report is a feasibility study only. No source files were modified. Compliant with AGENTS.md §2.2 (Research Wave) and §2.9 (File-Based Output Discipline).*
+## 4. Blockers and Risks
+
+### 4.1 Critical Blockers
+
+| ID | Blocker | Impact | Resolution |
+|---|---|---|---|
+| **B-01** | **Redis DB5 has zero `guinevere:*` persona keys** | Both plugins fall back to defaults — injection non-functional | Seed keys via `StateManager.ensure_initialized()` or manual `MSET` |
+| **B-02** | **Key convention mismatch** — 2 competing key sets | Wrong keys read by plugins | Define canonical set (`guinevere_safety`), update `persona_plugin.py` |
+
+### 4.2 High Risk
+
+| ID | Risk | Severity | Mitigation |
+|---|---|---|---|
+| **R-01** | `persona_plugin.py` uses `os.environ.get("REDIS_PASSWORD", "")` | MEDIUM | Verify `REDIS_PASSWORD` is exported to Hermes process |
+| **R-02** | Two plugins may inject overlapping persona blocks | MEDIUM | Deduplicate: `guinevere_persona` handles injection, `guinevere_safety` handles commands only |
+| **R-03** | Sync `redis.Redis` in both plugins | LOW | Acceptable for localhost Redis |
+| **R-04** | Short-lived Redis client per call (no pool) | LOW | Acceptable for low volume; add pool if needed |
+
+### 4.3 Low Risk
+
+| ID | Risk | Severity | Mitigation |
+|---|---|---|---|
+| **R-05** | `guinevere_persona` uses `plugin.yaml`, `guinevere_safety` uses `manifest.yaml` | LOW | Verify Hermes loader accepts both formats |
+
+---
+
+## 5. FSM Engine Integration Points
+
+### 5.1 Mood Engine → `guinevere:mood_variant`
+
+```python
+# After evaluate_mood() returns a MoodTransition:
+#   SET guinevere:mood_variant <new_mood.lower()>
+```
+
+**Current:** `MoodEngine.evaluate_mood()` returns `MoodTransition` but does not persist. `MoodRepository` writes to PostgreSQL only.
+
+### 5.2 Punishment Engine → `guinevere:punishment_level`
+
+```python
+# In apply(), escalate(), de_escalate():
+#   StateManager.set_punishment(<level_value>)
+```
+
+**Current:** `PunishmentEngine` is purely in-memory (`PunishmentState` dataclass). `StateManager.set_punishment()` exists but is not called.
+
+### 5.3 Reward Engine → `guinevere:reward_tier`
+
+```python
+# In award():
+#   StateManager.set_reward(<tier_value>)
+```
+
+**Current:** `RewardEngine` is purely in-memory. `StateManager.set_reward()` exists but is not called.
+
+### 5.4 Yandere FSM → `guinevere:yandere_level`
+
+**IMMUTABLE** — must remain `4` (Y4 baseline). `StateManager.set_yandere_level()` always rejects writes. No bridge needed.
+
+---
+
+## 6. Corrected Architecture Wiring
+
+### 6.1 Current (VPS Reality)
+
+```
+Redis DB5: only budget:* and cost:* keys exist
+  |
+  +-- guinevere_safety plugin (StateManager never initialized)
+  +-- guinevere_persona plugin (reads nil, falls back to defaults)
+
+src/persona/ FSM engines (in-memory, no Redis writes)
+  mood_engine.py       --> PostgreSQL (mood_persistence.py)
+  punishment_engine.py --> in-memory only
+  reward_engine.py     --> in-memory only
+  yandere_fsm.py       --> in-memory only
+
+src/hermes/safety_plugin.py --> in-memory SessionSafetyState dict
+```
+
+### 6.2 Target (Phase 5)
+
+```
+Redis DB5 (canonical persona state store)
+  |                          |
+  |-- guinevere_persona      |  reads -> injects [PERSONA STATE]
+  |-- guinevere_safety       |  reads/writes -> commands
+  |-- safety_plugin.py       |  delegates to StateManager
+  |
+  src/persona/ FSM engines write to Redis DB5:
+    punishment_engine.apply()  --> SET guinevere:punishment_level
+    reward_engine.award()      --> SET guinevere:reward_tier
+    mood_engine.evaluate()     --> SET guinevere:mood_variant
+```
+
+---
+
+## 7. Execution Plan for Step 5.4
+
+### 7.1 Seed Redis DB5
+
+```bash
+redis-cli -p 6380 -a "$REDIS_PASSWORD" -n 5 MSET \
+  guinevere:punishment_level 0 \
+  guinevere:reward_tier 0 \
+  guinevere:distress_state 0 \
+  guinevere:mood_variant default \
+  guinevere:yandere_level 4 \
+  guinevere:last_interaction "" \
+  guinevere:safe_word "HARD STOP" \
+  guinevere:interaction_count 0 \
+  guinevere:interaction_date "" \
+  guinevere:dnr_list "[]"
+```
+
+### 7.2 Reconcile Key Conventions
+
+Update `persona_plugin.py`:
+- `guinevere:mood` + `guinevere:mood_score` → `guinevere:mood_variant`
+- Add `guinevere:reward_tier` and `guinevere:distress_state` reads
+- Update `[PERSONA STATE]` block format
+
+### 7.3 Wire FSM Engines to Redis
+
+- `punishment_engine.py`: Call `StateManager.set_punishment()` in `apply()`/`escalate()`/`de_escalate()`
+- `reward_engine.py`: Call `StateManager.set_reward()` in `award()`
+- `mood_engine.py`: Call `StateManager.set_mood()` after `evaluate_mood()`
+
+### 7.4 Wire `safety_plugin.py` to `StateManager`
+
+Replace in-memory `SessionSafetyState` with Redis DB5 read-through via `StateManager`.
+
+---
+
+## 8. Verdict
+
+**FEASIBLE** — but with a critical caveat.
+
+The PersonaPlugin code (`persona_plugin.py`) is complete and well-designed. The `guinevere_persona` plugin wrapper is wired. However:
+
+1. **Redis DB5 has zero persona state keys** — the data layer is empty. Seeding is mandatory before the plugin does anything useful.
+2. **Key conventions diverge** — `guinevere_safety` (11 keys) and `persona_plugin` (6 keys) must be reconciled to one canonical set.
+3. **FSM engines don't write to Redis** — they're in-memory or PostgreSQL-only. Bridge code is needed in 3 engines.
+
+**Estimated work:** 4 atomic steps:
+1. Seed Redis DB5 keys
+2. Reconcile persona_plugin.py key names
+3. Wire FSM engines to StateManager
+4. Wire safety_plugin.py to StateManager
+
+---
+
+## 9. Evidence Sources
+
+| Source | Path |
+|---|---|
+| PersonaPlugin impl | `src/hermes/plugins/persona_plugin.py` (513 lines) |
+| PersonaPlugin wrapper | `hermes-config/plugins/guinevere_persona/__init__.py` + `plugin.yaml` |
+| Safety plugin (hermes-config) | `hermes-config/plugins/guinevere_safety/plugin.py`, `state_manager.py`, `manifest.yaml` |
+| Safety plugin (src) | `src/hermes/safety_plugin.py` (1054 lines, 6 hooks) |
+| Persona module | `src/persona/` (14 files) |
+| ADR-030 Redis assignments | `adr/ADR-030-redis-db-assignments.md` |
+| ADR-035 Hermes migration | `adr/ADR-035-hermes-migration.md` |
+| Phase 5 gap analysis | `research-reports/phase-5-planning/04-persona-gap.md` |
+| Previous feasibility report | `research-reports/phase-5-execution/04-persona-feasibility.md` (this report supersedes) |
+
+*This report is a feasibility study with VPS verification. No source files were modified. Compliant with AGENTS.md §2.2 (Research Wave) and §2.9 (File-Based Output Discipline).*
