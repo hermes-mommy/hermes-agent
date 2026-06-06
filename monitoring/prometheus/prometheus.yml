@@ -60,10 +60,16 @@ scrape_configs:
     static_configs:
       - targets: ["alertmanager:9093"]
 
-  # Job 8: Hermes LLM routing metrics — Phase 6
+  # Job 8: Hermes gateway metrics — Phase 7b canonical job
   # Exposes hermes_llm_calls_total, hermes_llm_latency_seconds,
-  # hermes_llm_cost_usd_total, and hermes_fallback_activations_total.
-  - job_name: "hermes-llm-routing"
+  # hermes_llm_cost_usd_total, hermes_fallback_activations_total,
+  # and pending Hermes-native hermes_safety_*, hermes_memory_*, hermes_rate_limit_*.
+  # Uses host.docker.internal because Hermes runs on host, not in Docker.
+  - job_name: "hermes"
     metrics_path: "/metrics"
     static_configs:
-      - targets: ["localhost:9191"]
+      - targets: ["host.docker.internal:9191"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: "hermes-gateway"

@@ -6,10 +6,24 @@ Lists all slash commands grouped by their 7 categories.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
-from typing import Any, Final
+from typing import Final, Protocol, TypeVar
+
+from src.hermes_plugins.command_catalog import command_categories as _command_categories
 
 logger = logging.getLogger(__name__)
+
+_F = TypeVar("_F", bound=Callable[..., object])
+
+
+class _HermesPluginCtx(Protocol):
+    """Minimal protocol for a Hermes plugin registration context."""
+
+    def register_command(
+        self, name: str, *, description: str = ""
+    ) -> Callable[[_F], _F]:
+        ...
 
 # ── Timezone ────────────────────────────────────────────────────────────────
 
@@ -69,9 +83,7 @@ def _format_help_markdown(
 
     Replicates the 7 category fields from cmd_help.py in markdown.
     """
-    from src.discord.commands import command_categories
-
-    cats = categories if categories is not None else command_categories()
+    cats = categories if categories is not None else _command_categories()
     ref = datetime.now(tz=timezone.utc)
     ts_str = _format_wib_timestamp(ref)
     cmd_count = _compute_command_count(cats)
@@ -100,18 +112,18 @@ def _format_help_markdown(
 # ── Plugin Registration ─────────────────────────────────────────────────────
 
 
-def register(ctx: Any) -> None:
+def register(ctx: _HermesPluginCtx) -> None:
     """Register /help command with Hermes plugin context."""
 
     @ctx.register_command(
         "help",
         description="Show the Guinevere command guide.",
     )
-    async def handle(context: Any) -> str:
+    async def handle(context: object) -> str:
         """Handle /help invocation."""
         try:
             return _format_help_markdown()
-        except Exception as exc:
+        except (TypeError, ValueError) as exc:
             logger.exception(
                 "help_command_failed",
                 extra={"error": str(exc), "error_type": type(exc).__name__},

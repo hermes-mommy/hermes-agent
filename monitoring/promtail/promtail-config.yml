@@ -15,7 +15,8 @@ clients:
   - url: http://loki:3100/loki/api/v1/push
 
 scrape_configs:
-  # Job 1: Systemd journal — captures all guinevere-* service logs
+  # Job 1: Systemd journal — captures all guinevere-* and hermes-* service logs
+  # Regex matches both guinevere-*.service and hermes-gateway.service
   - job_name: journal
     journal:
       max_age: 12h
@@ -28,7 +29,7 @@ scrape_configs:
       - source_labels: ["__journal__hostname"]
         target_label: "hostname"
       - source_labels: ["__journal__systemd_unit"]
-        regex: "guinevere-(.+)\\.service"
+        regex: "(?:guinevere|hermes)-(.+)\\.service"
         target_label: "service"
 
   # Job 2: Docker container logs — monitoring stack containers

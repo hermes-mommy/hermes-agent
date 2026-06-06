@@ -15,6 +15,41 @@ route:
   group_interval: 5m
   repeat_interval: 4h
   routes:
+    # ── Hermes routes first — before generic severity to avoid shadowing ──
+
+    # Hermes SEV1: Gateway down — Discord critical + Gotify critical (short repeat)
+    - match:
+        alertname: "GuinevereHermesGatewayDown"
+      receiver: "discord-critical"
+      repeat_interval: 2m
+      continue: true
+    - match:
+        alertname: "GuinevereHermesGatewayDown"
+      receiver: "gotify-critical"
+      repeat_interval: 2m
+      continue: false
+
+    # Hermes SEV2: Latency, safety, budget — Discord warning + Gotify warning
+    - match_re:
+        alertname: "GuinevereHermes(LatencyHigh|SafetyBlocksSpike|BudgetNearCap)"
+      receiver: "discord-warning"
+      repeat_interval: 10m
+      continue: true
+    - match_re:
+        alertname: "GuinevereHermes(LatencyHigh|SafetyBlocksSpike|BudgetNearCap)"
+      receiver: "gotify-warning"
+      repeat_interval: 10m
+      continue: false
+
+    # Hermes SEV3: Memory recall, model anomaly — Discord info
+    - match_re:
+        alertname: "GuinevereHermes(MemoryRecallLatency|ModelCallsAnomaly)"
+      receiver: "discord-info"
+      repeat_interval: 30m
+      continue: false
+
+    # ── Generic severity routes (non-Hermes alerts) ──
+
     # SEV0: Critical — Discord + Gotify immediately
     - match:
         sev_level: "SEV0"

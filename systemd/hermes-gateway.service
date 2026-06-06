@@ -1,0 +1,68 @@
+# Hermes Gateway — systemd Service Unit — Phase 7b Hardening
+# Repository template for the Hermes Agent gateway process.
+# NOTE: The VPS unit may be generated or managed by the Hermes install process.
+#       This repository template is the authoritative source and must be kept
+#       in sync with any deployed unit. Follows existing guinevere-*.service
+#       pattern: Type=exec, guinevere.slice, full security hardening.
+# Hermes Spec: Hermes Agent exposes an API gateway on port 9191 (configurable).
+# ADR-035: Hermes Migration Phase 7b local hardening — no live deployment claim.
+
+[Unit]
+Description=Hermes Gateway — Autonomous Agent API Gateway
+Documentation=https://github.com/faizz/guinevere
+After=guinevere-core.service network.target redis.service
+Requires=guinevere-core.service
+Wants=redis.service
+
+[Service]
+Type=exec
+User=guinevere
+Group=guinevere
+Slice=guinevere.slice
+WorkingDirectory=/home/guinevere/code/guinevere
+
+# Environment
+Environment=PYTHONPATH=/home/guinevere/code/guinevere
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=VIRTUAL_ENV=/home/guinevere/code/guinevere/.venv
+EnvironmentFile=/home/guinevere/code/guinevere/.env.hermes
+
+# Exec — Hermes CLI gateway mode with local config
+ExecStart=/home/guinevere/code/guinevere/.venv/bin/hermes --config /home/guinevere/code/guinevere/hermes-config/config.yaml gateway
+
+# Restart policy
+Restart=on-failure
+RestartSec=10
+StartLimitBurst=3
+StartLimitIntervalSec=60
+
+# Resource limits — gateway is CPU/IO-bound for concurrent sessions
+MemoryHigh=512M
+MemoryMax=1G
+CPUQuota=100%
+
+# Logging — journald for Promtail/Loki aggregation
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hermes-gateway
+
+# Security hardening — matches deployed-equivalent or stricter baseline
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+# Explicit limited ReadWritePaths — no broad access
+ReadWritePaths=/home/guinevere/code/guinevere
+ReadWritePaths=/home/guinevere/code/guinevere/hermes-config
+ReadWritePaths=/home/guinevere/data
+ReadWritePaths=/home/guinevere/logs
+ReadWritePaths=/home/guinevere/evidence
+ReadWritePaths=/home/guinevere/.hermes
+
+[Install]
+WantedBy=multi-user.target

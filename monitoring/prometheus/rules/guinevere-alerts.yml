@@ -118,3 +118,87 @@ groups:
           sev_level: "SEV3"
         annotations:
           summary: "LLM cost trend warning — greater than $0.25/hour"
+
+  # ──────────────────────────────────────────────────────
+  # Hermes gateway alert group — ADR-035 Phase 7b
+  # Uses available hermes_llm_* metrics from Phase 6 plus
+  # planned hermes_safety_*, hermes_memory_*, hermes_rate_limit_*
+  # where noted as pending instrumentation.
+  # ──────────────────────────────────────────────────────
+  - name: guinevere-hermes
+    rules:
+      # SEV1: Hermes gateway down — critical routing path
+      - alert: GuinevereHermesGatewayDown
+        expr: up{job="hermes"} == 0
+        for: 2m
+        labels:
+          severity: "high"
+          sev_level: "SEV1"
+        annotations:
+          summary: "Hermes gateway is down"
+          description: "The Hermes metrics endpoint at host.docker.internal:9191 has been unreachable for 2 minutes. LLM routing, safety checks, and gateway functions are unavailable."
+          runbook: "docs/40-operations/runbooks/hermes-gateway-down.md"
+
+      # SEV2: Hermes LLM latency elevated
+      - alert: GuinevereHermesLatencyHigh
+        expr: histogram_quantile(0.95, rate(hermes_llm_latency_seconds_bucket[5m])) > 5
+        for: 5m
+        labels:
+          severity: "warning"
+          sev_level: "SEV2"
+        annotations:
+          summary: "Hermes LLM latency high (p95 > 5s)"
+          description: "95th percentile Hermes LLM request latency exceeds 5 seconds over the last 5 minutes. May indicate congestion or model provider degradation."
+          runbook: "docs/40-operations/runbooks/hermes-gateway-down.md"
+
+      # SEV2: Safety blocks spike — sudden increase in safety intercepts
+      - alert: GuinevereHermesSafetyBlocksSpike
+        expr: rate(hermes_safety_blocks_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: "warning"
+          sev_level: "SEV2"
+        annotations:
+          summary: "Hermes safety blocks spike (> 10/min)"
+          description: "Hermes safety plugin intercepted more than 10 requests in 5 minutes. Possible prompt injection attempt or policy misconfiguration."
+          runbook: "docs/40-operations/runbooks/hermes-safety-spike.md"
+
+      # SEV2: Budget near configured cap
+      - alert: GuinevereHermesBudgetNearCap
+        expr: hermes_llm_cost_usd_total > 24
+        for: 15m
+        labels:
+          severity: "warning"
+          sev_level: "SEV2"
+        annotations:
+          summary: "Hermes LLM budget near cap (> $24 — 80% of $30/month)"
+          description: "Cumulative Hermes LLM cost exceeds $24 (80% of the $30/month ADR-035 cap). Review daily budget allocation and model routing configuration."
+          runbook: "docs/40-operations/runbooks/hermes-cost-anomaly.md"
+
+      # SEV3: Memory recall latency — pending Hermes-native instrumentation
+      # Current metric is a placeholder; hermes_memory_recall_latency_seconds
+      # will be exported once Hermes-native metrics are instrumented in Phase 7c.
+      - alert: GuinevereHermesMemoryRecallLatency
+        expr: rate(hermes_llm_latency_seconds_sum[5m]) / rate(hermes_llm_latency_seconds_count[5m]) > 10
+        for: 10m
+        labels:
+          severity: "info"
+          sev_level: "SEV3"
+        annotations:
+          summary: "Hermes memory recall latency elevated"
+          description: "Average LLM request latency exceeds 10 seconds. May indicate memory recall pipeline congestion. Note: Hermes-native hermes_memory_recall_latency_seconds metric pending instrumentation (Phase 7c)."
+          runbook: "docs/40-operations/runbooks/hermes-gateway-down.md"
+
+      # SEV3: Model calls anomaly — pending per-model breakdown instrumentation
+      # Uses aggregate hermes_llm_calls_total; per-model hermes_model_calls_total
+      # will be exported once Hermes-native metrics are instrumented in Phase 7c.
+      - alert: GuinevereHermesModelCallsAnomaly
+        expr: rate(hermes_llm_calls_total[5m]) > 100
+        for: 10m
+        labels:
+          severity: "info"
+          sev_level: "SEV3"
+        annotations:
+          summary: "Hermes model call rate anomaly (> 100/min)"
+          description: "Hermes LLM call rate exceeds 100 calls per minute over 5 minutes. Investigate for runaway agent loops or abnormal traffic. Note: Per-model hermes_model_calls_total metric pending instrumentation (Phase 7c)."
+          runbook: "docs/40-operations/runbooks/hermes-cost-anomaly.md"

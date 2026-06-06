@@ -196,7 +196,7 @@ def _get_hermes() -> Any:
     Returns:
         The shared HermesSessionAdapter instance.
     """
-    from src.hermes import get_adapter
+    from src.hermes.adapter import get_adapter
 
     return get_adapter()
 

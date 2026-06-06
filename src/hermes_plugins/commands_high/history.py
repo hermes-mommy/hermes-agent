@@ -56,7 +56,7 @@ def register(ctx: Any) -> None:
     async def handle(context: Any) -> str:
         """Handle /history invocation — show last conversation turns."""
         try:
-            from src.hermes import get_adapter
+            from src.hermes.adapter import get_adapter
 
             adapter = get_adapter()
             user_id = str(getattr(context, "user_id", ""))

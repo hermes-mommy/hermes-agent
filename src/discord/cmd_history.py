@@ -55,7 +55,7 @@ async def history_callback(interaction: Any) -> None:
     await defer_ephemeral(interaction)
 
     try:
-        from src.hermes import get_adapter
+        from src.hermes.adapter import get_adapter
 
         adapter = get_adapter()
         user_id = str(interaction.user.id)

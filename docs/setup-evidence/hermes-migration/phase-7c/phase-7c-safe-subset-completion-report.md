@@ -1,0 +1,106 @@
+# Phase 7c Safe-Subset Completion Report — Deprecated Imports + Hermes CLI
+
+**Date**: 2026-06-06  
+**Scope**: ADR-035 Phase 7c safe subset only  
+**Status**: SAFE-SUBSET IMPLEMENTED — final Phase 7 remains BLOCKED  
+**Authority**: `AGENTS.md`, ADR-035, Phase 7c research wave, Oracle safe-boundary verdict, `phase-7c-safe-subset-plan.md`
+
+---
+
+## 1. Executive Summary
+
+Phase 7c safe-subset work completed the locally safe pre-archive refactors and the zero-disruption Hermes CLI PATH remediation approved by Oracle.
+
+This report does **not** claim final Phase 7 completion. ADR-035 remains **NOT IMPLEMENTED**. The actual deprecated file archive remains blocked until 24-hour stability, `guinevere-mcp` health, and remaining import/test migration gates pass.
+
+---
+
+## 2. Completed Safe-Subset Work
+
+| Step | Work | Status |
+|---|---|---|
+| 7C-S1 | Hermes-native command catalog and `/help` cleanup | PASS |
+| 7C-S2 | `src.hermes` package-init cleanup and explicit adapter module | PASS |
+| 7C-S3 | Non-interactive VPS Hermes CLI PATH fix and read-only verification | PASS |
+| 7C-S4 | Evidence and blocker register update | PASS |
+
+---
+
+## 3. Files Changed
+
+- `src/hermes_plugins/command_catalog.py` created as a Hermes-native command catalog with 35 commands across 7 categories.
+- `src/hermes_plugins/commands_high/help.py` now imports from `src.hermes_plugins.command_catalog` instead of `src.discord.commands` and has no `Any`, broad `except Exception`, or type suppression.
+- `src/hermes/__init__.py` no longer imports `.session_adapter` or `.memory_bridge` at package initialization time.
+- `src/hermes/adapter.py` created with explicit `get_adapter()` singleton accessor.
+- Active callers now import `get_adapter` from `src.hermes.adapter`.
+- `tests/discord/test_cmd_mood.py` command-count assertion updated from stale 33 to canonical 35.
+- VPS `/home/guinevere/.bashrc` was backed up and adjusted so `~/.local/bin` is available before the non-interactive shell early return.
+- `docs/20-security/hermes-phase-7-blocker-register.md` updated for B8 partial reduction and B9 PATH resolution.
+- Evidence files under `docs/setup-evidence/hermes-migration/phase-7c/STEP-7C-S1/` through `STEP-7C-S4/`.
+
+---
+
+## 4. Verification Results
+
+| Check | Result |
+|---|---|
+| `python -W error -c "import src.hermes; from src.hermes.adapter import get_adapter; print('hermes import ok')"` | PASS |
+| Command catalog consistency check | PASS — 35 commands |
+| `grep` forbidden patterns in `help.py` | PASS — no matches |
+| `grep` active `from src.hermes import get_adapter` | PASS — no matches |
+| `src/hermes/adapter.py` diagnostics | PASS — 0 errors, 0 warnings |
+| `src/hermes_plugins/command_catalog.py` diagnostics | PASS — 0 errors, 0 warnings |
+| `src/hermes_plugins/commands_high/help.py` diagnostics | PASS — 0 errors, 2 decorator-pattern warnings |
+| `python -m pytest tests/phase7/ -q --tb=short` | PASS — 139 passed, 1 warning |
+| Targeted catalog/help tests | PASS — 63 passed, 1 warning |
+| VPS `command -v hermes` | PASS — `/home/guinevere/.local/bin/hermes` |
+| VPS `hermes --version` | PASS — Hermes Agent v0.15.2 |
+| VPS read-only backup/checkpoint commands | PASS — help/status only, no backup artifact |
+| VPS `systemctl is-active hermes-gateway` | PASS — active |
+
+---
+
+## 5. Remaining Blockers
+
+| Blocker | Current Status |
+|---|---|
+| B1 `guinevere-mcp` inactive/dead | Still open |
+| B2 Hermes config YAML fallback warning | Still open |
+| B3 monitoring exporter connectivity failures | Still open |
+| B4 SSH bound publicly/root login | Still open |
+| B5 no firewall | Still open |
+| B6 9Router public bind `0.0.0.0:20128` | Still open |
+| B7 core/metrics public bind `0.0.0.0:9191` | Still open |
+| B8 deprecated files still imported/tested | Open, partially reduced by S1/S2 |
+| B9 Hermes CLI PATH missing | Resolved for non-interactive operator PATH |
+| B10 backup SOPS credentials missing | Still open |
+| B11 backup sentinel missing | Still open |
+| B12 Hermes-native gateway metrics missing | Still open |
+
+Remaining blocker count for final Phase 7: **11 open + 1 partially reduced (B8)**. B9 PATH is resolved, but backup/DR remains blocked by B10/B11.
+
+---
+
+## 6. Explicit Non-Actions
+
+- No deprecated files were archived or deleted.
+- No `git mv` archive was performed.
+- No final Phase 7 deployment was performed.
+- No `git pull`, `uv sync`, service restart, or smoke-test deployment occurred.
+- No live `hermes backup` write was run.
+- No systemd service, firewall, SSH daemon, port binding, or Aizanta change occurred.
+- No secrets were printed, modified, committed, or disclosed.
+- No ADR-035 IMPLEMENTED flip, final migration tag, or final release push occurred.
+
+---
+
+## 7. Boundary Compliance
+
+- Safety/persona/consent/HARD STOP logic was not changed.
+- Aizanta was not touched.
+- Canonical ports remain PG=5433, Redis=6380, 9Router=20128.
+- Deprecated archive remains blocked until stability/import/test gates pass.
+
+## Footer
+
+Generated by Sisyphus for Guinevere ADR-035 Phase 7c safe-subset execution. Phase 7 complete: **NO**. ADR-035 IMPLEMENTED: **NO**.

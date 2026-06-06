@@ -171,7 +171,7 @@ def _get_hermes() -> Any:
     ``AIAgent`` from ``run_agent`` with per-user session persistence
     and metadata extraction.
     """
-    from src.hermes import get_adapter
+    from src.hermes.adapter import get_adapter
 
     return get_adapter()
 

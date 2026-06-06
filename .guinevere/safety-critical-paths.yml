@@ -1,0 +1,103 @@
+# Safety-Critical Paths Configuration
+# ADR-029: Safety-critical change detection gates deployment/rollback.
+# Any change to paths listed below requires safety review, audit trail,
+# and may trigger auto-rollback if verification fails.
+#
+# Phase 7b: Initial coverage. Extend as new safety surfaces are identified.
+# See: docs/setup-evidence/hermes-migration/phase-7/phase-7b-local-hardening-plan.md
+
+version: "1.0"
+phase: "7b"
+adr_ref: "ADR-029"
+
+categories:
+  persona_and_yandere:
+    description: >
+      Persona identity, behavior boundaries, yandere-level enforcement.
+      Changes here affect how Guinevere presents, acts, and controls
+      yandere escalation (Y4 baseline, Y5 ceiling, never Y6).
+    paths:
+      - src/persona/
+      - docs/60-persona/
+    review_required: true
+    auto_rollback_trigger: true
+
+  hard_stop_and_safe_mode:
+    description: >
+      Emergency stop handler, safe mode activation, HARD STOP protocol.
+      These paths gate the most critical safety mechanism. Any change
+      must pass persona-safety review and consent-boundary verification.
+    paths:
+      - src/hermes/safety_plugin.py
+      - src/core/services/hard_stop_handler.py
+      - src/persona/safe_mode.py
+      - src/persona/yandere_fsm.py
+      - hermes-config/hooks/hard_stop.py
+      - tests/safety/
+    review_required: true
+    auto_rollback_trigger: true
+
+  surveillance_and_consent:
+    description: >
+      Surveillance data collection, consent/revocation enforcement,
+      data classification boundaries. Changes affect privacy guarantees
+      and consent revocation correctness.
+    paths:
+      - src/surveillance/
+      - docs/30-data/
+      - tests/surveillance/
+    review_required: true
+    auto_rollback_trigger: true
+
+  auth_and_secrets:
+    description: >
+      Authentication, authorization, secret scanning, credential management.
+      Changes here affect access control integrity and secret leak prevention.
+    paths:
+      - src/mcp/auth.py
+      - src/mcp/auth_matrix.py
+      - src/surveillance/secret_scanner.py
+      - src/surveillance/secrets.py
+      - hermes-config/plugins/auth_overlay/
+    review_required: true
+    auto_rollback_trigger: true
+
+  memory_and_privacy:
+    description: >
+      Memory storage, recall, cross-session persistence, do-not-remember
+      filter, and privacy-sensitive memory operations.
+    paths:
+      - src/memory/
+      - src/hermes/memory_bridge.py
+      - hermes-config/hooks/dnr_filter.py
+      - hermes-config/plugins/memory/guinevere_memory/
+    review_required: true
+    auto_rollback_trigger: true
+
+  autonomous_loops_and_hermes_runtime:
+    description: >
+      Autonomous agent loops, Hermes runtime configuration, systemd
+      service units. Changes affect operational stability, deployment
+      safety, and autonomous behavior boundaries.
+    paths:
+      - src/loops/
+      - src/hermes/
+      - hermes-config/config.yaml
+      - systemd/
+    review_required: true
+    auto_rollback_trigger: true
+
+  governance_and_testing_infrastructure:
+    description: >
+      Agent operating contract, startup gate, test infrastructure,
+      coverage configuration, and this safety-critical paths file itself.
+      Changes affect compliance, verification, and reproducibility.
+    paths:
+      - AGENTS.md
+      - scripts/startup_gate.py
+      - tests/
+      - pyproject.toml
+      - .coveragerc
+      - .guinevere/safety-critical-paths.yml
+    review_required: true
+    auto_rollback_trigger: false
