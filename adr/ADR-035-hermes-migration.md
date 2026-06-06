@@ -1185,7 +1185,7 @@ Based on the exact line-by-line analysis of all 113 Python files (Report 04):
 | **Phase 2** | Discord Gateway | 5-8 days | HIGH | 35 slash commands functional. Shadow mode parity confirmed (48hr+). Faiz approves cutover. |
 | **Phase 3** | Memory Bridge | 4-5 days | MEDIUM | Memory recall quality unchanged. DNR + classification enforced. |
 | **Phase 4** | MCP + Tools | 5-7 days | MEDIUM | All 16 tool capabilities available. Auth matrix enforced. |
-| **Phase 5** | Skills + Persona | 2-3 days | LOW | All persona features functional. Mood persists. Rituals fire on schedule. |
+| **Phase 5** | Skills + Persona | 2-3 days | MEDIUM | All persona features functional. Mood persists. Rituals fire on schedule. |
 | **Phase 6** | LLM Routing | 1 day | LOW | LLM routing functional. Fallback works. Budget enforced. |
 | **Phase 7** | Hardening + Monitoring | 2-3 days | LOW | All monitoring active. Security clean. Runbook complete. |
 | **Total (realistic)** | | **35-50 days** | | |
