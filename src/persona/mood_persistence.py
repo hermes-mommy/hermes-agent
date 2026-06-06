@@ -17,7 +17,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -85,7 +84,7 @@ class MoodRepository:
     """Manages mood state persistence using persona schema tables."""
 
     def __init__(self, session: AsyncSession) -> None:
-        self._session = session
+        self._session: AsyncSession = session
 
     # ---- session accessor (PersonaPlugin hook) -------------------------
 
@@ -124,7 +123,7 @@ class MoodRepository:
         if row is None:
             return None
 
-        state_value: dict[str, object] = row.state_value  # type: ignore[assignment]
+        state_value: dict[str, object] = row.state_value
         raw_mood: object = state_value.get("mood", "")
         raw_intensity: object = state_value.get("intensity", 5)
         return MoodState(
@@ -278,7 +277,7 @@ class MoodRepository:
         if row is None:
             return 0
 
-        state_value: dict[str, object] = row.state_value  # type: ignore[assignment]
+        state_value: dict[str, object] = row.state_value
         raw_streak: object = state_value.get("streak", 0)
         return raw_streak if isinstance(raw_streak, int) else 0
 
