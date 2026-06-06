@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Final
+from typing import Final, Protocol
 
 import structlog
 
@@ -79,6 +79,67 @@ class InvalidMoodTransitionError(MoodEngineError):
 
 class MoodEvaluationError(MoodEngineError):
     """Raised when mood evaluation encounters an unexpected condition."""
+
+
+class _MoodStateManagerProtocol(Protocol):
+    """Duck-typed protocol for Redis state persistence.
+
+    Matches ``StateManager.set_mood(variant: str) -> bool`` from
+    ``guinevere_safety``.
+    """
+
+    def set_mood(self, variant: str) -> bool: ...
+
+
+MOOD_VARIANT_MAP: Final[dict[Mood, str]] = {
+    Mood.CONTENT: "default",
+    Mood.PLEASED: "playful",
+    Mood.DISAPPOINTED: "serious",
+    Mood.ANGRY: "caring",
+    Mood.SILENT: "default",
+}
+
+_VALID_MOOD_VARIANTS: Final[frozenset[str]] = frozenset(
+    {"default", "playful", "serious", "caring"}
+)
+
+
+def sync_mood_to_redis(
+    mood: Mood,
+    state_manager: _MoodStateManagerProtocol | None = None,
+) -> bool:
+    """Sync a ``Mood`` to Redis DB5 via an optional state manager.
+
+    Maps ``Mood`` enum values to canonical ``mood_variant`` strings:
+        - ``Mood.CONTENT`` → ``"default"``
+        - ``Mood.PLEASED`` → ``"playful"``
+        - ``Mood.DISAPPOINTED`` → ``"serious"``
+        - ``Mood.ANGRY`` → ``"caring"``
+        - ``Mood.SILENT`` → ``"default"``
+
+    Args:
+        mood: The current ``Mood`` state to persist.
+        state_manager: Optional state manager (e.g. ``StateManager``
+            from ``guinevere_safety``). If ``None``, this is a no-op.
+
+    Returns:
+        ``True`` if the sync succeeded (or no state_manager configured),
+        ``False`` if the sync failed.
+    """
+    if state_manager is None:
+        return True
+
+    variant = MOOD_VARIANT_MAP.get(mood, "default")
+    try:
+        return state_manager.set_mood(variant)
+    except Exception:
+        logger.warning(
+            "mood_redis_sync_failed",
+            mood=mood.value,
+            variant=variant,
+            exc_info=True,
+        )
+        return False
 
 
 # ============================================================

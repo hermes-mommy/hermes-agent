@@ -27,7 +27,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import IntEnum
-from typing import Final
+from typing import Final, Protocol
 
 import structlog
 
@@ -48,6 +48,17 @@ class PunishmentError(Exception):
 
 class PunishmentSafetyError(PunishmentError):
     """Raised when a safety boundary is violated (e.g., L6 attempt, safe-mode conflict)."""
+
+
+class _PunishmentStateManagerProtocol(Protocol):
+    """Duck-typed protocol for Redis state persistence.
+
+    Matches ``StateManager.set_punishment(level: int) -> bool`` from
+    ``guinevere_safety``. Any object implementing this method can be
+    passed to ``PunishmentEngine`` for automatic Redis DB5 sync.
+    """
+
+    def set_punishment(self, level: int) -> bool: ...
 
 
 class PunishmentTransitionError(PunishmentError):
@@ -223,6 +234,7 @@ class PunishmentEngine:
         self,
         safe_mode_controller: SafeModeController | None = None,
         hard_stop_handler: SupportsIsSafe | None = None,
+        state_manager: _PunishmentStateManagerProtocol | None = None,
     ) -> None:
         """Initialise the punishment engine.
 
@@ -232,12 +244,16 @@ class PunishmentEngine:
             hard_stop_handler: Optional HARD STOP handler.  When provided and
                 ``is_safe`` is ``True``, punishment is blocked — mirrors the
                 pattern used in ``YandereEngine``.
+            state_manager: Optional Redis state manager for persisting punishment
+                level to Redis DB5. When provided, ``apply()``, ``escalate()``, and
+                ``de_escalate()`` automatically sync the current level.
         """
-        self._state = PunishmentState()
-        self._safe_mode = (
+        self._state: PunishmentState = PunishmentState()
+        self._safe_mode: SafeModeController = (
             safe_mode_controller or SafeModeController()
         )
-        self._hard_stop_handler = hard_stop_handler
+        self._hard_stop_handler: SupportsIsSafe | None = hard_stop_handler
+        self._state_manager: _PunishmentStateManagerProtocol | None = state_manager
 
     # -- core operations -----------------------------------------------------
 
@@ -298,6 +314,8 @@ class PunishmentEngine:
         self._state.suspended = False
         self._state.suspended_at = None
         self._state.suspension_reason = ""
+
+        self._sync_punishment_to_redis()
 
         logger.info(
             "punishment_applied",
@@ -589,6 +607,24 @@ class PunishmentEngine:
                     return True
             return False
 
+    # -- Redis sync helper ---------------------------------------------------
+
+    def _sync_punishment_to_redis(self) -> None:
+        """Sync current punishment level to Redis DB5 if state_manager is set."""
+        if self._state_manager is None:
+            return
+        level = int(self._state.level) if self._state.level is not None else 0
+        if not self._state.active:
+            level = 0
+        try:
+            _ = self._state_manager.set_punishment(level)
+        except Exception:
+            logger.warning(
+                "punishment_redis_sync_failed",
+                level=level,
+                exc_info=True,
+            )
+
     # -- internal helpers ----------------------------------------------------
 
     def _activate_level(self, level: PunishmentLevel) -> None:
@@ -601,10 +637,12 @@ class PunishmentEngine:
         self._state.level = level
         self._state.started_at = now
         self._state.duration = duration
+        self._sync_punishment_to_redis()
 
     def _deactivate(self) -> None:
         """Clear all punishment state."""
         self._state = PunishmentState()
+        self._sync_punishment_to_redis()
 
     def _check_expiry(self) -> None:
         """Deactivate punishment if its duration has elapsed.

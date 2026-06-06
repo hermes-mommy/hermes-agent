@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Final
+from typing import Final, Protocol
 
 import structlog
 
@@ -203,6 +203,17 @@ class InvalidTierError(RewardError):
     """Raised when an invalid RewardTier is supplied to award()."""
 
 
+class _RewardStateManagerProtocol(Protocol):
+    """Duck-typed protocol for Redis state persistence.
+
+    Matches ``StateManager.set_reward(tier: int) -> bool`` from
+    ``guinevere_safety``. Any object implementing this method can be
+    passed to ``RewardEngine`` for automatic Redis DB5 tier sync.
+    """
+
+    def set_reward(self, tier: int) -> bool: ...
+
+
 # ============================================================
 # Reward Engine
 # ============================================================
@@ -223,10 +234,14 @@ class RewardEngine:
             result = engine.award(tier, reason="Sprint goal achieved", streak_count=3)
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        state_manager: _RewardStateManagerProtocol | None = None,
+    ) -> None:
         self._current_tier: RewardTier = RewardTier.T1_ACKNOWLEDGMENT
         self._last_reason: str = ""
         self._total_rewards_awarded: int = 0
+        self._state_manager: _RewardStateManagerProtocol | None = state_manager
 
     # -- tier calculation ---------------------------------------------------
 
@@ -350,6 +365,18 @@ class RewardEngine:
         self._current_tier = tier
         self._last_reason = reason
         self._total_rewards_awarded += 1
+
+        # Sync to Redis DB5 if state_manager is configured.
+        if self._state_manager is not None:
+            try:
+                _ = self._state_manager.set_reward(int(tier))
+            except Exception:
+                logger.warning(
+                    "reward_redis_sync_failed",
+                    tier=tier.name,
+                    tier_value=tier.value,
+                    exc_info=True,
+                )
 
         logger.info(
             "reward_awarded",

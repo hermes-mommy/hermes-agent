@@ -36,12 +36,14 @@ from src.persona.drift_detector import (
 from src.persona.mood_engine import (
     InvalidMoodTransitionError,
     Mood,
+    MOOD_VARIANT_MAP,
     MoodEngineError,
     MoodEvaluationError,
     MoodTransition,
     TRANSITIONS,
     can_transition,
     evaluate_mood,
+    sync_mood_to_redis,
 )
 from src.persona.mood_persistence import (
     MoodHistoryRecord,
@@ -150,9 +152,11 @@ __all__: list[str] = [
     # mood_engine
     "Mood",
     "MoodTransition",
+    "MOOD_VARIANT_MAP",
     "TRANSITIONS",
     "can_transition",
     "evaluate_mood",
+    "sync_mood_to_redis",
     "MoodEngineError",
     "InvalidMoodTransitionError",
     "MoodEvaluationError",
