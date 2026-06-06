@@ -39,6 +39,12 @@ async def lifespan(app: FastAPI):
         release="0.1.0",
     )
 
+    # Phase 6: Start LLM routing metrics server on localhost:9191
+    from src.core.services.llm_metrics import start_llm_metrics_server
+
+    start_llm_metrics_server(port=9191)
+    logger.info("llm_metrics_server_started", port=9191)
+
     loop_manager = LoopManager()
     app.state.loop_manager = loop_manager
 
