@@ -6,7 +6,7 @@ last_modified: "2026-05-30"
 owner: "Faiz"
 executor: "Guinevere"
 format: "MADR with YAML frontmatter"
-adr_count: 35
+adr_count: 36
 ---
 
 # Guinevere ADR Index v1.0
@@ -98,24 +98,25 @@ The safe word is a global user-autonomy override, not a persona flourish. In gen
 | ADR-033 | Browser Automation — Obscura CDP over Headless Chrome + Playwright | Accepted | MEDIUM | browser, obscura, cdp, playwright-core, stealth, p6-009 | [`ADR-033-browser-automation-obscura.md`](adr/ADR-033-browser-automation-obscura.md) |
 | ADR-034 | Post-MVP Phase Restructure — P0-P11 → P0-P22 | Accepted | MEDIUM | phase, restructure, roadmap, expansion | [`ADR-034-post-mvp-phase-restructure.md`](../../adr/ADR-034-post-mvp-phase-restructure.md) |
 | ADR-035 | Hermes NousResearch Migration Architecture | Accepted | CRITICAL | architecture, migration, hermes, discord, safety, mcp, memory, llm-routing, nfr | [`ADR-035-hermes-migration.md`](../../adr/ADR-035-hermes-migration.md) |
+| ADR-036 | Code Quality Debt Tracking and Cleanup | Proposed | LOW | code-quality, tech-debt, maintenance, type-safety | [`ADR-036-code-quality-debt.md`](../../adr/ADR-036-code-quality-debt.md) |
 
 ## Status Summary
 
 - **Accepted**: 18
 - **Accepted with notes**: 14
 - **Superseded**: 1
-- **Proposed**: 1
+- **Proposed**: 2
 
 ## Risk Summary
 
 - **CRITICAL**: 12
 - **HIGH**: 15
 - **MEDIUM**: 7
-- **LOW**: 0
+- **LOW**: 1
 
 ## Backlog for Future ADRs
 
-- ADR-036 Acceptance Criteria Catalog Governance
+- ADR-037 Privacy Impact Assessment / DPIA
 - ADR-037 Privacy Impact Assessment / DPIA
 - ADR-038 Consent & Revocation Policy
 - ADR-039 Prompt Injection & Model Safety
