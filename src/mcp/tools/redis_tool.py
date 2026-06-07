@@ -323,6 +323,83 @@ async def redis_del(key: str, db: int = _DEFAULT_DB) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Tool implementations — WRITE_NOTIFY (S3 — auth-unlocked key management)
+# ---------------------------------------------------------------------------
+
+
+@require_approval(AuthLevel.WRITE_NOTIFY, tool_name="redis_expire")
+async def redis_expire(key: str, seconds: int, db: int = _DEFAULT_DB) -> bool:
+    """Set a TTL on a Redis key. Auth: WRITE_NOTIFY.
+
+    Args:
+        key: The Redis key.
+        seconds: Time-to-live in seconds (must be positive).
+        db: Redis database number (default DB5 — cost tracking).
+
+    Returns:
+        ``True`` if the timeout was set, ``False`` if the key does not exist.
+
+    Raises:
+        ValueError: If *seconds* is not positive.
+    """
+    if seconds <= 0:
+        raise ValueError(f"seconds must be positive, got {seconds}")
+
+    client = _connect(db)
+    try:
+        result: bool = await client.expire(key, seconds)
+        logger.info("redis_expire", key=key, seconds=seconds, db=db, set=result)
+        return result
+    finally:
+        await client.aclose()
+
+
+@require_approval(AuthLevel.WRITE_NOTIFY, tool_name="redis_persist")
+async def redis_persist(key: str, db: int = _DEFAULT_DB) -> bool:
+    """Remove the TTL from a Redis key (make it persistent). Auth: WRITE_NOTIFY.
+
+    Args:
+        key: The Redis key.
+        db: Redis database number (default DB5 — cost tracking).
+
+    Returns:
+        ``True`` if the timeout was removed, ``False`` if the key does
+        not exist or has no timeout.
+    """
+    client = _connect(db)
+    try:
+        result: bool = await client.persist(key)
+        logger.info("redis_persist", key=key, db=db, removed=result)
+        return result
+    finally:
+        await client.aclose()
+
+
+@require_approval(AuthLevel.WRITE_NOTIFY, tool_name="redis_rename")
+async def redis_rename(key: str, new_key: str, db: int = _DEFAULT_DB) -> bool:
+    """Rename a Redis key. Auth: WRITE_NOTIFY.
+
+    Args:
+        key: The existing Redis key.
+        new_key: The new key name.
+        db: Redis database number (default DB5 — cost tracking).
+
+    Returns:
+        ``True`` if the key was renamed successfully.
+
+    Raises:
+        redis.exceptions.ResponseError: If *key* does not exist.
+    """
+    client = _connect(db)
+    try:
+        await client.rename(key, new_key)
+        logger.info("redis_rename", old_key=key, new_key=new_key, db=db)
+        return True
+    finally:
+        await client.aclose()
+
+
+# ---------------------------------------------------------------------------
 # Tool implementations — FORBIDDEN (always blocked)
 # ---------------------------------------------------------------------------
 
@@ -366,9 +443,9 @@ async def redis_flushall() -> bool:
 def register_tools(mcp: FastMCP) -> None:
     """Register Redis tools on the MCP server.
 
-    Registers nine tools across all four auth levels:
+    Registers twelve tools across all four auth levels:
     - READ_AUTO: redis_get, redis_keys, redis_hgetall, redis_lrange
-    - WRITE_NOTIFY: redis_set, redis_hset
+    - WRITE_NOTIFY: redis_set, redis_hset, redis_expire, redis_persist, redis_rename
     - DESTRUCTIVE_APPROVAL: redis_del
     - FORBIDDEN: redis_flushdb, redis_flushall
 
@@ -383,6 +460,9 @@ def register_tools(mcp: FastMCP) -> None:
     # WRITE_NOTIFY tools
     mcp.tool(name="redis_set")(redis_set)
     mcp.tool(name="redis_hset")(redis_hset)
+    mcp.tool(name="redis_expire")(redis_expire)
+    mcp.tool(name="redis_persist")(redis_persist)
+    mcp.tool(name="redis_rename")(redis_rename)
 
     # DESTRUCTIVE_APPROVAL tools
     mcp.tool(name="redis_del")(redis_del)

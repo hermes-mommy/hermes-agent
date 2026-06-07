@@ -350,6 +350,79 @@ class GuinevereSafetyPlugin:
             )
 
     # -------------------------------------------------------------------------
+    # Tool name normalization for G09 auth matrix
+    # -------------------------------------------------------------------------
+
+    def _normalize_tool_for_matrix(
+        self, tool_name: str, args: dict[str, Any] | None
+    ) -> tuple[str | None, str]:
+        """Normalize tool name to canonical (tool, operation) for AUTH_MATRIX.
+
+        Lightweight normalization: strip MCP prefixes, check known aliases.
+        Returns (None, "read") if tool is unrecognized — caller defers to
+        the auth overlay which is the authoritative primary gate.
+
+        Args:
+            tool_name: Raw tool name from Hermes hook kwargs.
+            args: Optional tool arguments dict for operation extraction.
+
+        Returns:
+            Tuple of ``(canonical_tool_name, operation)`` where
+            ``canonical_tool_name`` is ``None`` for unknown tools.
+        """
+        from src.mcp.auth_matrix import ALL_TOOL_NAMES  # noqa: PLC0415
+
+        # 1. Direct canonical tool match
+        if tool_name in ALL_TOOL_NAMES:
+            op = "read"
+            if isinstance(args, dict):
+                op = str(args.get("operation", args.get("action", "read")))
+            return (tool_name, op)
+
+        # 2. Strip known MCP/Hermes prefixes
+        stripped = tool_name
+        for prefix in (
+            "mcp_fastmcp_custom_",
+            "mcp_fastmcp_",
+            "mcp_native_",
+            "mcp_",
+            "hermes_",
+        ):
+            if stripped.startswith(prefix):
+                stripped = stripped[len(prefix):]
+                break
+
+        # 3. Check if stripped name is canonical
+        if stripped in ALL_TOOL_NAMES:
+            op = "read"
+            if isinstance(args, dict):
+                op = str(args.get("operation", args.get("action", "read")))
+            return (stripped, op)
+
+        # 4. tool_operation split (longest canonical prefix match)
+        for canonical in sorted(ALL_TOOL_NAMES, key=len, reverse=True):
+            if stripped.startswith(canonical + "_"):
+                operation = stripped[len(canonical) + 1:]
+                return (canonical, operation or "read")
+
+        # 5. Known Hermes native mappings (hardcoded for G09 independence)
+        _G09_NATIVE_MAP: dict[str, tuple[str, str]] = {
+            "read_file": ("filesystem", "read"),
+            "write_file": ("filesystem", "write"),
+            "search_files": ("filesystem", "read"),
+            "execute_code": ("shell", "exec"),
+            "terminal": ("shell", "exec"),
+            "memory": ("redis", "get"),
+            "skills_list": ("shell", "exec"),
+            "skill_manage": ("shell", "exec"),
+        }
+        if tool_name in _G09_NATIVE_MAP:
+            return _G09_NATIVE_MAP[tool_name]
+
+        # 6. Unknown — return None (defer to overlay)
+        return (None, "read")
+
+    # -------------------------------------------------------------------------
     # Lazy safety module initialization
     # -------------------------------------------------------------------------
 
@@ -810,18 +883,31 @@ class GuinevereSafetyPlugin:
             message="Consent gate requires Redis+SQLAlchemy. Deferred enforcement.",
         )
 
-        # --- Gate 09: Auth matrix check ---
+        # --- Gate 09: Auth matrix check (with alias normalization) ---
         if self._auth_available:
             try:
                 from src.mcp.auth_matrix import get_auth_level  # noqa: PLC0415
                 from src.mcp.auth import AuthLevel  # noqa: PLC0415
 
-                operation: str = "read"
+                # Normalize tool name before matrix lookup
                 args: dict[str, Any] | None = kwargs.get("args")
-                if isinstance(args, dict):
-                    operation = str(args.get("operation", args.get("action", "read")))
+                canonical_tool, operation = self._normalize_tool_for_matrix(
+                    tool_name, args
+                )
 
-                auth_level = get_auth_level(tool_name, operation)
+                if canonical_tool is None:
+                    # Unknown tool — allow (auth overlay is the primary gate)
+                    logger.debug(
+                        "gate_09_unknown_tool_deferred",
+                        session_id=session_id,
+                        tool_name=tool_name,
+                        message=(
+                            "Unknown tool deferred to auth overlay primary gate."
+                        ),
+                    )
+                    return None  # Allow — auth overlay is authoritative
+
+                auth_level = get_auth_level(canonical_tool, operation)
 
                 if auth_level in (AuthLevel.FORBIDDEN, AuthLevel.DESTRUCTIVE_APPROVAL):
                     state = self._get_session_state(session_id)
@@ -833,33 +919,37 @@ class GuinevereSafetyPlugin:
                         "gate_09_auth_blocked",
                         session_id=session_id,
                         tool_name=tool_name,
+                        canonical_tool=canonical_tool,
                         operation=operation,
                         auth_level=auth_level.value,
                     )
                     observe_safety_block(
                         "G09",
-                        f"AUTH_{auth_level.name}:{tool_name}:{operation}",
+                        f"AUTH_{auth_level.name}:{canonical_tool}:{operation}",
                     )
                     return {
                         "action": "block",
-                        "reason": f"AUTH_{auth_level.name}:{tool_name}:{operation}",
+                        "reason": f"AUTH_{auth_level.name}:{canonical_tool}:{operation}",
                         "message": (
-                            f"Tool '{tool_name}' operation '{operation}' "
+                            f"Tool '{canonical_tool}' operation '{operation}' "
                             f"is {auth_level.name} per auth matrix."
                         ),
                     }
             except KeyError:
-                # Unknown tool or operation — block (fail-closed).
+                # Known tool but unknown operation — block conservatively.
                 logger.warning(
-                    "gate_09_auth_unknown",
+                    "gate_09_auth_unknown_operation",
                     session_id=session_id,
                     tool_name=tool_name,
                 )
-                observe_safety_block("G09", f"AUTH_UNKNOWN_TOOL:{tool_name}")
+                observe_safety_block("G09", f"AUTH_UNKNOWN_OPERATION:{tool_name}")
                 return {
                     "action": "block",
-                    "reason": f"AUTH_UNKNOWN_TOOL:{tool_name}",
-                    "message": f"Unknown tool '{tool_name}' — blocked by safety policy.",
+                    "reason": f"AUTH_UNKNOWN_OPERATION:{tool_name}",
+                    "message": (
+                        f"Unknown operation for tool '{tool_name}' "
+                        f"— blocked by safety policy."
+                    ),
                 }
             except Exception:
                 logger.error(

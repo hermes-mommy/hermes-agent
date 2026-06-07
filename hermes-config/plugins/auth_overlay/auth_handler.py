@@ -51,6 +51,7 @@ _CANONICAL_TOOLS: frozenset[str] = frozenset(ALL_TOOL_NAMES)
 
 KNOWN_PREFIXES: list[str] = [
     "mcp_fastmcp_custom_",
+    "mcp_fastmcp_full_",
     "mcp_fastmcp_",
     "mcp_native_",
     "mcp_",
@@ -72,6 +73,14 @@ TOOL_ALIASES: dict[str, tuple[str, str] | None] = {
     "websearch_search": ("websearch", "*"),
     "web_browse": ("fetch", "*"),
     "webfetch": ("fetch", "*"),
+    # --- Hermes native tool aliases (VPS logs show these are blocked) ---
+    "read_file": ("filesystem", "read"),
+    "write_file": ("filesystem", "write"),
+    "search_files": ("filesystem", "read"),
+    "execute_code": ("shell", "exec"),
+    "memory": ("redis", "get"),          # Hermes built-in memory → safe read
+    "skills_list": ("shell", "exec"),    # Internal Hermes op → safe read
+    "skill_manage": ("shell", "exec"),   # Internal Hermes op → safe read
     # --- Terminal / shell aliases ---
     "shell_exec": ("shell", "exec"),
     "terminal_exec": ("shell", "exec"),
@@ -87,12 +96,19 @@ TOOL_ALIASES: dict[str, tuple[str, str] | None] = {
     "git_push": ("git", "push"),
     "git_force_push": ("git", "force_push"),
     "git_force_push_main": ("git", "force_push_main"),
+    # --- Git force-push name mismatch ---
+    "git_push_force": ("git", "force_push"),
     # --- Filesystem aliases ---
     "filesystem_read": ("filesystem", "read"),
     "filesystem_write": ("filesystem", "write"),
     "filesystem_delete": ("filesystem", "delete"),
     "filesystem_list": ("filesystem", "list"),
     "filesystem_create_directory": ("filesystem", "write"),
+    # --- MCP fs_* aliases (registered names differ from overlay) ---
+    "fs_read": ("filesystem", "read"),
+    "fs_write": ("filesystem", "write"),
+    "fs_delete": ("filesystem", "delete"),
+    "fs_list": ("filesystem", "list"),
     # --- Redis aliases ---
     "redis_get": ("redis", "get"),
     "redis_set": ("redis", "set"),
@@ -103,6 +119,20 @@ TOOL_ALIASES: dict[str, tuple[str, str] | None] = {
     "redis_hset": ("redis", "hset"),
     "redis_flushdb": ("redis", "flushdb"),
     "redis_expire": ("redis", "expire"),
+    # --- Redis additional aliases (S1 batch) ---
+    "redis_scan": ("redis", "scan"),
+    "redis_ttl": ("redis", "ttl"),
+    "redis_exists": ("redis", "exists"),
+    "redis_type": ("redis", "type"),
+    "redis_lpush": ("redis", "lpush"),
+    "redis_rpush": ("redis", "rpush"),
+    "redis_sadd": ("redis", "sadd"),
+    "redis_setnx": ("redis", "setnx"),
+    "redis_setex": ("redis", "setex"),
+    "redis_incr": ("redis", "incr"),
+    "redis_incrbyfloat": ("redis", "incrbyfloat"),
+    "redis_persist": ("redis", "persist"),
+    "redis_rename": ("redis", "rename"),
     # --- Postgres aliases ---
     "postgres_query": ("postgres", "select"),
     "postgres_select": ("postgres", "select"),
@@ -110,6 +140,9 @@ TOOL_ALIASES: dict[str, tuple[str, str] | None] = {
     "postgres_update": ("postgres", "update"),
     "postgres_delete_row": ("postgres", "delete_row"),
     "postgres_drop": ("postgres", "drop"),
+    # --- Postgres S3b aliases (new tool functions) ---
+    "postgres_execute": ("postgres", "insert"),   # covers insert and update
+    "postgres_delete": ("postgres", "delete_row"),
     # --- Docker aliases ---
     "docker_ps": ("docker", "ps"),
     "docker_logs": ("docker", "logs"),
@@ -119,9 +152,16 @@ TOOL_ALIASES: dict[str, tuple[str, str] | None] = {
     "docker_rm": ("docker", "rm"),
     "docker_rmi": ("docker", "rmi"),
     "docker_system_prune": ("docker", "system_prune"),
+    # --- Docker inspect/images (S1 batch) ---
+    "docker_inspect": ("docker", "inspect"),
+    "docker_images": ("docker", "images"),
     # --- Github aliases ---
     "github_create_issue": ("github", "create_issue"),
     "github_create_pr": ("github", "create_pr"),
+    # --- GitHub read/get/search aliases (S1 batch) ---
+    "github_list_repos": ("github", "read"),
+    "github_get_file": ("github", "get"),
+    "github_search_code": ("github", "search"),
     # --- Obscura aliases ---
     "obscura_get_markdown": ("obscura_cdp", "read"),
     "obscura_navigate": ("obscura_cdp", "navigate"),
@@ -137,6 +177,13 @@ TOOL_ALIASES: dict[str, tuple[str, str] | None] = {
     # --- Time aliases ---
     "time_current": ("time", "*"),
     "time_convert": ("time", "*"),
+    # --- Time tools (additional, S1 batch) ---
+    "time_days_in_month": ("time", "*"),
+    "time_relative_time": ("time", "*"),
+    "time_get_timestamp": ("time", "*"),
+    "time_get_week_year": ("time", "*"),
+    "time_convert_time": ("time", "*"),
+    "time_current_time": ("time", "*"),
     # --- Brave_search / exa alias ---
     "brave_search_search": ("brave_search", "*"),
     "exa_search": ("exa", "*"),

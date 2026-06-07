@@ -285,6 +285,203 @@ async def postgres_describe(
 
 
 # ---------------------------------------------------------------------------
+# Write / delete query functions (S3 — auth-unlocked)
+# ---------------------------------------------------------------------------
+
+_EXECUTE_ALLOWED_KEYWORDS: Final[frozenset[str]] = frozenset({"INSERT", "UPDATE"})
+"""SQL keywords permitted for ``postgres_execute``."""
+
+_DELETE_ALLOWED_KEYWORDS: Final[frozenset[str]] = frozenset({"DELETE"})
+"""SQL keywords permitted for ``postgres_delete``."""
+
+
+def _classify_write_keyword(sql: str) -> str:
+    """Return the first substantive SQL keyword after stripping comments.
+
+    Used by ``postgres_execute`` / ``postgres_delete`` to validate that
+    only the expected DML keyword class is present.
+
+    Returns:
+        The uppercase first keyword, or ``""`` if none found.
+    """
+    cleaned = _COMMENT_RE.sub(" ", sql).strip()
+    if not cleaned:
+        return ""
+    match = _MAIN_KEYWORD_RE.search(cleaned)
+    if match is None:
+        return ""
+    return match.group(1).upper()
+
+
+@require_approval(AuthLevel.WRITE_NOTIFY, tool_name="postgres_execute")
+async def postgres_execute(
+    sql: str,
+    params: Sequence[Any] | None = None,
+) -> dict[str, Any]:
+    """Execute a **write** parameterized SQL statement (INSERT / UPDATE).
+
+    This function is separate from ``postgres_query`` so the read-only
+    guarantee on the primary query tool is preserved.
+
+    Args:
+        sql: SQL statement — ``INSERT`` or ``UPDATE`` only.
+            ``$1``, ``$2``, … placeholders for parameters.
+        params: Positional parameter values matching the placeholders.
+
+    Returns:
+        Dict with ``"affected_rows"`` (int) and ``"status"`` (str).
+
+    Raises:
+        ForbiddenOperationError: If *sql* is classified as forbidden
+            (DROP / TRUNCATE / ALTER / CREATE / GRANT / REVOKE) or
+            if the keyword is not INSERT or UPDATE.
+        ValueError: If parameter count does not match placeholder count.
+        asyncpg.PostgresError: On database-level errors.
+    """
+    # Layer 2: classify and validate keyword.
+    classification = classify_sql(sql)
+    if classification == "forbidden":
+        raise ForbiddenOperationError(
+            f"SQL statement is forbidden (DDL / DCL detected). "
+            f"Statement: {sql[:120]}"
+        )
+    if classification == "read":
+        raise ForbiddenOperationError(
+            f"Read-only statements (SELECT/SHOW/EXPLAIN) must use "
+            f"postgres_query, not postgres_execute. Statement: {sql[:120]}"
+        )
+
+    first_keyword = _classify_write_keyword(sql)
+    if first_keyword not in _EXECUTE_ALLOWED_KEYWORDS:
+        raise ForbiddenOperationError(
+            f"postgres_execute only permits INSERT or UPDATE. "
+            f"Detected keyword: {first_keyword or 'unknown'}. "
+            f"Statement: {sql[:120]}"
+        )
+
+    params = params or []
+    _validate_params(sql, params)
+
+    pool = await _get_pool()
+
+    try:
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                result = await conn.execute(sql, *params)
+    except asyncpg.exceptions.ConnectionDoesNotExistError as exc:
+        logger.error("postgres_connection_lost", error=str(exc))
+        raise
+    except asyncpg.PostgresError as exc:
+        logger.error(
+            "postgres_execute_error",
+            error=str(exc),
+            sql_preview=sql[:120],
+        )
+        raise
+
+    # asyncpg returns status string like "UPDATE 3" or "INSERT 0 1"
+    affected = _parse_affected_rows(result)
+    logger.info(
+        "postgres_execute_success",
+        affected_rows=affected,
+        status=result,
+        sql_preview=sql[:120],
+    )
+    return {"affected_rows": affected, "status": result}
+
+
+@require_approval(AuthLevel.DESTRUCTIVE_APPROVAL, tool_name="postgres_delete")
+async def postgres_delete(
+    sql: str,
+    params: Sequence[Any] | None = None,
+) -> dict[str, Any]:
+    """Execute a **DELETE** parameterized SQL statement.
+
+    Separate from ``postgres_execute`` because DELETE is destructive
+    and requires ``DESTRUCTIVE_APPROVAL`` rather than ``WRITE_NOTIFY``.
+
+    Args:
+        sql: SQL statement — ``DELETE`` only.
+            ``$1``, ``$2``, … placeholders for parameters.
+        params: Positional parameter values matching the placeholders.
+
+    Returns:
+        Dict with ``"affected_rows"`` (int) and ``"status"`` (str).
+
+    Raises:
+        ForbiddenOperationError: If *sql* is classified as forbidden
+            or if the keyword is not DELETE.
+        ValueError: If parameter count does not match placeholder count.
+        asyncpg.PostgresError: On database-level errors.
+    """
+    # Layer 2: classify and validate keyword.
+    classification = classify_sql(sql)
+    if classification == "forbidden":
+        raise ForbiddenOperationError(
+            f"SQL statement is forbidden (DDL / DCL detected). "
+            f"Statement: {sql[:120]}"
+        )
+    if classification == "read":
+        raise ForbiddenOperationError(
+            f"Read-only statements (SELECT/SHOW/EXPLAIN) must use "
+            f"postgres_query, not postgres_delete. Statement: {sql[:120]}"
+        )
+
+    first_keyword = _classify_write_keyword(sql)
+    if first_keyword not in _DELETE_ALLOWED_KEYWORDS:
+        raise ForbiddenOperationError(
+            f"postgres_delete only permits DELETE. "
+            f"Detected keyword: {first_keyword or 'unknown'}. "
+            f"Use postgres_execute for INSERT/UPDATE. "
+            f"Statement: {sql[:120]}"
+        )
+
+    params = params or []
+    _validate_params(sql, params)
+
+    pool = await _get_pool()
+
+    try:
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                result = await conn.execute(sql, *params)
+    except asyncpg.exceptions.ConnectionDoesNotExistError as exc:
+        logger.error("postgres_connection_lost", error=str(exc))
+        raise
+    except asyncpg.PostgresError as exc:
+        logger.error(
+            "postgres_delete_error",
+            error=str(exc),
+            sql_preview=sql[:120],
+        )
+        raise
+
+    affected = _parse_affected_rows(result)
+    logger.info(
+        "postgres_delete_success",
+        affected_rows=affected,
+        status=result,
+        sql_preview=sql[:120],
+    )
+    return {"affected_rows": affected, "status": result}
+
+
+def _parse_affected_rows(status: str) -> int:
+    """Parse affected row count from asyncpg status string.
+
+    asyncpg returns strings like ``"UPDATE 3"``, ``"INSERT 0 1"``,
+    or ``"DELETE 5"``.  Extract the trailing integer.
+    """
+    parts = status.strip().split()
+    if not parts:
+        return 0
+    try:
+        return int(parts[-1])
+    except ValueError:
+        return 0
+
+
+# ---------------------------------------------------------------------------
 # Tool registration
 # ---------------------------------------------------------------------------
 
@@ -294,3 +491,5 @@ def register_tools(mcp: FastMCP) -> None:
     mcp.tool(name="postgres_query")(postgres_query)
     mcp.tool(name="postgres_tables")(postgres_tables)
     mcp.tool(name="postgres_describe")(postgres_describe)
+    mcp.tool(name="postgres_execute")(postgres_execute)
+    mcp.tool(name="postgres_delete")(postgres_delete)

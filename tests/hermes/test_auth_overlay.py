@@ -740,3 +740,270 @@ class TestEdgeCases:
         result = handle_forbidden("shell", "rm_rf_root")
         assert result["action"] == "block"
         assert "FORBIDDEN" in result["reason"]
+
+
+# ==============================================================================
+# 11.  S1 new aliases — Hermes native, MCP fs_*, git, github, docker, redis, time
+# ==============================================================================
+
+
+TOOL_ALIASES = cast(dict[str, object], getattr(_auth_module, "TOOL_ALIASES"))
+
+
+class TestS1NewAliases:
+    """Verify all new TOOL_ALIASES added in S1 batch resolve correctly."""
+
+    @pytest.mark.parametrize(
+        "alias, expected_tool, expected_op",
+        [
+            # Hermes native tools (VPS logs showed these blocked)
+            ("read_file", "filesystem", "read"),
+            ("write_file", "filesystem", "write"),
+            ("search_files", "filesystem", "read"),
+            ("execute_code", "shell", "exec"),
+            ("memory", "redis", "get"),
+            ("skills_list", "shell", "exec"),
+            ("skill_manage", "shell", "exec"),
+            # MCP fs_* aliases
+            ("fs_read", "filesystem", "read"),
+            ("fs_write", "filesystem", "write"),
+            ("fs_delete", "filesystem", "delete"),
+            ("fs_list", "filesystem", "list"),
+            # Git force-push name mismatch
+            ("git_push_force", "git", "force_push"),
+            # GitHub read/get/search
+            ("github_list_repos", "github", "read"),
+            ("github_get_file", "github", "get"),
+            ("github_search_code", "github", "search"),
+            # Docker inspect/images
+            ("docker_inspect", "docker", "inspect"),
+            ("docker_images", "docker", "images"),
+            # Redis additional
+            ("redis_hget", "redis", "hget"),
+            ("redis_scan", "redis", "scan"),
+            ("redis_ttl", "redis", "ttl"),
+            ("redis_exists", "redis", "exists"),
+            ("redis_type", "redis", "type"),
+            ("redis_lpush", "redis", "lpush"),
+            ("redis_rpush", "redis", "rpush"),
+            ("redis_sadd", "redis", "sadd"),
+            ("redis_setnx", "redis", "setnx"),
+            ("redis_setex", "redis", "setex"),
+            ("redis_incr", "redis", "incr"),
+            ("redis_incrbyfloat", "redis", "incrbyfloat"),
+            ("redis_persist", "redis", "persist"),
+            ("redis_rename", "redis", "rename"),
+            # Time additional
+            ("time_days_in_month", "time", "*"),
+            ("time_relative_time", "time", "*"),
+            ("time_get_timestamp", "time", "*"),
+            ("time_get_week_year", "time", "*"),
+            ("time_convert_time", "time", "*"),
+            ("time_current_time", "time", "*"),
+            # Postgres S3b new tool functions
+            ("postgres_execute", "postgres", "insert"),
+            ("postgres_delete", "postgres", "delete_row"),
+        ],
+    )
+    def test_new_alias_resolves(
+        self, alias: str, expected_tool: str, expected_op: str
+    ) -> None:
+        """S1 alias maps through normalize_tool_name correctly."""
+        result = normalize_tool_name(alias)
+        assert result is not None, f"Alias '{alias}' returned None"
+        tool, op = result
+        assert tool == expected_tool, (
+            f"Alias '{alias}' → tool '{tool}', expected '{expected_tool}'"
+        )
+        if expected_op != "*":
+            assert op == expected_op, (
+                f"Alias '{alias}' → op '{op}', expected '{expected_op}'"
+            )
+
+    def test_all_s1_aliases_present_in_tool_aliases(self) -> None:
+        """All S1 aliases are keys in the TOOL_ALIASES dict."""
+        required_aliases = [
+            "read_file", "write_file", "search_files", "execute_code",
+            "memory", "skills_list", "skill_manage",
+            "fs_read", "fs_write", "fs_delete", "fs_list",
+            "git_push_force",
+            "github_list_repos", "github_get_file", "github_search_code",
+            "docker_inspect", "docker_images",
+            "redis_hget", "redis_scan", "redis_ttl", "redis_exists", "redis_type",
+            "redis_lpush", "redis_rpush", "redis_sadd", "redis_setnx", "redis_setex",
+            "redis_incr", "redis_incrbyfloat", "redis_persist", "redis_rename",
+            "time_days_in_month", "time_relative_time", "time_get_timestamp",
+            "time_get_week_year", "time_convert_time", "time_current_time",
+            "postgres_execute", "postgres_delete",
+        ]
+        for alias in required_aliases:
+            assert alias in TOOL_ALIASES, f"S1 alias '{alias}' missing from TOOL_ALIASES"
+
+    def test_new_aliases_enforce_correctly(self) -> None:
+        """S1 aliases enforce correct auth levels through the plugin."""
+        plugin = _make_plugin()
+
+        # read_file → (filesystem, read) → READ_AUTO → allow
+        assert _is_allow(plugin.pre_tool_call(tool_name="read_file"))
+
+        # write_file → (filesystem, write) → WRITE_NOTIFY → allow
+        assert _is_allow(plugin.pre_tool_call(tool_name="write_file"))
+
+        # execute_code → (shell, exec) → READ_AUTO → allow
+        assert _is_allow(plugin.pre_tool_call(tool_name="execute_code"))
+
+        # memory → (redis, get) → READ_AUTO → allow
+        assert _is_allow(plugin.pre_tool_call(tool_name="memory"))
+
+        # postgres_execute → (postgres, insert) → WRITE_NOTIFY → allow
+        assert _is_allow(plugin.pre_tool_call(tool_name="postgres_execute"))
+
+        # redis_persist → (redis, persist) → WRITE_NOTIFY → allow
+        assert _is_allow(plugin.pre_tool_call(tool_name="redis_persist"))
+
+        # redis_rename → (redis, rename) → WRITE_NOTIFY → allow
+        assert _is_allow(plugin.pre_tool_call(tool_name="redis_rename"))
+
+
+# ==============================================================================
+# 12.  S3 auth level changes — overlay enforcement reflects new levels
+# ==============================================================================
+
+
+class TestS3AuthLevelEnforcement:
+    """S3 auth unlock: overlay enforces new levels for postgres/redis."""
+
+    def test_postgres_insert_allows_via_overlay(self) -> None:
+        """postgres.insert is now WRITE_NOTIFY — overlay allows."""
+        plugin = _make_plugin()
+        result = plugin.pre_tool_call(
+            tool_name="postgres",
+            args={"operation": "insert"},
+        )
+        assert _is_allow(result), f"postgres.insert should allow (WRITE_NOTIFY), got {result}"
+
+    def test_postgres_update_allows_via_overlay(self) -> None:
+        """postgres.update is now WRITE_NOTIFY — overlay allows."""
+        plugin = _make_plugin()
+        result = plugin.pre_tool_call(
+            tool_name="postgres",
+            args={"operation": "update"},
+        )
+        assert _is_allow(result), f"postgres.update should allow (WRITE_NOTIFY), got {result}"
+
+    def test_postgres_delete_row_blocks_via_overlay(self) -> None:
+        """postgres.delete_row is now DESTRUCTIVE_APPROVAL — overlay blocks pending approval."""
+        plugin = _make_plugin()
+        result = plugin.pre_tool_call(
+            tool_name="postgres",
+            args={"operation": "delete_row"},
+        )
+        assert _has_block_action(result), f"postgres.delete_row should block (DESTRUCTIVE_APPROVAL), got {result}"
+        assert "APPROVAL_REQUIRED" in _block_field(result, "reason")
+
+    def test_redis_expire_allows_via_overlay(self) -> None:
+        """redis.expire is now WRITE_NOTIFY — overlay allows."""
+        plugin = _make_plugin()
+        result = plugin.pre_tool_call(
+            tool_name="redis",
+            args={"operation": "expire"},
+        )
+        assert _is_allow(result), f"redis.expire should allow (WRITE_NOTIFY), got {result}"
+
+    def test_redis_persist_allows_via_overlay(self) -> None:
+        """redis.persist is now WRITE_NOTIFY — overlay allows."""
+        plugin = _make_plugin()
+        result = plugin.pre_tool_call(
+            tool_name="redis",
+            args={"operation": "persist"},
+        )
+        assert _is_allow(result), f"redis.persist should allow (WRITE_NOTIFY), got {result}"
+
+    def test_redis_rename_allows_via_overlay(self) -> None:
+        """redis.rename is now WRITE_NOTIFY — overlay allows."""
+        plugin = _make_plugin()
+        result = plugin.pre_tool_call(
+            tool_name="redis",
+            args={"operation": "rename"},
+        )
+        assert _is_allow(result), f"redis.rename should allow (WRITE_NOTIFY), got {result}"
+
+
+# ==============================================================================
+# 13.  S2 G09 normalization — safety plugin _normalize_tool_for_matrix
+# ==============================================================================
+
+
+class TestG09Normalization:
+    """S2: safety plugin G09 alias normalization and defer behavior."""
+
+    def test_normalize_method_exists(self) -> None:
+        """GuinevereSafetyPlugin has _normalize_tool_for_matrix method."""
+        import importlib as _il
+        safety_mod = _il.import_module("src.hermes.safety_plugin")
+        plugin_cls = getattr(safety_mod, "GuinevereSafetyPlugin")
+        assert hasattr(plugin_cls, "_normalize_tool_for_matrix"), (
+            "GuinevereSafetyPlugin missing _normalize_tool_for_matrix"
+        )
+
+    def test_normalize_canonical_tool(self) -> None:
+        """Canonical tool names resolve directly."""
+        import importlib as _il
+        safety_mod = _il.import_module("src.hermes.safety_plugin")
+        plugin_cls = getattr(safety_mod, "GuinevereSafetyPlugin")
+        # Create instance with minimal constructor args
+        instance = plugin_cls.__new__(plugin_cls)
+        tool, op = instance._normalize_tool_for_matrix("postgres", {"operation": "select"})
+        assert tool == "postgres"
+        assert op == "select"
+
+    def test_normalize_hermes_native_read_file(self) -> None:
+        """Hermes native read_file normalizes to (filesystem, read)."""
+        import importlib as _il
+        safety_mod = _il.import_module("src.hermes.safety_plugin")
+        plugin_cls = getattr(safety_mod, "GuinevereSafetyPlugin")
+        instance = plugin_cls.__new__(plugin_cls)
+        tool, op = instance._normalize_tool_for_matrix("read_file", None)
+        assert tool == "filesystem"
+        assert op == "read"
+
+    def test_normalize_hermes_native_execute_code(self) -> None:
+        """Hermes native execute_code normalizes to (shell, exec)."""
+        import importlib as _il
+        safety_mod = _il.import_module("src.hermes.safety_plugin")
+        plugin_cls = getattr(safety_mod, "GuinevereSafetyPlugin")
+        instance = plugin_cls.__new__(plugin_cls)
+        tool, op = instance._normalize_tool_for_matrix("execute_code", None)
+        assert tool == "shell"
+        assert op == "exec"
+
+    def test_normalize_unknown_tool_defers(self) -> None:
+        """Unknown tool names return (None, ...) — G09 defers to auth overlay."""
+        import importlib as _il
+        safety_mod = _il.import_module("src.hermes.safety_plugin")
+        plugin_cls = getattr(safety_mod, "GuinevereSafetyPlugin")
+        instance = plugin_cls.__new__(plugin_cls)
+        tool, _op = instance._normalize_tool_for_matrix("completely_unknown_xyz", None)
+        assert tool is None, f"Unknown tool should defer (return None), got '{tool}'"
+
+    def test_normalize_strips_mcp_prefix(self) -> None:
+        """MCP prefixes are stripped before lookup."""
+        import importlib as _il
+        safety_mod = _il.import_module("src.hermes.safety_plugin")
+        plugin_cls = getattr(safety_mod, "GuinevereSafetyPlugin")
+        instance = plugin_cls.__new__(plugin_cls)
+        tool, op = instance._normalize_tool_for_matrix(
+            "mcp_fastmcp_custom_redis_get", None
+        )
+        # After stripping prefix → "redis_get" → tool_operation split → (redis, get)
+        assert tool == "redis", f"Expected 'redis', got '{tool}'"
+
+    def test_normalize_memory_maps_to_redis_get(self) -> None:
+        """Hermes memory tool normalizes to (redis, get)."""
+        import importlib as _il
+        safety_mod = _il.import_module("src.hermes.safety_plugin")
+        plugin_cls = getattr(safety_mod, "GuinevereSafetyPlugin")
+        instance = plugin_cls.__new__(plugin_cls)
+        tool, op = instance._normalize_tool_for_matrix("memory", None)
+        assert tool == "redis"
+        assert op == "get"

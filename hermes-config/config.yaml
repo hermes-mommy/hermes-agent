@@ -203,10 +203,9 @@ hooks:
 # mcp_servers with non-standard keys — this has been corrected to use the
 # documented Hermes mcp_servers shape.
 mcp_servers:
-  # FastMCP custom bridge — KEEP-7 custom tools (postgres, redis, obscura_cdp,
+  # FastMCP custom bridge — KEEP-7 specialized tools (postgres, redis, obscura_cdp,
   # grep_app, context7, sequential_thinking, time).
-  # Disabled by default per BD-008. Will be enabled by P4-005 after the
-  # FastMCP _config compatibility fix.
+  # Enabled after auth overlay alias verification (BD-008 resolved, S4 batch-plan).
   fastmcp_custom:
     enabled: false
     command: python
@@ -227,6 +226,25 @@ mcp_servers:
         - context7
         - sequential_thinking
         - time
+      resources: false
+      prompts: false
+
+  # Full MCP server — all 16 tool modules (filesystem, brave_search, exa,
+  # websearch, fetch, git, github, docker, shell, postgres, redis, obscura_cdp,
+  # grep_app, context7, sequential_thinking, time).
+  # Added S4 batch-plan: enables comprehensive MCP tool coverage via src.mcp.manager.
+  fastmcp_full:
+    enabled: true
+    command: python
+    args:
+      - -m
+      - src.mcp.manager
+    cwd: /home/guinevere/code/guinevere
+    env_file: .env.mcp
+    timeout: 120
+    connect_timeout: 60
+    supports_parallel_tool_calls: false
+    tools:
       resources: false
       prompts: false
 
