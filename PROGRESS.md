@@ -304,6 +304,25 @@
 
 **Phase 6 caveats / follow-ups**: `cx/gpt-5.5` remains known-degraded until Codex credentials are refreshed; forced hard-cap proof blocks fail-closed through `budget_check_failed` rather than clean `MONTHLY_BLOCKED`; improve monthly-block reporting in a follow-up. Phase 7 readiness: YES.
 
+### Phase 6 System Audit — ADR-035 Compliance (2026-06-07)
+
+8-domain parallel audit + 3 Oracle auditor gates. Evidence corrected per auditor findings.
+
+| Domain | Verdict | Notes |
+|---|---|---|
+| 01 Safety Compliance | **PASS** | 10 safety plugin gates + 3 shell hooks (budget/consent/DNR), all fail-closed |
+| 02 Architecture | **CONDITIONAL** | Config valid; runtime MCP/tool execution needs VPS verification |
+| 03 Code Quality | **CONDITIONAL** | 11 `# type: ignore` across `src/` (0 in `src/hermes/`); pre-ADR-035 |
+| 04 Performance | **PASS** | VPS metrics: Hermes <2s, 9Router <1s; 139/139 Phase 7 tests green |
+| 05 Security | **PASS** | No plaintext secrets; SOPS active; `*.env` gitignore covers all .env files |
+| 06 Aizanta Isolation | **PASS** | Zero Aizanta touch; ports 5433/6380 hardcoded; guards block 5432/6379 |
+| 07 Documentation | **CONDITIONAL** | ADR-035 Implemented; P0-P8 complete; 71 stale StepPrompts |
+| 08 Regression | **FAIL (pre-existing)** | `pytest-asyncio` missing from test deps; not ADR-035 regression |
+
+**Overall: PASS WITH CONDITIONS** — No safety regressions, no consent violations, no Aizanta cross-contamination. Pre-existing `pytest-asyncio` gap recommended for follow-up.
+
+**Evidence**: `docs/setup-evidence/phase6-audit/VERIFICATION-SUMMARY.md`, 8 per-domain evidence files, 3 auditor gate reports, 8 source reports at `research-reports/phase6-audit/`.
+
 ## P6: MCP Tools (21 steps)
 *ADRs: ADR-020, ADR-033 | Cost: $1/mo avg | Deps: P5 complete*
 
