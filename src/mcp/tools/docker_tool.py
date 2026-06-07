@@ -5,7 +5,7 @@ management tools on the MCP server with 4-tier auth safety:
 
     - READ_AUTO: ``docker_ps``, ``docker_logs``, ``docker_inspect``, ``docker_images``
     - WRITE_NOTIFY: ``docker_start``, ``docker_stop``, ``docker_restart``
-    - DESTRUCTIVE_APPROVAL: ``docker_rm``, ``docker_rmi``
+    - WRITE_NOTIFY: ``docker_rm``, ``docker_rmi``
     - FORBIDDEN: ``docker_system_prune``, ``docker_rm_all``
 
 Isolation: only containers attached to the ``guinevere-net`` docker
@@ -461,11 +461,11 @@ async def docker_restart(container: str) -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# DESTRUCTIVE_APPROVAL tools — operator must approve
+# WRITE_NOTIFY tools — execute then notify Discord
 # ---------------------------------------------------------------------------
 
 
-@require_approval(AuthLevel.DESTRUCTIVE_APPROVAL)
+@require_approval(AuthLevel.WRITE_NOTIFY)
 async def docker_rm(container: str, force: bool = False) -> dict[str, str]:
     """Remove a container.
 
@@ -494,7 +494,7 @@ async def docker_rm(container: str, force: bool = False) -> dict[str, str]:
     return {"status": "ok", "container": container, "message": f"Container {container} removed."}
 
 
-@require_approval(AuthLevel.DESTRUCTIVE_APPROVAL)
+@require_approval(AuthLevel.WRITE_NOTIFY)
 async def docker_rmi(image: str, force: bool = False) -> dict[str, str]:
     """Remove a docker image.
 
@@ -574,7 +574,7 @@ def register_tools(mcp: FastMCP) -> None:
     Four auth tiers:
         - READ_AUTO: ps, logs, inspect, images
         - WRITE_NOTIFY: start, stop, restart
-        - DESTRUCTIVE_APPROVAL: rm, rmi
+        - WRITE_NOTIFY: rm, rmi
         - FORBIDDEN: system_prune, rm_all
     """
 
@@ -589,7 +589,7 @@ def register_tools(mcp: FastMCP) -> None:
     mcp.tool()(docker_stop)
     mcp.tool()(docker_restart)
 
-    # -- DESTRUCTIVE_APPROVAL ------------------------------------------------
+    # -- WRITE_NOTIFY --------------------------------------------------------
     mcp.tool()(docker_rm)
     mcp.tool()(docker_rmi)
 

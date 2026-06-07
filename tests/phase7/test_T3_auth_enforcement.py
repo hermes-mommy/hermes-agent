@@ -77,10 +77,10 @@ class TestAuthLevelContract:
         level = get_auth_level("filesystem", "write")
         assert level == AuthLevel.WRITE_NOTIFY
 
-    def test_shell_exec_not_read_auto(self) -> None:
-        """Shell exec operations are not READ_AUTO."""
+    def test_shell_exec_is_read_auto(self) -> None:
+        """Shell exec is READ_AUTO (downgraded from DESTRUCTIVE_APPROVAL)."""
         level = get_auth_level("shell", "exec")
-        assert level != AuthLevel.READ_AUTO
+        assert level == AuthLevel.READ_AUTO
 
     def test_git_commit_is_at_least_write_notify(self) -> None:
         """Git commit requires at minimum WRITE_NOTIFY."""

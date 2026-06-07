@@ -69,6 +69,7 @@ _SAMPLE_READ_AUTO: list[tuple[str, str]] = [
     ("docker", "logs"),
     ("docker", "inspect"),
     ("docker", "images"),
+    ("shell", "exec"),
 ]
 
 _SAMPLE_WRITE_NOTIFY: list[tuple[str, str]] = [
@@ -91,6 +92,8 @@ _SAMPLE_WRITE_NOTIFY: list[tuple[str, str]] = [
     ("docker", "start"),
     ("docker", "stop"),
     ("docker", "restart"),
+    ("docker", "rm"),
+    ("docker", "rmi"),
 ]
 
 _SAMPLE_DESTRUCTIVE: list[tuple[str, str]] = [
@@ -102,9 +105,6 @@ _SAMPLE_DESTRUCTIVE: list[tuple[str, str]] = [
     ("redis", "expire"),
     ("redis", "persist"),
     ("redis", "rename"),
-    ("shell", "exec"),
-    ("docker", "rm"),
-    ("docker", "rmi"),
 ]
 
 _SAMPLE_FORBIDDEN: list[tuple[str, str]] = [

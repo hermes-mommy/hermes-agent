@@ -169,8 +169,8 @@ sops -d /home/guinevere/config/.env.sops > /tmp/.env
 | 12 | git | ✅ log, diff, status, branch list | commit, branch create, checkout | push to main, force operations | force-push, rebase on shared branches |
 | 13 | postgres | ✅ SELECT queries all schemas | INSERT, UPDATE (non-critical tables) | DELETE, schema ALTER, DROP | DROP DATABASE, TRUNCATE production tables |
 | 14 | redis | ✅ GET, KEYS, TTL, INFO | SET, DEL (cache entries) | FLUSHDB, CONFIG SET | FLUSHALL |
-| 15 | shell | ✅ Whitelisted read commands (ls, cat, grep, df, ps) | Whitelisted write commands (mkdir, cp, touch) | systemctl restart, apt install, docker commands | `rm -rf`, `chmod 777`, `curl | bash`, any command outside whitelist |
-| 16 | docker | ✅ ps, logs, inspect, stats | start, stop, restart containers | docker build, docker pull (new images) | `docker system prune`, `docker rm -f`, remove volumes |
+| 15 | shell | ✅ Whitelisted read commands (ls, cat, grep, df, ps), exec | Whitelisted write commands (mkdir, cp, touch) | systemctl restart, apt install, docker commands | `rm -rf`, `chmod 777`, `curl | bash`, any command outside whitelist |
+| 16 | docker | ✅ ps, logs, inspect, stats | start, stop, restart, rm, rmi containers/images | docker build, docker pull (new images) | `docker system prune`, `docker rm -f`, remove volumes |
 
 ### 2.3 Emergency Override Protocol
 
@@ -1918,7 +1918,6 @@ shell:
     - "init 6"
     - "docker system prune"
     - "docker rm -f"
-    - "docker rmi"
     - "docker volume rm"
     - "DROP TABLE"
     - "DROP DATABASE"
@@ -2082,9 +2081,9 @@ docker:
 **Guinevere-Specific Rules** (MCP15):
 
 - **Autonomous (L1)**: `docker ps`, `docker logs`, `docker inspect`, `docker stats`
-- **Write-Notify (L2)**: `docker start`, `docker stop`, `docker restart` for managed containers
+- **Write-Notify (L2)**: `docker start`, `docker stop`, `docker restart`, `docker rm`, `docker rmi` for managed containers and guinevere-prefixed images
 - **Approval Required (L3)**: `docker build`, `docker pull` (new images), `docker compose up/down`
-- **Forbidden (L4)**: `docker system prune`, `docker rm -f`, `docker volume rm`, `docker rmi`
+- **Forbidden (L4)**: `docker system prune`, `docker rm -f`, `docker volume rm`
 - Guinevere monitors container health every 30 seconds via health check architecture
 - Auto-restart of unhealthy containers is allowed without approval (part of health check protocol)
 - Docker operations logged with container name, operation, and result

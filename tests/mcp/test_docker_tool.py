@@ -583,12 +583,12 @@ class TestDockerRestart:
 
 
 # ============================================================================
-# TestDockerRm — DESTRUCTIVE_APPROVAL
+# TestDockerRm — WRITE_NOTIFY
 # ============================================================================
 
 
 class TestDockerRm:
-    """``docker_rm`` — remove a container (DESTRUCTIVE_APPROVAL)."""
+    """``docker_rm`` — remove a container (WRITE_NOTIFY)."""
 
     def test_removes_container(self) -> None:
         """Returns status dict on success."""
@@ -605,8 +605,6 @@ class TestDockerRm:
             with patch(
                 "src.mcp.tools.docker_tool._run_docker",
                 side_effect=_side_effect,
-            ), patch(
-                "src.mcp.auth._wait_for_approval", return_value=True
             ):
                 result = await docker_rm("guinevere-agent")
             assert result["status"] == "ok"
@@ -630,8 +628,6 @@ class TestDockerRm:
             with patch(
                 "src.mcp.tools.docker_tool._run_docker",
                 side_effect=_side_effect,
-            ), patch(
-                "src.mcp.auth._wait_for_approval", return_value=True
             ):
                 await docker_rm("guinevere-agent", force=True)
             # at least one call should contain "-f"
@@ -653,8 +649,6 @@ class TestDockerRm:
             with patch(
                 "src.mcp.tools.docker_tool._run_docker",
                 side_effect=_side_effect,
-            ), patch(
-                "src.mcp.auth._wait_for_approval", return_value=True
             ):
                 with pytest.raises(DockerNetworkError, match="guinevere-net"):
                     await docker_rm("aizanta-app")
@@ -663,21 +657,19 @@ class TestDockerRm:
 
 
 # ============================================================================
-# TestDockerRmi — DESTRUCTIVE_APPROVAL
+# TestDockerRmi — WRITE_NOTIFY
 # ============================================================================
 
 
 class TestDockerRmi:
-    """``docker_rmi`` — remove a docker image (DESTRUCTIVE_APPROVAL)."""
+    """``docker_rmi`` — remove a docker image (WRITE_NOTIFY)."""
 
     def test_removes_image(self) -> None:
         """Returns status dict on success."""
         ok = _ok_result(stdout="Untagged: guinevere:old")
 
         async def _run() -> None:
-            with _patch_run_docker(ok), patch(
-                "src.mcp.auth._wait_for_approval", return_value=True
-            ):
+            with _patch_run_docker(ok):
                 result = await docker_rmi("guinevere:old")
             assert result["status"] == "ok"
             assert result["image"] == "guinevere:old"
@@ -696,8 +688,6 @@ class TestDockerRmi:
             with patch(
                 "src.mcp.tools.docker_tool._run_docker",
                 side_effect=_side_effect,
-            ), patch(
-                "src.mcp.auth._wait_for_approval", return_value=True
             ):
                 await docker_rmi("guinevere:old", force=True)
             rm_calls = [c for c in captured if "rmi" in c and "-f" in c]
@@ -709,22 +699,16 @@ class TestDockerRmi:
         """Image name with shell chars raises DockerContainerError."""
 
         async def _run() -> None:
-            with patch(
-                "src.mcp.auth._wait_for_approval", return_value=True
-            ):
-                with pytest.raises(DockerContainerError, match="Invalid image name"):
-                    await docker_rmi("good;bad")
+            with pytest.raises(DockerContainerError, match="Invalid image name"):
+                await docker_rmi("good;bad")
 
         asyncio.run(_run())
     def test_non_guinevere_image_rejected(self) -> None:
         """Non-guinevere image names are rejected with DockerError."""
 
         async def _run() -> None:
-            with patch(
-                "src.mcp.auth._wait_for_approval", return_value=True
-            ):
-                with pytest.raises(DockerError, match="image_not_guinevere"):
-                    await docker_rmi("postgres:16")
+            with pytest.raises(DockerError, match="image_not_guinevere"):
+                await docker_rmi("postgres:16")
 
         asyncio.run(_run())
 
@@ -733,9 +717,7 @@ class TestDockerRmi:
         ok = _ok_result(stdout="Untagged: guinevere:latest")
 
         async def _run() -> None:
-            with _patch_run_docker(ok), patch(
-                "src.mcp.auth._wait_for_approval", return_value=True
-            ):
+            with _patch_run_docker(ok):
                 result = await docker_rmi("guinevere:latest")
             assert result["status"] == "ok"
 
@@ -987,9 +969,16 @@ class TestRegisterTools:
         assert "docker_start" in registered
         assert "docker_stop" in registered
         assert "docker_restart" in registered
+        assert "docker_rm" in registered
+        assert "docker_rmi" in registered
 
     def test_destructive_approval_tools_registered(self) -> None:
-        """DESTRUCTIVE_APPROVAL tools are registered."""
+        """DESTRUCTIVE_APPROVAL tools are registered.
+
+        Note: docker_rm and docker_rmi were moved to WRITE_NOTIFY;
+        no docker tools currently occupy the DESTRUCTIVE_APPROVAL tier.
+        The registered tool list is still verified for completeness.
+        """
         registered: list[str] = []
 
         class FakeMCP:
@@ -1002,6 +991,8 @@ class TestRegisterTools:
 
         fake_mcp: Any = FakeMCP()
         register_tools(fake_mcp)
+        # Verify the tools that WERE DESTRUCTIVE_APPROVAL are still registered
+        # (now as WRITE_NOTIFY), and no spurious additions exist.
         assert "docker_rm" in registered
         assert "docker_rmi" in registered
 
@@ -1093,8 +1084,6 @@ class TestNetworkIsolation:
             with patch(
                 "src.mcp.tools.docker_tool._run_docker",
                 side_effect=_side_effect,
-            ), patch(
-                "src.mcp.auth._wait_for_approval", return_value=True
             ):
                 with pytest.raises(DockerNetworkError, match="guinevere-net"):
                     await docker_rm("other-app")

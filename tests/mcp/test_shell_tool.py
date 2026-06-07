@@ -234,9 +234,11 @@ def _fake_timeout_process(timeout_after: float = 0.0) -> AsyncMock:
 
 
 async def _approved_shell_exec(command: str, **kwargs: object) -> dict[str, Any]:
-    """Run ``shell_exec`` with destructive approval granted for shell tests."""
-    with patch("src.mcp.auth._wait_for_approval", return_value=True):
-        return await shell_exec(command, **kwargs)
+    """Run ``shell_exec`` for shell tests.
+
+    Shell exec is now READ_AUTO so no approval mock is needed.
+    """
+    return await shell_exec(command, **kwargs)
 
 
 class TestShellExecSuccess:
@@ -569,11 +571,11 @@ class TestRegisterTools:
         assert len(registered) == 1
         assert "shell_exec" in registered
 
-    def test_auth_level_is_destructive_approval(self) -> None:
-        """The decorator chain must use AuthLevel.DESTRUCTIVE_APPROVAL."""
+    def test_auth_level_is_read_auto(self) -> None:
+        """The decorator chain must use AuthLevel.READ_AUTO."""
         # Verify the module-level import of AuthLevel is as expected.
         from src.mcp.tools.shell_tool import AuthLevel as ImportedLevel  # noqa: F811
-        assert ImportedLevel.DESTRUCTIVE_APPROVAL is AuthLevel.DESTRUCTIVE_APPROVAL
+        assert ImportedLevel.READ_AUTO is AuthLevel.READ_AUTO
 
 
 # ============================================================================

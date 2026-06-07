@@ -218,6 +218,7 @@ class TestAuthMatrixEnforcement:
         assert get_auth_level("time", "*") == AuthLevel.READ_AUTO
         assert get_auth_level("filesystem", "read") == AuthLevel.READ_AUTO
         assert get_auth_level("git", "log") == AuthLevel.READ_AUTO
+        assert get_auth_level("shell", "exec") == AuthLevel.READ_AUTO
 
     def test_get_auth_level_write_notify(self) -> None:
         """WRITE_NOTIFY operations return AuthLevel.WRITE_NOTIFY."""
@@ -225,12 +226,13 @@ class TestAuthMatrixEnforcement:
         assert get_auth_level("redis", "set") == AuthLevel.WRITE_NOTIFY
         assert get_auth_level("git", "commit") == AuthLevel.WRITE_NOTIFY
         assert get_auth_level("docker", "start") == AuthLevel.WRITE_NOTIFY
+        assert get_auth_level("docker", "rm") == AuthLevel.WRITE_NOTIFY
+        assert get_auth_level("docker", "rmi") == AuthLevel.WRITE_NOTIFY
 
     def test_get_auth_level_destructive_approval(self) -> None:
         """DESTRUCTIVE_APPROVAL operations return AuthLevel.DESTRUCTIVE_APPROVAL."""
         assert get_auth_level("filesystem", "delete") == AuthLevel.DESTRUCTIVE_APPROVAL
         assert get_auth_level("redis", "del") == AuthLevel.DESTRUCTIVE_APPROVAL
-        assert get_auth_level("docker", "rm") == AuthLevel.DESTRUCTIVE_APPROVAL
 
     def test_get_auth_level_forbidden(self) -> None:
         """FORBIDDEN operations return AuthLevel.FORBIDDEN."""
