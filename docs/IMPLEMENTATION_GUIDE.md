@@ -3,7 +3,7 @@
 > User manual for the Guinevere implementation system — 202 steps (MVP) + 34 steps (Stabilization) + 122 steps (Expansion, P11-P15) across 23 phases (P0-P22), $35-44/month budget, shared VPS constraints. P16-P22: TBD.
 
 **Audience**: Faiz (operator) and AI agents (Guinevere, sub-agents)
-**Last updated**: 2026-05-31
+**Last updated**: 2026-06-07
 **Companion files**: `PROGRESS.md`, `stepprompts/StepPrompts.md`, `CHECKLIST.md`
 
 ---
@@ -11,6 +11,8 @@
 ## 1. Introduction
 
 Guinevere deploys on a shared VPS (hostdata.id, 4C/16GB, Ubuntu 24.04). The implementation system breaks deployment into **23 phases (P0-P22)** with **202 MVP steps (P0-P8), 34 Stabilization steps (P9-P10), and 122 Expansion steps (P11-P15) with P16-P22 TBD**, each with exact commands, verification, rollback, and cost impact.
+
+**ADR-035 closure note (2026-06-07):** The Hybrid Hermes Migration architecture is implemented. Operational caveat B10 remains accepted risk until offline age-key recovery and `secrets/backup/` restoration re-enable encrypted S3/R2 restore; B11 uses the verified sentinel path `/home/guinevere/.backup/last-success`; B12 is resolved by exported metrics `hermes_safety_blocks_total`, `hermes_session_count`, and `hermes_message_count_total`, while `hermes_gateway_up` remains intentionally omitted.
 
 ### How to Use This System
 

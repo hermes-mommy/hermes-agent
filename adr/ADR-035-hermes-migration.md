@@ -1,7 +1,7 @@
 ---
 adr: 035
 title: "Hermes NousResearch Migration Architecture"
-status: "Accepted"
+status: "Implemented"
 date: "2026-06-04"
 deciders:
   - "Faiz (Owner, solo developer Indonesia)"
@@ -42,7 +42,7 @@ related_documents:
 
 ## Status
 
-Accepted
+Implemented
 
 ## Date
 
@@ -1429,6 +1429,7 @@ Every rollback starts with `hermes gateway stop`. This is the universal kill-swi
 - PostgreSQL+pgvector is write authority for all canonical memory throughout migration.
 - `hermes checkpoints` MUST be created before every phase.
 - The 5-pillar architecture is the binding target. Deviations require re-planning and Faiz approval.
+- **Implementation closure (2026-06-07):** ADR-035 is now implemented. B10 remains an accepted operational DR risk because encrypted S3/R2 restore still depends on offline age-key recovery and recreating `secrets/backup/`; verified fallback artifacts exist at `/home/guinevere/backups/hermes-post-migration-final-20260607-125101.zip`, `/home/guinevere/backups/guinevere-post-migration-20260607.sql`, Redis `LASTSAVE` 2026-06-07T12:49:36+07:00, and sentinel `/home/guinevere/.backup/last-success`. B11 is resolved by documenting the operational sentinel path `/home/guinevere/.backup/last-success` instead of `/var/log/guinevere/last-backup-success`. B12 is resolved by exported Hermes-native metrics `hermes_safety_blocks_total`, `hermes_session_count`, and `hermes_message_count_total`; `hermes_gateway_up` remains intentionally omitted because the current 9191 metrics target is not authoritative gateway-process liveness. Closure evidence: `docs/setup-evidence/hermes-migration/final-closure/`.
 
 ### Phase 0: Security Remediation (2-3 days)
 

@@ -2,8 +2,8 @@
 
 **Project:** Guinevere de Baroque - Autonomous AI Companion & Engineering System
 **Version:** 1.0
-**Date:** 2026-05-31
-**Status:** READY FOR EXECUTION
+**Date:** 2026-06-07
+**Status:** IMPLEMENTATION COMPLETE — ADR-035 CLOSED WITH ACCEPTED DR CAVEAT
 **Source:** `audit-reports/2026-05-31-implementation-synthesis.md`
 **Acceptance Criteria:** `docs/10-governance/16-AcceptanceCriteriaCatalog_v1.0.md`
 **Budget:** USD 30/month hard cap (AC-FIN-001)
@@ -20,6 +20,8 @@
 2. **During each phase**: Work through Step Verification, then Integration Tests, then Security Checks, then Rollback Test.
 3. **After each phase**: Confirm Phase Complete Criteria, create evidence files, then proceed to next phase.
 4. **Before MVP go-live**: Complete the MVP Gate Checklist (Section 26) -- all blocking ACs must PASS.
+
+> ADR-035 closure note (2026-06-07): The Hybrid Hermes Migration architecture is implemented. Backup/DR caveat B10 remains accepted risk pending offline age-key recovery and `secrets/backup/` restoration; B11 and B12 are resolved through operational/documentation updates.
 
 ### Budget Tracking Table
 
