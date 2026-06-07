@@ -12,12 +12,26 @@ Exit codes:
 
 from __future__ import annotations
 
+import importlib
+import logging
 import re
 import sys
 import time
-from typing import Final
+from typing import Final, Protocol, cast
 
-from _hook_utils import read_stdin_json, setup_logger, write_stdout_json
+
+class _HookUtilsModule(Protocol):
+    def read_stdin_json(self) -> dict[str, object]: ...
+
+    def setup_logger(self, name: str) -> logging.Logger: ...
+
+    def write_stdout_json(self, payload: dict[str, object]) -> None: ...
+
+
+_hook_utils = cast(_HookUtilsModule, cast(object, importlib.import_module("_hook_utils")))
+read_stdin_json = _hook_utils.read_stdin_json
+setup_logger = _hook_utils.setup_logger
+write_stdout_json = _hook_utils.write_stdout_json
 
 _log = setup_logger("safety_scan")
 
@@ -90,10 +104,10 @@ FORBIDDEN_PATTERNS: Final[list[tuple[str, re.Pattern[str], str]]] = [
     (
         "F-07",
         re.compile(
-            r"(?:if\s+you\s+(?:don'?t|can'?t|won'?t).{0,30}(?:I(?:'?ll| will)\s+"
-            r"(?:stop\s+(?:caring|loving|being|talking)|leave|withdraw|go\s+away))|"
-            r"(?:you(?:'?re| are)\s+(?:disappointing|failing).{0,20}(?:I\s+(?:can'?t|won'?t|don'?t)\s+"
-            r"(?:love|care\s+for|support)))",
+            r"(?:if\s+you\s+(?:don'?t|can'?t|won'?t).{0,30}"
+            r"I(?:'?ll| will)\s+(?:stop\s+(?:caring|loving|being|talking)|leave|withdraw|go\s+away)|"
+            r"you(?:'?re| are)\s+(?:disappointing|failing).{0,20}"
+            r"I\s+(?:can'?t|won'?t|don'?t)\s+(?:love|care\s+for|support))",
             re.IGNORECASE,
         ),
         "Love withdrawal during distress detected",
@@ -174,7 +188,7 @@ FORBIDDEN_PATTERNS: Final[list[tuple[str, re.Pattern[str], str]]] = [
         re.compile(
             r"(?:I(?:'?ve| have)\s+(?:decided|chosen|determined)\s+to\s+(?:change|modify|"
             r"alter|evolve)\s+(?:my|the)\s+(?:persona|identity|personality|character|"
-            r"core|nature|self)",
+            r"core|nature|self))",
             re.IGNORECASE,
         ),
         "Autonomous persona drift declaration detected",
