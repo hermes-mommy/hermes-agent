@@ -1093,6 +1093,8 @@ class TestNetworkIsolation:
             with patch(
                 "src.mcp.tools.docker_tool._run_docker",
                 side_effect=_side_effect,
+            ), patch(
+                "src.mcp.auth._wait_for_approval", return_value=True
             ):
                 with pytest.raises(DockerNetworkError, match="guinevere-net"):
                     await docker_rm("other-app")

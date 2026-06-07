@@ -16,7 +16,7 @@ from typing import Any
 import structlog
 
 from .colors import PRIMARY
-from ._embed_helpers import (
+from ._embed_utils import (
     EmbedData,
     EmbedField,
     defer_ephemeral,
@@ -200,7 +200,7 @@ async def memory_export_callback(interaction: Any) -> None:
     Args:
         interaction: The Discord ``Interaction`` to respond to.
     """
-    from .commands import is_faiz_interaction
+    from ._auth_guard import is_faiz_interaction
 
     if not is_faiz_interaction(interaction):
         await send_denied(interaction)

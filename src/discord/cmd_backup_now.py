@@ -15,7 +15,7 @@ from typing import Any
 import structlog
 
 from .colors import INFO_BLUE, ALERT
-from ._embed_helpers import (
+from ._embed_utils import (
     EmbedData,
     EmbedField,
     defer_ephemeral,
@@ -36,7 +36,7 @@ BACKUP_SCRIPT: str = "scripts/guinevere-backup.sh"
 
 async def backup_now_callback(interaction: Any) -> None:
     """Handle a ``/backup-now`` interaction."""
-    from .commands import is_faiz_interaction
+    from ._auth_guard import is_faiz_interaction
 
     if not is_faiz_interaction(interaction):
         await send_denied(interaction)

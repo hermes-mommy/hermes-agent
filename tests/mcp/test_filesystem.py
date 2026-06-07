@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -33,6 +33,12 @@ from src.mcp.tools.filesystem import (  # noqa: E402
 def _config_for(path: Path) -> FilesystemConfig:
     """Build a ``FilesystemConfig`` that allows *path* only."""
     return FilesystemConfig(allowed_paths=frozenset([str(path)]))
+
+
+async def _approved_fs_delete(path: str, config: FilesystemConfig) -> dict[str, str]:
+    """Run ``fs_delete`` with destructive approval granted for filesystem tests."""
+    with patch("src.mcp.auth._wait_for_approval", return_value=True):
+        return await fs_delete(path, config)
 
 
 # ============================================================================
@@ -109,9 +115,10 @@ class TestNullByteRejection:
     def test_null_byte_in_fs_delete(self, tmp_path: Path) -> None:
         """``fs_delete`` rejects null-byte paths."""
         cfg = _config_for(tmp_path)
+
         with pytest.raises(ValueError, match="null byte"):
             import asyncio
-            asyncio.run(fs_delete(str(tmp_path) + "\x00", cfg))
+            asyncio.run(_approved_fs_delete(str(tmp_path) + "\x00", cfg))
 
 
 # ============================================================================
@@ -385,7 +392,7 @@ class TestFsDelete:
         f = tmp_path / "to_delete.txt"
         f.write_text("temp", encoding="utf-8")
 
-        result = asyncio.run(fs_delete(str(f), cfg))
+        result = asyncio.run(_approved_fs_delete(str(f), cfg))
         assert result == {"status": "deleted", "path": str(f.resolve())}
         assert not f.exists()
 
@@ -395,7 +402,7 @@ class TestFsDelete:
 
         cfg = _config_for(tmp_path)
         with pytest.raises(FileNotFoundError):
-            asyncio.run(fs_delete(str(tmp_path / "ghost.txt"), cfg))
+            asyncio.run(_approved_fs_delete(str(tmp_path / "ghost.txt"), cfg))
 
     def test_delete_forbidden_path(self, tmp_path: Path) -> None:
         """Deleting outside whitelist raises ``PathForbiddenError``."""
@@ -403,7 +410,7 @@ class TestFsDelete:
 
         cfg = _config_for(tmp_path)
         with pytest.raises(PathForbiddenError):
-            asyncio.run(fs_delete("/etc/critical.conf", cfg))
+            asyncio.run(_approved_fs_delete("/etc/critical.conf", cfg))
 
 
 # ============================================================================

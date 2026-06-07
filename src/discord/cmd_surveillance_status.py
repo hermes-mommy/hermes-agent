@@ -274,6 +274,12 @@ _inject_consumer_health: Callable[..., Awaitable[str]] = _gather_consumer_health
 
 async def surveillance_status_callback(
     interaction: Any,
+    *,
+    _get_consent_status: Callable[..., Awaitable[dict[str, str]]] | None = None,
+    _get_device_count: Callable[..., Awaitable[int]] | None = None,
+    _get_last_event_timestamp: Callable[..., Awaitable[str]] | None = None,
+    _get_buffer_size: Callable[..., Awaitable[str]] | None = None,
+    _get_consumer_health: Callable[..., Awaitable[str]] | None = None,
 ) -> None:
     """Handle a ``/surveillance-status`` interaction.
 
@@ -281,10 +287,15 @@ async def surveillance_status_callback(
     metadata, and sends an Embed as a followup.
 
     Data-gathering callables are injectable via module-level
-    ``_inject_*`` variables for testability (monkeypatch in tests).
+    ``_inject_*`` variables or keyword-only overrides for tests.
 
     Args:
         interaction: The Discord ``Interaction`` to respond to.
+        _get_consent_status: Optional consent-status gather override.
+        _get_device_count: Optional device-count gather override.
+        _get_last_event_timestamp: Optional last-event gather override.
+        _get_buffer_size: Optional buffer-size gather override.
+        _get_consumer_health: Optional consumer-health gather override.
     """
     # ── Faiz-only guard ──
     if not is_faiz_interaction(interaction):
@@ -307,32 +318,38 @@ async def surveillance_status_callback(
     # ── Gather data ──
     data: dict[str, Any] = {}
 
+    consent_status_getter = _get_consent_status or _inject_consent_status
+    device_count_getter = _get_device_count or _inject_device_count
+    last_event_getter = _get_last_event_timestamp or _inject_last_event_timestamp
+    buffer_size_getter = _get_buffer_size or _inject_buffer_size
+    consumer_health_getter = _get_consumer_health or _inject_consumer_health
+
     try:
-        data["consent_status"] = await _inject_consent_status()
+        data["consent_status"] = await consent_status_getter()
     except Exception:
         logger.exception("surveillance_status_consent_gather_failed")
         data["consent_status"] = {}
 
     try:
-        data["active_devices"] = await _inject_device_count()
+        data["active_devices"] = await device_count_getter()
     except Exception:
         logger.exception("surveillance_status_device_count_gather_failed")
         data["active_devices"] = "Unavailable"
 
     try:
-        data["last_event"] = await _inject_last_event_timestamp()
+        data["last_event"] = await last_event_getter()
     except Exception:
         logger.exception("surveillance_status_last_event_gather_failed")
         data["last_event"] = "Unavailable"
 
     try:
-        data["buffer_size"] = await _inject_buffer_size()
+        data["buffer_size"] = await buffer_size_getter()
     except Exception:
         logger.exception("surveillance_status_buffer_size_gather_failed")
         data["buffer_size"] = "Unavailable"
 
     try:
-        data["consumer_status"] = await _inject_consumer_health()
+        data["consumer_status"] = await consumer_health_getter()
     except Exception:
         logger.exception("surveillance_status_consumer_health_gather_failed")
         data["consumer_status"] = "Unavailable"

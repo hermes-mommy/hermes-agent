@@ -1,4 +1,4 @@
-"""Deterministic tests for ``src.discord.startup``.
+"""Deterministic tests for ``src.discord._startup``.
 
 All tests run without a real ``discord.py`` runtime.  The ``on_ready``
 handler is tested with a fake discord module (mocked via ``importlib``)
@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 
 from src.discord.colors import PRIMARY
-from src.discord.startup import (
+from src.discord._startup import (
     STARTUP_DESCRIPTION,
     STARTUP_FOOTER,
     STARTUP_TITLE,
@@ -286,7 +286,7 @@ class TestOnReadyIdempotency:
         fake_discord: _FakeDiscordModule,
         client_with_status_channel: FakeClient,
     ) -> None:
-        from src.discord.startup import on_ready
+        from src.discord._startup import on_ready
 
         await on_ready(client_with_status_channel)
 
@@ -300,7 +300,7 @@ class TestOnReadyIdempotency:
         fake_discord: _FakeDiscordModule,
         client_with_status_channel: FakeClient,
     ) -> None:
-        from src.discord.startup import on_ready
+        from src.discord._startup import on_ready
 
         await on_ready(client_with_status_channel)
         await on_ready(client_with_status_channel)
@@ -315,7 +315,7 @@ class TestOnReadyIdempotency:
         fake_discord: _FakeDiscordModule,
         client_with_status_channel: FakeClient,
     ) -> None:
-        from src.discord.startup import on_ready
+        from src.discord._startup import on_ready
 
         await on_ready(client_with_status_channel)
         reset_greeting()
@@ -331,7 +331,7 @@ class TestOnReadyIdempotency:
         fake_discord: _FakeDiscordModule,
         client_with_status_channel: FakeClient,
     ) -> None:
-        from src.discord.startup import on_ready
+        from src.discord._startup import on_ready
 
         await on_ready(client_with_status_channel)
 
@@ -346,7 +346,7 @@ class TestOnReadyIdempotency:
         fake_discord: _FakeDiscordModule,
         client_without_status_channel: FakeClient,
     ) -> None:
-        from src.discord.startup import on_ready
+        from src.discord._startup import on_ready
 
         # Should not raise even though there's no guinevere-status channel
         await on_ready(client_without_status_channel)
@@ -366,7 +366,7 @@ class TestPython312Style:
     def test_module_has_annotations_future(self) -> None:
         import inspect
 
-        from src.discord import startup
+        from src.discord import _startup as startup
 
         source = inspect.getsource(startup)
         assert "from __future__ import annotations" in source

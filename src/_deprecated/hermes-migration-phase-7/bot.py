@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     import discord.ext.commands as commands_discord
     from src.surveillance.safe_mode import SurveillanceSafeModeGuard
 
-from .intents import get_intents
+from ._intents import get_intents
 from src.discord.shadow_pipeline import ShadowPipeline
 
 
@@ -199,8 +199,8 @@ class GuinevereBot(_BotBase):
         from .cmd_new_session import new_session_callback
         from .cmd_history import history_callback
 
-        # Lazy import commands module for spec iteration
-        from . import commands as cmds
+        # Lazy import command specs from non-deprecated registry
+        from ._command_registry import COMMAND_SPECS
 
         # Register wired callbacks
         self.tree.command(
@@ -413,7 +413,7 @@ class GuinevereBot(_BotBase):
             # Hermes Phase 1: Conversation session
             "new", "history",
         )
-        for spec in cmds.COMMAND_SPECS:
+        for spec in COMMAND_SPECS:
             if spec.name in core_names:
                 continue  # Already wired above
             phase = _STUB_PHASE.get(spec.name, 4)
@@ -486,7 +486,7 @@ class GuinevereBot(_BotBase):
             },
         )
 
-        from .startup import on_ready as startup_on_ready
+        from ._startup import on_ready as startup_on_ready
 
         await startup_on_ready(self)
 

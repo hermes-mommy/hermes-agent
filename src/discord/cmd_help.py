@@ -276,7 +276,7 @@ def build_help_embed_data(
     Returns:
         A fully populated ``HelpEmbedData``.
     """
-    from .commands import command_categories
+    from src.hermes_plugins.command_catalog import command_categories
 
     cats = categories if categories is not None else command_categories()
     ref = datetime.now(tz=timezone.utc)
@@ -351,7 +351,7 @@ async def help_callback(interaction: object) -> None:
     Args:
         interaction: The Discord ``Interaction`` to respond to.
     """
-    from .commands import is_faiz_interaction
+    from ._auth_guard import is_faiz_interaction
 
     if not is_faiz_interaction(interaction):
         await _send_denied(interaction)

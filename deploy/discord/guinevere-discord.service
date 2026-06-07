@@ -19,7 +19,7 @@ EnvironmentFile=/run/guinevere-discord-token
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=/home/guinevere/code/guinevere
 
-ExecStart=/home/guinevere/code/guinevere/.venv/bin/python -m src.discord.bot
+ExecStart=/home/guinevere/code/guinevere/.venv/bin/python -m src.discord._entrypoint
 
 ExecStopPost=/usr/bin/shred -u /run/guinevere-discord-token
 

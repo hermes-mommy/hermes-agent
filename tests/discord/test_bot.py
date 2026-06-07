@@ -1,4 +1,4 @@
-"""Deterministic tests for ``src.discord.bot``.
+"""Deterministic tests for ``src.discord._entrypoint`` (active entrypoint).
 
 All tests run without establishing a Discord gateway connection.
 The bot class is instantiated with real ``discord.py`` but API-calling
@@ -6,8 +6,8 @@ methods (``tree.sync``, ``start``) are mocked at the method level.
 
 Key test surfaces:
 - ``GuinevereBot`` instantiation succeeds with canonical intents.
-- ``setup_hook`` registers exactly 33 slash commands.
-- Handler imports (cmd_safeword, startup, commands) resolve without error.
+- ``setup_hook`` registers exactly 35 guild-scoped slash commands.
+- Handler imports (cmd_safeword, _startup, _command_registry) resolve without error.
 - ``on_message`` listener skips bot-authored messages.
 """
 
@@ -29,7 +29,7 @@ def bot() -> Any:
     The bot is imported lazily so that any missing import errors are
     surfaced as test failures rather than module-level crashes.
     """
-    from src.discord.bot import GuinevereBot
+    from src.discord._entrypoint import GuinevereBot
 
     instance = GuinevereBot()
     return instance
@@ -41,6 +41,15 @@ def mocked_bot(bot: Any) -> Any:
     bot.start = AsyncMock()  # type: ignore[method-assign]
     bot.tree.sync = AsyncMock(return_value=[])  # type: ignore[method-assign]
     return bot
+
+
+def _registered_commands(bot: Any) -> list[Any]:
+    """Return guild-scoped commands registered by ``setup_hook``."""
+    import discord
+
+    from src.discord._entrypoint import GUILD_ID
+
+    return list(bot.tree.get_commands(guild=discord.Object(id=GUILD_ID)))
 
 
 # ── Class Instantiation ─────────────────────────────────────────────────────
@@ -96,29 +105,29 @@ class TestIntents:
 
 
 class TestSetupHook:
-    """``setup_hook`` must register exactly 33 slash commands."""
+    """``setup_hook`` must register exactly 35 guild-scoped slash commands."""
 
     @pytest.mark.asyncio
-    async def test_register_33_commands(self, mocked_bot: Any) -> None:
+    async def test_register_35_commands(self, mocked_bot: Any) -> None:
         await mocked_bot.setup_hook()
 
-        registered = mocked_bot.tree.get_commands()
-        assert len(registered) == 33, (
-            f"Expected 33 commands, got {len(registered)}"
+        registered = _registered_commands(mocked_bot)
+        assert len(registered) == 35, (
+            f"Expected 35 commands, got {len(registered)}"
         )
 
     @pytest.mark.asyncio
     async def test_all_names_are_strings(self, mocked_bot: Any) -> None:
         await mocked_bot.setup_hook()
 
-        for cmd in mocked_bot.tree.get_commands():
+        for cmd in _registered_commands(mocked_bot):
             assert isinstance(cmd.name, str), f"Name is not str: {cmd.name}"
 
     @pytest.mark.asyncio
     async def test_all_descriptions_are_strings(self, mocked_bot: Any) -> None:
         await mocked_bot.setup_hook()
 
-        for cmd in mocked_bot.tree.get_commands():
+        for cmd in _registered_commands(mocked_bot):
             assert isinstance(cmd.description, str), (
                 f"Description is not str for {cmd.name}"
             )
@@ -127,15 +136,15 @@ class TestSetupHook:
     async def test_core_commands_are_present(self, mocked_bot: Any) -> None:
         await mocked_bot.setup_hook()
 
-        names = {cmd.name for cmd in mocked_bot.tree.get_commands()}
+        names = {cmd.name for cmd in _registered_commands(mocked_bot)}
         for expected in ("status", "mood", "help", "safeword"):
             assert expected in names, f"Missing core command: {expected}"
 
     @pytest.mark.asyncio
-    async def test_stub_commands_present(self, mocked_bot: Any) -> None:
+    async def test_extended_commands_present(self, mocked_bot: Any) -> None:
         await mocked_bot.setup_hook()
 
-        names = {cmd.name for cmd in mocked_bot.tree.get_commands()}
+        names = {cmd.name for cmd in _registered_commands(mocked_bot)}
         for expected in (
             "loop-start",
             "memory-search",
@@ -144,7 +153,7 @@ class TestSetupHook:
             "approve",
             "restart-service",
         ):
-            assert expected in names, f"Missing stub command: {expected}"
+            assert expected in names, f"Missing extended command: {expected}"
 
     @pytest.mark.asyncio
     async def test_sync_called_once(self, mocked_bot: Any) -> None:
@@ -164,12 +173,12 @@ class TestHandlerImports:
         assert hasattr(src.discord.cmd_safeword, "handle_safeword_message_async")
 
     def test_import_startup(self) -> None:
-        import src.discord.startup
-        assert hasattr(src.discord.startup, "on_ready")
+        import src.discord._startup
+        assert hasattr(src.discord._startup, "on_ready")
 
-    def test_import_commands(self) -> None:
-        import src.discord.commands
-        assert src.discord.commands.command_count() == 33
+    def test_import_command_registry(self) -> None:
+        import src.discord._command_registry
+        assert src.discord._command_registry.command_count() == 35
 
     def test_import_cmd_status(self) -> None:
         import src.discord.cmd_status
@@ -257,7 +266,7 @@ class TestEntrypoint:
         """``main()`` must raise ``RuntimeError`` if token is missing."""
         monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
 
-        from src.discord.bot import main
+        from src.discord._entrypoint import main
 
         with pytest.raises(RuntimeError, match="DISCORD_BOT_TOKEN"):
             asyncio_run(main())
@@ -266,7 +275,7 @@ class TestEntrypoint:
         """``main()`` must raise ``RuntimeError`` if token is empty."""
         monkeypatch.setenv("DISCORD_BOT_TOKEN", "")
 
-        from src.discord.bot import main
+        from src.discord._entrypoint import main
 
         with pytest.raises(RuntimeError, match="DISCORD_BOT_TOKEN"):
             asyncio_run(main())
@@ -292,7 +301,73 @@ class TestPython312Style:
     def test_module_has_annotations_future(self) -> None:
         import inspect
 
-        from src.discord import bot
+        from src.discord import _entrypoint
 
-        source = inspect.getsource(bot)
+        source = inspect.getsource(_entrypoint)
         assert "from __future__ import annotations" in source
+
+
+# ── _intents Module (Non-Deprecated) ──────────────────────────────────────────
+
+
+class TestIntentsModule:
+    """The non-deprecated ``_intents`` module must expose the expected API."""
+
+    def test_import_get_intents(self) -> None:
+        from src.discord._intents import get_intents
+
+        assert callable(get_intents)
+
+    def test_import_validate_intents(self) -> None:
+        from src.discord._intents import validate_intents
+
+        assert callable(validate_intents)
+
+    def test_import_intent_constants(self) -> None:
+        from src.discord._intents import (
+            REQUIRED_INTENTS,
+            REQUIRED_PRIVILEGED_INTENTS,
+            STANDARD_OPERATIONAL_INTENTS,
+        )
+
+        assert isinstance(REQUIRED_INTENTS, tuple)
+        assert isinstance(REQUIRED_PRIVILEGED_INTENTS, tuple)
+        assert isinstance(STANDARD_OPERATIONAL_INTENTS, tuple)
+        assert len(REQUIRED_INTENTS) == 7
+        assert len(REQUIRED_PRIVILEGED_INTENTS) == 3
+        assert len(STANDARD_OPERATIONAL_INTENTS) == 4
+
+    def test_import_intent_validation_result(self) -> None:
+        from src.discord._intents import IntentValidationResult
+
+        result = IntentValidationResult(valid=True, enabled=("guilds",), missing=())
+        assert result.valid is True
+        assert result.enabled == ("guilds",)
+        assert result.missing == ()
+
+    def test_import_discord_intents_protocol(self) -> None:
+        from src.discord._intents import DiscordIntents
+
+        assert isinstance(DiscordIntents, type)
+
+    def test_import_discord_intents_factory(self) -> None:
+        from src.discord._intents import DiscordIntentsFactory
+
+        assert isinstance(DiscordIntentsFactory, type)
+
+    def test_validate_intents_detects_missing(self) -> None:
+        from src.discord._intents import validate_intents, IntentValidationResult
+        from unittest.mock import MagicMock
+
+        intents = MagicMock()
+        intents.guilds = True
+        intents.members = False  # missing
+        intents.presences = True
+        intents.message_content = True
+        intents.messages = True
+        intents.reactions = True
+        intents.voice_states = True
+
+        result = validate_intents(intents)
+        assert result.valid is False
+        assert "members" in result.missing

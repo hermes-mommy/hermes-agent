@@ -81,6 +81,14 @@ def mock_interaction_no_guild() -> MagicMock:
     return interaction
 
 
+@pytest.fixture(autouse=True)
+def _mock_consent_cache_invalidation(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """Avoid real Redis calls during pause/resume command tests."""
+    mock_invalidate = AsyncMock()
+    monkeypatch.setattr("src.surveillance.consent_gate.invalidate_cache", mock_invalidate)
+    return mock_invalidate
+
+
 # ---------------------------------------------------------------------------
 # Tests: is_faiz_interaction
 # ---------------------------------------------------------------------------

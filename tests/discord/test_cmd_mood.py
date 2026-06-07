@@ -270,7 +270,7 @@ class TestCommandRegistryCount:
     """Importing command_count must return the canonical registry size and be safe."""
 
     def test_command_count_is_canonical(self) -> None:
-        from src.discord.commands import command_count
+        from src.discord._command_registry import command_count
 
         assert command_count() == 35
 

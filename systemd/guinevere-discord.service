@@ -11,7 +11,7 @@ Environment=PYTHONPATH=/home/guinevere/code/guinevere
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=VIRTUAL_ENV=/home/guinevere/code/guinevere/.venv
 EnvironmentFile=/home/guinevere/code/guinevere/.env.discord
-ExecStart=/home/guinevere/code/guinevere/.venv/bin/python -m src.discord.bot
+ExecStart=/home/guinevere/code/guinevere/.venv/bin/python -m src.discord._entrypoint
 Restart=always
 RestartSec=10
 StandardOutput=journal

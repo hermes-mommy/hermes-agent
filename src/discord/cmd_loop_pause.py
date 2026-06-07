@@ -13,7 +13,7 @@ from typing import Any
 import structlog
 
 from .colors import WARNING
-from ._embed_helpers import (
+from ._embed_utils import (
     EmbedData,
     EmbedField,
     defer_ephemeral,
@@ -33,7 +33,7 @@ FOOTER_ICON: str = "\U0001f504 Loop"
 
 async def loop_pause_callback(interaction: Any) -> None:
     """Handle a ``/loop-pause`` interaction."""
-    from .commands import is_faiz_interaction
+    from ._auth_guard import is_faiz_interaction
 
     if not is_faiz_interaction(interaction):
         await send_denied(interaction)

@@ -12,7 +12,7 @@ for _mod in _FAKE_MODULES:
 
 import pytest
 
-from src.hermes.memory_bridge import HermesMemoryBridge  # noqa: E402
+from src.hermes._memory_bridge import HermesMemoryBridge  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -318,7 +318,7 @@ class TestExtractKeyFacts:
         assert isinstance(result, list)
 
     @pytest.mark.asyncio
-    @patch("src.hermes.memory_bridge._logger")
+    @patch("src.hermes._memory_bridge._logger")
     async def test_extract_logs_invocation(self, mock_logger: MagicMock) -> None:
         """Verify logger.info is called with the stub message."""
         bridge = HermesMemoryBridge(make_session_factory())

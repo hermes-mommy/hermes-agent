@@ -19,7 +19,7 @@ import redis
 import structlog
 
 from .colors import ALERT
-from ._embed_helpers import (
+from ._embed_utils import (
     EmbedData,
     EmbedField,
     defer_ephemeral,
@@ -81,7 +81,7 @@ def _log_punishment(r: redis.Redis, level: str, note: str) -> None:
 
 async def punishment_callback(interaction: Any) -> None:
     """Handle a ``/punishment`` interaction."""
-    from .commands import is_faiz_interaction
+    from ._auth_guard import is_faiz_interaction
 
     if not is_faiz_interaction(interaction):
         await send_denied(interaction)

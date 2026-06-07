@@ -629,10 +629,11 @@ class TestNoRuntimeYaml:
         level = get_auth_level("redis", "get")
         assert level == AuthLevel.READ_AUTO
 
-    def test_no_yaml_load_in_plugin(self) -> None:
+    def test_no_yaml_load_in_plugin(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """The plugin modules do not import yaml."""
         import sys  # noqa: PLC0415
 
+        monkeypatch.delitem(sys.modules, "yaml", raising=False)
         plugin_modules = [
             mod for mod in sys.modules
             if "auth_overlay" in mod

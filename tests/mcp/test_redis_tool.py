@@ -48,6 +48,12 @@ def _mock_client() -> AsyncMock:
     return client
 
 
+async def _approved_redis_del(keys: str) -> int:
+    """Run ``redis_del`` with destructive approval granted for Redis tests."""
+    with patch("src.mcp.auth._wait_for_approval", return_value=True):
+        return await redis_del(keys)
+
+
 # ============================================================================
 # TestCommandClassification
 # ============================================================================
@@ -459,7 +465,7 @@ class TestRedisDel:
         client = _mock_client()
         client.delete = AsyncMock(return_value=1)
         with patch("src.mcp.tools.redis_tool._connect", return_value=client):
-            result = asyncio.run(redis_del("my_key"))
+            result = asyncio.run(_approved_redis_del("my_key"))
         assert result == 1
 
     def test_del_multiple_keys(self) -> None:
@@ -467,7 +473,7 @@ class TestRedisDel:
         client = _mock_client()
         client.delete = AsyncMock(return_value=2)
         with patch("src.mcp.tools.redis_tool._connect", return_value=client):
-            result = asyncio.run(redis_del("key1 key2"))
+            result = asyncio.run(_approved_redis_del("key1 key2"))
         assert result == 2
 
     def test_del_nonexistent_key(self) -> None:
@@ -475,7 +481,7 @@ class TestRedisDel:
         client = _mock_client()
         client.delete = AsyncMock(return_value=0)
         with patch("src.mcp.tools.redis_tool._connect", return_value=client):
-            result = asyncio.run(redis_del("ghost"))
+            result = asyncio.run(_approved_redis_del("ghost"))
         assert result == 0
 
     def test_del_closes_client(self) -> None:
@@ -483,7 +489,7 @@ class TestRedisDel:
         client = _mock_client()
         client.delete = AsyncMock(return_value=1)
         with patch("src.mcp.tools.redis_tool._connect", return_value=client):
-            asyncio.run(redis_del("key"))
+            asyncio.run(_approved_redis_del("key"))
         client.aclose.assert_awaited_once()
 
 
@@ -565,7 +571,7 @@ class TestAuthLevels:
         client = _mock_client()
         client.delete = AsyncMock(return_value=1)
         with patch("src.mcp.tools.redis_tool._connect", return_value=client):
-            result = asyncio.run(redis_del("key"))
+            result = asyncio.run(_approved_redis_del("key"))
         assert result == 1
 
     def test_forbidden_functions_raise(self) -> None:

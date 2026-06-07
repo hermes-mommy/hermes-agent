@@ -129,7 +129,7 @@ def _get_or_create_bridge(session_factory: Any, embedding_svc: Any) -> Any:
     """
     global _memory_bridge
     if _memory_bridge is None:
-        from src.hermes.memory_bridge import HermesMemoryBridge
+        from src.hermes._memory_bridge import HermesMemoryBridge
 
         _memory_bridge = HermesMemoryBridge(
             session_factory=session_factory,

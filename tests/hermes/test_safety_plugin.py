@@ -12,51 +12,17 @@ for _mod in _FAKE_MODULES:
     sys.modules.setdefault(_mod, MagicMock())
 
 # ---------------------------------------------------------------
-# Mock safety module imports BEFORE importing the plugin.
-# This ensures plugin._init_safety_modules() succeeds for all gates.
+# Module-level helpers for safety-module fakes. These are NOT
+# inserted into sys.modules at module level — they are installed
+# per-test via the _mock_safety_modules autouse fixture below.
 # ---------------------------------------------------------------
 
-# Core services
-sys.modules.setdefault("src.core.services.hard_stop_handler", MagicMock())
 
-# Persona modules
-sys.modules.setdefault("src.persona.safe_mode", MagicMock())
-sys.modules.setdefault("src.persona.drift_detector", MagicMock())
-
-# yandere_fsm — must provide a real YandereSafetyError so "raise" works
 class YandereSafetyError(Exception):
     """Fake YandereSafetyError for tests (must be real Exception subclass)."""
     pass
 
-# Create yandere_fsm mock with properly configured attributes.
-# Must set YandereEngine, YandereLevel, validate_level as module-level
-# attributes BEFORE the plugin init imports them.
-_yandere_mock = MagicMock()
 
-# YandereEngine must be a callable that returns an object with
-# get_effective_level(), so the plugin can do YandereEngine(baseline=...).
-_yandere_mock.YandereEngine = MagicMock
-
-# YandereLevel needs Y4_BASELINE attribute (used as baseline param).
-_yandere_mock.YandereLevel = MagicMock
-
-# validate_level is called to validate yandere levels.
-_yandere_mock.validate_level = MagicMock(return_value=True)
-
-# YandereSafetyError must be a real Exception subclass.
-_yandere_mock.YandereSafetyError = YandereSafetyError
-
-sys.modules.setdefault("src.persona.yandere_fsm", _yandere_mock)
-
-# Surveillance modules — configure redact_secrets as identity so it doesn't
-# corrupt the text with MagicMock return values when not explicitly patched.
-_secret_scanner_mock = MagicMock()
-_secret_scanner_mock.redact_secrets = lambda t: t  # identity: returns input unchanged
-_secret_scanner_mock.scan_text = MagicMock()
-sys.modules.setdefault("src.surveillance.secret_scanner", _secret_scanner_mock)
-sys.modules.setdefault("src.surveillance.classification", MagicMock())
-
-# MCP / auth modules — use a real enum so "in (AuthLevel.FORBIDDEN, ...)" works
 class MockAuthLevel(enum.Enum):
     """Fake AuthLevel enum for tests."""
     FORBIDDEN = "FORBIDDEN"
@@ -64,10 +30,6 @@ class MockAuthLevel(enum.Enum):
     READ_ONLY = "READ_ONLY"
     FULL_ACCESS = "FULL_ACCESS"
 
-_mock_auth = MagicMock()
-_mock_auth.AuthLevel = MockAuthLevel
-sys.modules.setdefault("src.mcp.auth", _mock_auth)
-sys.modules.setdefault("src.mcp.auth_matrix", MagicMock())
 
 import pytest
 
@@ -82,6 +44,82 @@ from src.hermes.safety_plugin import (  # noqa: E402
     _NEUTRAL_RESPONSE,
     register,
 )
+
+# ---------------------------------------------------------------
+# Clean up any MagicMock entries for real project modules from
+# sys.modules. This prevents downstream phase7/safety tests from
+# importing MagicMock instead of real enums/classes.
+# ---------------------------------------------------------------
+_REAL_MODULES = [
+    "src.core.services.hard_stop_handler",
+    "src.persona.safe_mode",
+    "src.persona.drift_detector",
+    "src.persona.yandere_fsm",
+    "src.surveillance.secret_scanner",
+    "src.surveillance.classification",
+    "src.mcp.auth",
+    "src.mcp.auth_matrix",
+]
+for _mod_name in _REAL_MODULES:
+    if _mod_name in sys.modules and isinstance(sys.modules[_mod_name], MagicMock):
+        del sys.modules[_mod_name]
+
+# =============================================================================
+# Autouse fixture: install safety-module mocks per-test, with cleanup.
+# Prevents cross-test sys.modules contamination.
+# =============================================================================
+
+
+@pytest.fixture(autouse=True)
+def _mock_safety_modules() -> None:
+    """Install mocks for safety/persona/surveillance/mcp modules per-test.
+
+    Scoped to each test and cleaned up afterward — prevents the
+    cross-test sys.modules poisoning that causes downstream phase7
+    and safety tests to import MagicMock instead of real enums/classes.
+    """
+    _yandere_mock = MagicMock()
+    _yandere_mock.YandereEngine = MagicMock
+    _yandere_mock.YandereLevel = MagicMock
+    _yandere_mock.validate_level = MagicMock(return_value=True)
+    _yandere_mock.YandereSafetyError = YandereSafetyError
+
+    _secret_scanner_mock = MagicMock()
+    _secret_scanner_mock.redact_secrets = lambda t: t
+    _secret_scanner_mock.scan_text = MagicMock()
+
+    _mock_auth = MagicMock()
+    _mock_auth.AuthLevel = MockAuthLevel
+
+    _mocks = {
+        "src.core.services.hard_stop_handler": MagicMock(),
+        "src.persona.safe_mode": MagicMock(),
+        "src.persona.drift_detector": MagicMock(),
+        "src.persona.yandere_fsm": _yandere_mock,
+        "src.surveillance.secret_scanner": _secret_scanner_mock,
+        "src.surveillance.classification": MagicMock(),
+        "src.mcp.auth": _mock_auth,
+        "src.mcp.auth_matrix": MagicMock(),
+    }
+
+    # Save any existing sys.modules entries for restore after test.
+    _originals = {}
+    for _mod_name in _mocks:
+        if _mod_name in sys.modules:
+            _originals[_mod_name] = sys.modules[_mod_name]
+
+    # Install mocks.
+    for _mod_name, _mock in _mocks.items():
+        sys.modules[_mod_name] = _mock
+
+    yield
+
+    # Cleanup: remove mocks we installed.
+    for _mod_name in _mocks:
+        sys.modules.pop(_mod_name, None)
+    # Restore any originals (real modules loaded before our mock).
+    for _mod_name, _original in _originals.items():
+        sys.modules[_mod_name] = _original
 
 
 # =============================================================================

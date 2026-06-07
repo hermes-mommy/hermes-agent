@@ -17,7 +17,7 @@ import redis
 import structlog
 
 from .colors import INFO_BLUE, ALERT
-from ._embed_helpers import (
+from ._embed_utils import (
     EmbedData,
     EmbedField,
     defer_ephemeral,
@@ -42,7 +42,7 @@ def _get_redis_client() -> redis.Redis:
 
 async def clear_cache_callback(interaction: Any) -> None:
     """Handle a ``/clear-cache`` interaction."""
-    from .commands import is_faiz_interaction
+    from ._auth_guard import is_faiz_interaction
 
     if not is_faiz_interaction(interaction):
         await send_denied(interaction)

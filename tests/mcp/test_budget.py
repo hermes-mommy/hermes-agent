@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
+from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -69,7 +70,7 @@ class TestExaCapTriggersBraveFallback:
     async def test_allows_when_under_cap(self, enforcer: BudgetEnforcer, mock_redis: MagicMock) -> None:
         """At $4.99 spent, an additional $0.01 call should pass."""
         _make_redis_get(mock_redis, {
-            "tool:cost:exa:2026-06-03": "4.99",
+            f"tool:cost:exa:{date.today().isoformat()}": "4.99",
             "cost:current_month": "4.99",
         })
 
@@ -82,9 +83,9 @@ class TestExaCapTriggersBraveFallback:
     async def test_raises_budget_exceeded_at_cap(self, enforcer: BudgetEnforcer, mock_redis: MagicMock) -> None:
         """At $5.00 spent, check_budget raises BudgetExceeded."""
         _make_redis_get(mock_redis, {
-            "tool:cost:exa:2026-06-03": "5.00",
+            f"tool:cost:exa:{date.today().isoformat()}": "5.00",
             "cost:current_month": "5.00",
-            "tool:cost:total:2026-06-03": "5.00",
+            f"tool:cost:total:{date.today().isoformat()}": "5.00",
         })
 
         with pytest.raises(BudgetExceeded, match="Daily cap reached"):
@@ -94,7 +95,7 @@ class TestExaCapTriggersBraveFallback:
     async def test_fallback_returns_brave_search(self, enforcer: BudgetEnforcer, mock_redis: MagicMock) -> None:
         """When Exa is over budget, get_fallback_tool returns brave_search."""
         _make_redis_get(mock_redis, {
-            "tool:cost:exa:2026-06-03": "5.01",
+            f"tool:cost:exa:{date.today().isoformat()}": "5.01",
             "cost:current_month": "5.01",
         })
 
@@ -107,8 +108,8 @@ class TestExaCapTriggersBraveFallback:
     ) -> None:
         """When Brave is also over budget, get_fallback_tool returns None."""
         _make_redis_get(mock_redis, {
-            "tool:cost:exa:2026-06-03": "5.01",
-            "tool:cost:brave_search:2026-06-03": "3.00",
+            f"tool:cost:exa:{date.today().isoformat()}": "5.01",
+            f"tool:cost:brave_search:{date.today().isoformat()}": "3.00",
             "cost:current_month": "5.01",
         })
 
@@ -125,7 +126,7 @@ class TestMonthlyCapBlocksAll:
     ) -> None:
         """At $30.00 monthly, even brave_search raises BudgetExceeded."""
         _make_redis_get(mock_redis, {
-            "tool:cost:brave_search:2026-06-03": "0.01",
+            f"tool:cost:brave_search:{date.today().isoformat()}": "0.01",
             "cost:current_month": "30.00",
         })
 
@@ -138,7 +139,7 @@ class TestMonthlyCapBlocksAll:
     ) -> None:
         """At $30.00 monthly, exa raises BudgetExceeded too."""
         _make_redis_get(mock_redis, {
-            "tool:cost:exa:2026-06-03": "1.00",
+            f"tool:cost:exa:{date.today().isoformat()}": "1.00",
             "cost:current_month": "30.00",
         })
 
@@ -151,7 +152,7 @@ class TestMonthlyCapBlocksAll:
     ) -> None:
         """When monthly cap is reached, get_fallback_tool returns None."""
         _make_redis_get(mock_redis, {
-            "tool:cost:exa:2026-06-03": "6.00",
+            f"tool:cost:exa:{date.today().isoformat()}": "6.00",
             "cost:current_month": "30.00",
         })
 
@@ -168,7 +169,7 @@ class TestMonthlyWarning:
     ) -> None:
         """At $3.10 monthly, alert_level is WARNING."""
         _make_redis_get(mock_redis, {
-            "tool:cost:brave_search:2026-06-03": "0.50",
+            f"tool:cost:brave_search:{date.today().isoformat()}": "0.50",
             "cost:current_month": "3.10",
         })
 
@@ -181,7 +182,7 @@ class TestMonthlyWarning:
     ) -> None:
         """At $15.00 monthly, alert_level is CRITICAL."""
         _make_redis_get(mock_redis, {
-            "tool:cost:exa:2026-06-03": "1.00",
+            f"tool:cost:exa:{date.today().isoformat()}": "1.00",
             "cost:current_month": "15.00",
         })
 
@@ -194,7 +195,7 @@ class TestMonthlyWarning:
     ) -> None:
         """At $25.00 monthly, alert_level is HARD_STOP but call still passes if under daily cap."""
         _make_redis_get(mock_redis, {
-            "tool:cost:exa:2026-06-03": "0.50",
+            f"tool:cost:exa:{date.today().isoformat()}": "0.50",
             "cost:current_month": "25.00",
         })
 
@@ -208,13 +209,13 @@ class TestMonthlyWarning:
     ) -> None:
         """get_monthly_status returns WARNING alert_level at $3.10."""
         _make_redis_get(mock_redis, {
-            "tool:cost:exa:2026-06-03": "1.00",
-            "tool:cost:brave_search:2026-06-03": "0.50",
+            f"tool:cost:exa:{date.today().isoformat()}": "1.00",
+            f"tool:cost:brave_search:{date.today().isoformat()}": "0.50",
             "cost:current_month": "3.10",
         })
         mock_redis.scan_iter.return_value = iter([
-            "tool:cost:exa:2026-06-03",
-            "tool:cost:brave_search:2026-06-03",
+            f"tool:cost:exa:{date.today().isoformat()}",
+            f"tool:cost:brave_search:{date.today().isoformat()}",
         ])
 
         statuses = await enforcer.get_monthly_status()
@@ -232,8 +233,8 @@ class TestGlobalDailyEmergencyCap:
     ) -> None:
         """When total daily spend reaches $10, all tools raise BudgetExceeded."""
         _make_redis_get(mock_redis, {
-            "tool:cost:brave_search:2026-06-03": "1.00",
-            "tool:cost:total:2026-06-03": "10.00",
+            f"tool:cost:brave_search:{date.today().isoformat()}": "1.00",
+            f"tool:cost:total:{date.today().isoformat()}": "10.00",
             "cost:current_month": "10.00",
         })
 
@@ -246,8 +247,8 @@ class TestGlobalDailyEmergencyCap:
     ) -> None:
         """Global cap blocks even when the specific tool is under its own cap."""
         _make_redis_get(mock_redis, {
-            "tool:cost:exa:2026-06-03": "0.01",
-            "tool:cost:total:2026-06-03": "10.00",
+            f"tool:cost:exa:{date.today().isoformat()}": "0.01",
+            f"tool:cost:total:{date.today().isoformat()}": "10.00",
             "cost:current_month": "10.00",
         })
 
@@ -269,7 +270,7 @@ class TestRecordAndCheck:
     ) -> None:
         """Recording a small cost passes when under all caps."""
         _make_redis_get(mock_redis, {
-            "tool:cost:exa:2026-06-03": "0.10",
+            f"tool:cost:exa:{date.today().isoformat()}": "0.10",
             "cost:current_month": "0.10",
         })
 
@@ -289,8 +290,8 @@ class TestRecordAndCheck:
         so the Redis GET mock must return the *post-increment* value ($5.002).
         """
         _state: dict[str, str | None] = {
-            "tool:cost:exa:2026-06-03": "5.002",  # post-increment
-            "tool:cost:total:2026-06-03": "5.002",
+            f"tool:cost:exa:{date.today().isoformat()}": "5.002",  # post-increment
+            f"tool:cost:total:{date.today().isoformat()}": "5.002",
             "cost:current_month": "5.002",
         }
         mock_redis.get.side_effect = lambda k: _state.get(k)
@@ -306,7 +307,7 @@ class TestRecordAndCheck:
     ) -> None:
         """record_and_check pipeline increments cost:current_month."""
         _make_redis_get(mock_redis, {
-            "tool:cost:brave_search:2026-06-03": "0.01",
+            f"tool:cost:brave_search:{date.today().isoformat()}": "0.01",
             "cost:current_month": "0.50",
         })
         mock_pipe = mock_redis.pipeline.return_value
@@ -324,7 +325,7 @@ class TestRecordAndCheck:
         """When Redis pipeline fails, check still runs."""
         mock_redis.pipeline.side_effect = RedisError("connection lost")
         _make_redis_get(mock_redis, {
-            "tool:cost:exa:2026-06-03": "1.00",
+            f"tool:cost:exa:{date.today().isoformat()}": "1.00",
             "cost:current_month": "1.00",
         })
 
@@ -346,7 +347,7 @@ class TestGetFallbackTool:
     ) -> None:
         """When Exa is under budget, no fallback needed."""
         _make_redis_get(mock_redis, {
-            "tool:cost:exa:2026-06-03": "1.00",
+            f"tool:cost:exa:{date.today().isoformat()}": "1.00",
             "cost:current_month": "1.00",
         })
 
@@ -359,7 +360,7 @@ class TestGetFallbackTool:
     ) -> None:
         """Brave has no fallback — returns None even when over budget."""
         _make_redis_get(mock_redis, {
-            "tool:cost:brave_search:2026-06-03": "3.50",
+            f"tool:cost:brave_search:{date.today().isoformat()}": "3.50",
             "cost:current_month": "5.00",
         })
 
@@ -372,7 +373,7 @@ class TestGetFallbackTool:
     ) -> None:
         """An unrecognized tool has no fallback."""
         _make_redis_get(mock_redis, {
-            "tool:cost:unknown:2026-06-03": "99.00",
+            f"tool:cost:unknown:{date.today().isoformat()}": "99.00",
             "cost:current_month": "1.00",
         })
 
@@ -394,13 +395,13 @@ class TestGetMonthlyStatus:
     ) -> None:
         """get_monthly_status returns BudgetStatus for exa and brave_search."""
         _make_redis_get(mock_redis, {
-            "tool:cost:exa:2026-06-03": "2.00",
-            "tool:cost:brave_search:2026-06-03": "1.00",
+            f"tool:cost:exa:{date.today().isoformat()}": "2.00",
+            f"tool:cost:brave_search:{date.today().isoformat()}": "1.00",
             "cost:current_month": "3.00",
         })
         mock_redis.scan_iter.return_value = iter([
-            "tool:cost:exa:2026-06-03",
-            "tool:cost:brave_search:2026-06-03",
+            f"tool:cost:exa:{date.today().isoformat()}",
+            f"tool:cost:brave_search:{date.today().isoformat()}",
         ])
 
         statuses = await enforcer.get_monthly_status()
@@ -415,13 +416,13 @@ class TestGetMonthlyStatus:
     ) -> None:
         """All tools share the same monthly_spent in status."""
         _make_redis_get(mock_redis, {
-            "tool:cost:exa:2026-06-03": "1.00",
-            "tool:cost:brave_search:2026-06-03": "0.50",
+            f"tool:cost:exa:{date.today().isoformat()}": "1.00",
+            f"tool:cost:brave_search:{date.today().isoformat()}": "0.50",
             "cost:current_month": "18.50",
         })
         mock_redis.scan_iter.return_value = iter([
-            "tool:cost:exa:2026-06-03",
-            "tool:cost:brave_search:2026-06-03",
+            f"tool:cost:exa:{date.today().isoformat()}",
+            f"tool:cost:brave_search:{date.today().isoformat()}",
         ])
 
         statuses = await enforcer.get_monthly_status()
@@ -434,17 +435,17 @@ class TestGetMonthlyStatus:
     ) -> None:
         """Uses SCAN to discover all tools tracked today."""
         _make_redis_get(mock_redis, {
-            "tool:cost:exa:2026-06-03": "1.00",
-            "tool:cost:brave_search:2026-06-03": "2.00",
-            "tool:cost:github:2026-06-03": "0.00",
-            "tool:cost:total:2026-06-03": "3.00",  # must be excluded
+            f"tool:cost:exa:{date.today().isoformat()}": "1.00",
+            f"tool:cost:brave_search:{date.today().isoformat()}": "2.00",
+            f"tool:cost:github:{date.today().isoformat()}": "0.00",
+            f"tool:cost:total:{date.today().isoformat()}": "3.00",  # must be excluded
             "cost:current_month": "3.00",
         })
         mock_redis.scan_iter.return_value = iter([
-            "tool:cost:exa:2026-06-03",
-            "tool:cost:brave_search:2026-06-03",
-            "tool:cost:github:2026-06-03",
-            "tool:cost:total:2026-06-03",
+            f"tool:cost:exa:{date.today().isoformat()}",
+            f"tool:cost:brave_search:{date.today().isoformat()}",
+            f"tool:cost:github:{date.today().isoformat()}",
+            f"tool:cost:total:{date.today().isoformat()}",
         ])
 
         statuses = await enforcer.get_monthly_status()
@@ -459,7 +460,7 @@ class TestGetMonthlyStatus:
     ) -> None:
         """Returns only known tools when SCAN fails."""
         _make_redis_get(mock_redis, {
-            "tool:cost:exa:2026-06-03": "1.00",
+            f"tool:cost:exa:{date.today().isoformat()}": "1.00",
             "cost:current_month": "1.00",
         })
         mock_redis.scan_iter.side_effect = RedisError("scan error")
@@ -580,7 +581,7 @@ class TestBraveSoftCap:
     async def test_allows_at_80_percent(self, enforcer: BudgetEnforcer, mock_redis: MagicMock) -> None:
         """At 80 % of Brave cap ($2.40 / $3.00), call still passes."""
         _make_redis_get(mock_redis, {
-            "tool:cost:brave_search:2026-06-03": "2.40",
+            f"tool:cost:brave_search:{date.today().isoformat()}": "2.40",
             "cost:current_month": "2.40",
         })
 
@@ -592,7 +593,7 @@ class TestBraveSoftCap:
     async def test_raises_at_cap(self, enforcer: BudgetEnforcer, mock_redis: MagicMock) -> None:
         """At $3.00, Brave raises BudgetExceeded."""
         _make_redis_get(mock_redis, {
-            "tool:cost:brave_search:2026-06-03": "3.00",
+            f"tool:cost:brave_search:{date.today().isoformat()}": "3.00",
             "cost:current_month": "3.00",
         })
 
@@ -624,7 +625,7 @@ class TestRedisErrorResilience:
     ) -> None:
         """When Redis.get fails for monthly key, monthly_spent is treated as 0.0."""
         _make_redis_get(mock_redis, {
-            "tool:cost:exa:2026-06-03": "1.00",
+            f"tool:cost:exa:{date.today().isoformat()}": "1.00",
         })
         mock_redis.get.side_effect = lambda key: "1.00" if "exa" in str(key) else RedisError("fail")
 
@@ -657,7 +658,7 @@ class TestCustomBudgetConfig:
     ) -> None:
         """Custom config caps are enforced instead of defaults."""
         _make_redis_get(mock_redis, {
-            "tool:cost:exa:2026-06-03": "0.055",
+            f"tool:cost:exa:{date.today().isoformat()}": "0.055",
             "cost:current_month": "0.055",
         })
 
@@ -671,7 +672,7 @@ class TestCustomBudgetConfig:
     ) -> None:
         """Custom Exa cap of $0.10 blocks at $0.10."""
         _make_redis_get(mock_redis, {
-            "tool:cost:exa:2026-06-03": "0.10",
+            f"tool:cost:exa:{date.today().isoformat()}": "0.10",
             "cost:current_month": "0.10",
         })
 
@@ -684,7 +685,7 @@ class TestCustomBudgetConfig:
     ) -> None:
         """Custom monthly_absolute_cap of $3.00 blocks at $3.00."""
         _make_redis_get(mock_redis, {
-            "tool:cost:brave_search:2026-06-03": "0.01",
+            f"tool:cost:brave_search:{date.today().isoformat()}": "0.01",
             "cost:current_month": "3.00",
         })
 
@@ -706,7 +707,7 @@ class TestBudgetStatusReturnValue:
     ) -> None:
         """BudgetStatus has all expected fields."""
         _make_redis_get(mock_redis, {
-            "tool:cost:exa:2026-06-03": "1.25",
+            f"tool:cost:exa:{date.today().isoformat()}": "1.25",
             "cost:current_month": "8.00",
         })
 
@@ -734,7 +735,7 @@ class TestAlertLevel:
     ) -> None:
         """NORMAL when spend is under all thresholds."""
         _make_redis_get(mock_redis, {
-            "tool:cost:exa:2026-06-03": "0.50",
+            f"tool:cost:exa:{date.today().isoformat()}": "0.50",
             "cost:current_month": "1.00",
         })
 
@@ -747,7 +748,7 @@ class TestAlertLevel:
     ) -> None:
         """WARNING when monthly >= $3."""
         _make_redis_get(mock_redis, {
-            "tool:cost:exa:2026-06-03": "0.50",
+            f"tool:cost:exa:{date.today().isoformat()}": "0.50",
             "cost:current_month": "3.00",
         })
 
@@ -760,7 +761,7 @@ class TestAlertLevel:
     ) -> None:
         """CRITICAL when monthly >= $15."""
         _make_redis_get(mock_redis, {
-            "tool:cost:exa:2026-06-03": "1.00",
+            f"tool:cost:exa:{date.today().isoformat()}": "1.00",
             "cost:current_month": "15.00",
         })
 
@@ -773,7 +774,7 @@ class TestAlertLevel:
     ) -> None:
         """HARD_STOP when monthly >= $25 (but absolute block at $30)."""
         _make_redis_get(mock_redis, {
-            "tool:cost:exa:2026-06-03": "0.50",
+            f"tool:cost:exa:{date.today().isoformat()}": "0.50",
             "cost:current_month": "25.00",
         })
 

@@ -1,0 +1,141 @@
+# STEP B3 A1 — Embed Utils Extraction — Verification
+
+**Date**: 2026-06-06  
+**Task**: Create `src/discord/_embed_utils.py` with full public API from `_embed_helpers.py`, update 22 `cmd_*.py` imports to `from ._embed_utils import`.  
+**Status**: **PASS** ✅  
+
+---
+
+## What Was Done
+
+1. **Created** `src/discord/_embed_utils.py` as the non-deprecated home containing all 20 symbols from `_embed_helpers.py` (`__all__` preserved identically), with updated docstring referencing ADR-035 Phase 7c B3 extraction context.
+2. **Updated imports** in all 22 `src/discord/cmd_*.py` files from `from ._embed_helpers import (` to `from ._embed_utils import (`.
+3. **Left original** `src/discord/_embed_helpers.py` in place (no archive/delete).
+4. **No `_deprecated/` directory created** (not yet — archive gate is A6).
+
+## Files Changed
+
+| File | Action | Description |
+|---|---|---|
+| `src/discord/_embed_utils.py` | **Created** | 304 lines — full public API copy of `_embed_helpers.py` with updated docstring |
+| `src/discord/cmd_approve.py` | Modified | Import line 16 |
+| `src/discord/cmd_approve_all.py` | Modified | Import line 16 |
+| `src/discord/cmd_backup_now.py` | Modified | Import line 18 |
+| `src/discord/cmd_casual.py` | Modified | Import line 17 |
+| `src/discord/cmd_clear_cache.py` | Modified | Import line 20 |
+| `src/discord/cmd_consent.py` | Modified | Import line 22 |
+| `src/discord/cmd_cost_alert.py` | Modified | Import line 18 |
+| `src/discord/cmd_deny.py` | Modified | Import line 16 |
+| `src/discord/cmd_evidence.py` | Modified | Import line 19 |
+| `src/discord/cmd_focus.py` | Modified | Import line 17 |
+| `src/discord/cmd_health_check.py` | Modified | Import line 18 |
+| `src/discord/cmd_history.py` | Modified | Import line 17 |
+| `src/discord/cmd_loops.py` | Modified | Import line 16 |
+| `src/discord/cmd_loop_pause.py` | Modified | Import line 16 |
+| `src/discord/cmd_loop_priority.py` | Modified | Import line 16 |
+| `src/discord/cmd_loop_resume.py` | Modified | Import line 16 |
+| `src/discord/cmd_memory_export.py` | Modified | Import line 19 |
+| `src/discord/cmd_memory_forget.py` | Modified | Import line 19 |
+| `src/discord/cmd_new_session.py` | Modified | Import line 17 |
+| `src/discord/cmd_punishment.py` | Modified | Import line 22 |
+| `src/discord/cmd_restart_service.py` | Modified | Import line 20 |
+| `src/discord/cmd_reward.py` | Modified | Import line 21 |
+
+## Validation Results
+
+### Active Import Scan — `from \._embed_helpers import` excluding `_deprecated/`
+
+```text
+$ grep "from \._embed_helpers import" src/  # No _deprecated yet
+No matches found
+```
+
+**PASS** ✅ — Zero active `._embed_helpers` imports remain in `src/`.
+
+### New Import Count — `from \._embed_utils import`
+
+```text
+$ grep -c "from \._embed_utils import" src/discord/cmd_*.py
+22 matches across 22 files
+```
+
+**PASS** ✅ — All 22 cmd modules import from `._embed_utils`.
+
+### Test: `test_cmd_mood`
+
+```text
+$ python -m pytest tests/discord/test_cmd_mood.py -q --tb=short
+44 passed in 0.14s
+```
+
+**PASS** ✅
+
+### Test: `tests/phase7/`
+
+```text
+$ python -m pytest tests/phase7/ -q --tb=short
+139 passed in 7.22s
+```
+
+**PASS** ✅
+
+### LSP Diagnostics
+
+| Scope | Errors | Notes |
+|---|---|---|
+| `_embed_utils.py` | 0 | Only pre-existing `Unknown` type warnings in `get_option_value` (same as original `_embed_helpers.py`) |
+| `src/discord/` (50 files) | 0 errors | 1061 warnings — all pre-existing (`Any` types, `discord` stubs, etc.) |
+
+**PASS** ✅ — No new errors introduced.
+
+### Original File Integrity
+
+```text
+$ Test-Path src/discord/_embed_helpers.py
+True
+```
+
+**PASS** ✅ — `_embed_helpers.py` still in place, untouched.
+
+### Test File Reference Check
+
+```text
+$ grep "_embed_helpers" tests/
+No matches found
+```
+
+**PASS** ✅ — No test imports `_embed_helpers`.
+
+## Evidence Artifacts
+
+- `src/discord/_embed_utils.py` — new non-deprecated home
+- This file: `verification.md`
+
+## Doc-Sync Impact
+
+- None. No docs were touched. No ADR was implemented/claimed.
+
+## Boundary Compliance
+
+| Rule | Status |
+|---|---|
+| No archive/delete of `_embed_helpers.py` | ✅ |
+| No `_deprecated/` directory created | ✅ |
+| No `Any`, `# type: ignore`, `except:` introduced | ✅ |
+| No edit to unrelated command logic | ✅ |
+| No Aizanta/VPS/secrets/git touched | ✅ |
+| No tests skipped or hidden | ✅ |
+| No ADR-035 IMPLEMENTED claim made | ✅ |
+
+## Explicit Statement
+
+This is **step A1 only** from the Phase 7c B3 archive plan. No archive or deletion has been performed. `_embed_helpers.py` remains at its original location. ADR-035 remains **NOT IMPLEMENTED** until all Phase 7 gates pass.
+
+## Design Decisions / Caveats
+
+- The new `_embed_utils.py` docstring was updated to reference its role as the non-deprecated extraction target, but the full public API and all implementation internals are preserved identically.
+- The `get_option_value` function's pre-existing type ambiguity (`Unknown`) is inherited from the original file and is not introduced by this change.
+
+## Footer
+
+Generated by Sisyphus. Step B3 A1 verification for Phase 7c archive preparation.

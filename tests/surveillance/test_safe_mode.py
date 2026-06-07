@@ -25,9 +25,9 @@ _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-from src.core.services.hard_stop_handler import SafetyState
 from src.surveillance.safe_mode import (
     ConfrontationDecision,
+    SafetyState,
     SurveillanceSafeModeGuard,
 )
 

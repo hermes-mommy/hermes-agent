@@ -233,6 +233,12 @@ def _fake_timeout_process(timeout_after: float = 0.0) -> AsyncMock:
     return mock
 
 
+async def _approved_shell_exec(command: str, **kwargs: object) -> dict[str, Any]:
+    """Run ``shell_exec`` with destructive approval granted for shell tests."""
+    with patch("src.mcp.auth._wait_for_approval", return_value=True):
+        return await shell_exec(command, **kwargs)
+
+
 class TestShellExecSuccess:
     """Happy-path tests — allowed commands execute and return expected dicts."""
 
@@ -245,7 +251,7 @@ class TestShellExecSuccess:
                 "src.mcp.tools.shell_tool.asyncio.create_subprocess_exec",
                 return_value=fake,
             ):
-                result = await shell_exec("ls ./")
+                result = await _approved_shell_exec("ls ./")
             assert result["exit_code"] == 0
             assert result["stdout"] == "file1.txt\nfile2.txt"
             assert result["stderr"] == ""
@@ -262,7 +268,7 @@ class TestShellExecSuccess:
                 "src.mcp.tools.shell_tool.asyncio.create_subprocess_exec",
                 return_value=fake,
             ):
-                result = await shell_exec("echo hello")
+                result = await _approved_shell_exec("echo hello")
             assert result["exit_code"] == 0
             assert result["stdout"] == "hello"
 
@@ -277,7 +283,7 @@ class TestShellExecSuccess:
                 "src.mcp.tools.shell_tool.asyncio.create_subprocess_exec",
                 return_value=fake,
             ):
-                result = await shell_exec("cat /nope")
+                result = await _approved_shell_exec("cat /nope")
             assert result["exit_code"] == 1
             assert result["stderr"] == "No such file"
 
@@ -292,7 +298,7 @@ class TestShellExecSuccess:
                 "src.mcp.tools.shell_tool.asyncio.create_subprocess_exec",
                 return_value=fake,
             ):
-                result = await shell_exec("echo ok")
+                result = await _approved_shell_exec("echo ok")
             assert "duration_ms" in result
             assert isinstance(result["duration_ms"], float)
             assert result["duration_ms"] >= 0
@@ -308,7 +314,7 @@ class TestShellExecSuccess:
                 "src.mcp.tools.shell_tool.asyncio.create_subprocess_exec",
                 return_value=fake,
             ) as mock_create:
-                result = await shell_exec("pwd", workdir="/home/user")
+                result = await _approved_shell_exec("pwd", workdir="/home/user")
             assert result["exit_code"] == 0
             # Verify cwd was passed through
             call_kwargs = mock_create.call_args.kwargs
@@ -336,7 +342,7 @@ class TestShellExecTimeout:
                 ),
             ):
                 with pytest.raises(ShellTimeoutError, match="timed out"):
-                    await shell_exec("sleep 999", timeout=1)
+                    await _approved_shell_exec("sleep 999", timeout=1)
 
         asyncio.run(_run())
 
@@ -356,7 +362,7 @@ class TestShellExecTimeout:
                 ),
             ):
                 try:
-                    await shell_exec("sleep 999", timeout=1)
+                    await _approved_shell_exec("sleep 999", timeout=1)
                 except ShellTimeoutError:
                     pass
             fake.kill.assert_called_once()
@@ -373,7 +379,7 @@ class TestShellExecTimeout:
                 "src.mcp.tools.shell_tool.asyncio.create_subprocess_exec",
                 return_value=fake,
             ):
-                result = await shell_exec("echo done", timeout=9999)
+                result = await _approved_shell_exec("echo done", timeout=9999)
             assert result["exit_code"] == 0
 
         asyncio.run(_run())
@@ -387,7 +393,7 @@ class TestShellExecTimeout:
                 "src.mcp.tools.shell_tool.asyncio.create_subprocess_exec",
                 return_value=fake,
             ):
-                result = await shell_exec("echo default", timeout=-5)
+                result = await _approved_shell_exec("echo default", timeout=-5)
             assert result["exit_code"] == 0
 
         asyncio.run(_run())
@@ -401,7 +407,7 @@ class TestShellExecTimeout:
                 "src.mcp.tools.shell_tool.asyncio.create_subprocess_exec",
                 return_value=fake,
             ):
-                result = await shell_exec("echo default", timeout=0)
+                result = await _approved_shell_exec("echo default", timeout=0)
             assert result["exit_code"] == 0
 
         asyncio.run(_run())
@@ -414,7 +420,7 @@ class TestShellExecValidation:
         """'rm -rf /' raises CommandForbiddenError before any subprocess call."""
         async def _run() -> None:
             with pytest.raises(CommandForbiddenError, match="Blocked pattern"):
-                await shell_exec("rm -rf /")
+                await _approved_shell_exec("rm -rf /")
 
         asyncio.run(_run())
 
@@ -422,7 +428,7 @@ class TestShellExecValidation:
         """Injection with '; rm -rf /' raises CommandForbiddenError."""
         async def _run() -> None:
             with pytest.raises(CommandForbiddenError, match="Injection pattern"):
-                await shell_exec("ls; rm -rf /")
+                await _approved_shell_exec("ls; rm -rf /")
 
         asyncio.run(_run())
 
@@ -430,7 +436,7 @@ class TestShellExecValidation:
         """Injection with '| cat /etc/passwd' raises CommandForbiddenError."""
         async def _run() -> None:
             with pytest.raises(CommandForbiddenError, match="Injection pattern"):
-                await shell_exec("ls | cat /etc/passwd")
+                await _approved_shell_exec("ls | cat /etc/passwd")
 
         asyncio.run(_run())
 
@@ -438,7 +444,7 @@ class TestShellExecValidation:
         """Injection with '$(evil)' raises CommandForbiddenError."""
         async def _run() -> None:
             with pytest.raises(CommandForbiddenError, match="Injection pattern"):
-                await shell_exec("echo $(whoami)")
+                await _approved_shell_exec("echo $(whoami)")
 
         asyncio.run(_run())
 
@@ -446,7 +452,7 @@ class TestShellExecValidation:
         """A command not in ALLOWED_COMMANDS raises CommandForbiddenError."""
         async def _run() -> None:
             with pytest.raises(CommandForbiddenError, match="not in the allowed list"):
-                await shell_exec("nano /etc/hosts")
+                await _approved_shell_exec("nano /etc/hosts")
 
         asyncio.run(_run())
 
@@ -544,7 +550,7 @@ class TestRegisterTools:
     """Tests for the ``register_tools`` entry-point."""
 
     def test_registers_shell_exec_tool(self) -> None:
-        """``register_tools`` registers exactly 1 tool named ``shell_exec_mcp``."""
+        """``register_tools`` registers exactly 1 tool named ``shell_exec``."""
         registered: list[str] = []
 
         class FakeMCP:
@@ -561,7 +567,7 @@ class TestRegisterTools:
         fake_mcp: Any = FakeMCP()
         register_tools(fake_mcp)
         assert len(registered) == 1
-        assert "shell_exec_mcp" in registered
+        assert "shell_exec" in registered
 
     def test_auth_level_is_destructive_approval(self) -> None:
         """The decorator chain must use AuthLevel.DESTRUCTIVE_APPROVAL."""

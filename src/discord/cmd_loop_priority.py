@@ -13,7 +13,7 @@ from typing import Any
 import structlog
 
 from .colors import PRIMARY
-from ._embed_helpers import (
+from ._embed_utils import (
     EmbedData,
     EmbedField,
     defer_ephemeral,
@@ -41,7 +41,7 @@ PRIORITY_EMOJI: dict[str, str] = {
 
 async def loop_priority_callback(interaction: Any) -> None:
     """Handle a ``/loop-priority`` interaction."""
-    from .commands import is_faiz_interaction
+    from ._auth_guard import is_faiz_interaction
 
     if not is_faiz_interaction(interaction):
         await send_denied(interaction)

@@ -2,23 +2,27 @@
 """Shared fixtures for persona smoke tests against local 9Router."""
 
 import json
+from pathlib import Path
+
 import pytest
 import pytest_asyncio
 import httpx
 
-SYSTEM_PROMPT_PATH = "/home/guinevere/config/hermes/system-prompt.md"
+SYSTEM_PROMPT_PATH = Path("/home/guinevere/config/hermes/system-prompt.md")
+REPO_SYSTEM_PROMPT_PATH = Path("docs/60-persona/61-SystemPromptMaster_v1.1.md")
 NINEROUTER_BASE = "http://localhost:20128/v1"
+DEFAULT_SMOKE_MODEL = "ds/deepseek-v4-flash"
 PROMPT_MAX_CHARS = 4000
 
 
 @pytest.fixture(scope="session")
 def system_prompt() -> str:
-    """Read Guinevere system prompt from deployed config path."""
+    """Read Guinevere system prompt from deployed config or repo fallback."""
+    prompt_path = SYSTEM_PROMPT_PATH if SYSTEM_PROMPT_PATH.exists() else REPO_SYSTEM_PROMPT_PATH
     try:
-        with open(SYSTEM_PROMPT_PATH, encoding="utf-8") as fh:
-            raw = fh.read()
+        raw = prompt_path.read_text(encoding="utf-8")
     except FileNotFoundError:
-        pytest.fail("System prompt file not found: %s" % SYSTEM_PROMPT_PATH)
+        pytest.fail("System prompt file not found: %s" % prompt_path)
     if len(raw) > PROMPT_MAX_CHARS:
         raw = raw[:PROMPT_MAX_CHARS]
     if len(raw) < 200:
@@ -69,7 +73,7 @@ def chat(client, system_prompt):
     Returns the content string (not raw httpx.Response).
     """
 
-    async def _chat(user_message: str, *, model: str = "guinevere", max_tokens: int = 1024) -> str:
+    async def _chat(user_message: str, *, model: str = DEFAULT_SMOKE_MODEL, max_tokens: int = 1024) -> str:
         payload = {
             "model": model,
             "messages": [

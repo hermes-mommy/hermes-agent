@@ -355,7 +355,7 @@ async def memory_search_callback(interaction: object) -> None:
     Args:
         interaction: The Discord ``Interaction`` to respond to.
     """
-    from .commands import is_faiz_interaction
+    from ._auth_guard import is_faiz_interaction
 
     if not is_faiz_interaction(interaction):
         await _send_denied(interaction)

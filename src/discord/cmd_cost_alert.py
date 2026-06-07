@@ -15,7 +15,7 @@ import redis
 import structlog
 
 from .colors import FINANCE
-from ._embed_helpers import (
+from ._embed_utils import (
     EmbedData,
     EmbedField,
     defer_ephemeral,
@@ -134,7 +134,7 @@ async def cost_alert_callback(interaction: Any) -> None:
     Args:
         interaction: The Discord ``Interaction`` to respond to.
     """
-    from .commands import is_faiz_interaction
+    from ._auth_guard import is_faiz_interaction
 
     if not is_faiz_interaction(interaction):
         await send_denied(interaction)

@@ -2,9 +2,12 @@
 
 Provides the ``get_adapter()`` singleton factory that was previously
 exported from ``src.hermes``.  Importing this module does **not** pull
-in ``session_adapter`` or ``memory_bridge`` at package-init time; the
-``HermesSessionAdapter`` import is deferred to the first ``get_adapter()``
-call, preserving the same lazy-init semantics as before.
+in deprecated ``session_adapter`` or ``memory_bridge`` at package-init
+time; the ``HermesSessionAdapter`` import is deferred to the first
+``get_adapter()`` call, preserving the same lazy-init semantics.
+
+The production class lives in ``._session_adapter`` (the non-deprecated
+replacement for ``session_adapter.py`` which is slated for archive).
 
 Usage::
 
@@ -21,7 +24,7 @@ from typing import TYPE_CHECKING
 from redis.asyncio import Redis
 
 if TYPE_CHECKING:
-    from .session_adapter import HermesSessionAdapter
+    from ._session_adapter import HermesSessionAdapter
 
 _adapter_instance: "HermesSessionAdapter | None" = None
 
@@ -37,7 +40,7 @@ def get_adapter() -> "HermesSessionAdapter":
     """
     global _adapter_instance
     if _adapter_instance is None:
-        from .session_adapter import HermesSessionAdapter
+        from ._session_adapter import HermesSessionAdapter
 
         _adapter_instance = HermesSessionAdapter(
             redis_client=Redis(),

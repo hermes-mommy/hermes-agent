@@ -78,8 +78,8 @@ class TestGetSystemPromptWithContext:
             prompt = get_system_prompt_with_context(
                 ["memory one", "memory two"], mood="Content"
             )
-        assert "1. memory one" in prompt
-        assert "2. memory two" in prompt
+        assert "- (Restricted) memory one" in prompt
+        assert "- (Restricted) memory two" in prompt
 
     def test_dict_memories_formatted_with_safe_content(self) -> None:
         with patch(
@@ -94,9 +94,9 @@ class TestGetSystemPromptWithContext:
                 ],
                 mood="Content",
             )
-        assert "1. alpha" in prompt
-        assert "2. beta" in prompt
-        assert "3. gamma" in prompt
+        assert "- (Restricted) alpha" in prompt
+        assert "- (Restricted) beta" in prompt
+        assert "- (Restricted) gamma" in prompt
 
     def test_empty_safe_content_skipped(self) -> None:
         with patch(
@@ -112,10 +112,10 @@ class TestGetSystemPromptWithContext:
                 mood="Content",
                 token_budget=4000,
             )
-        assert "1. keep" in prompt
-        assert "2. also keep" in prompt
+        assert "- (Restricted) keep" in prompt
+        assert "- (Restricted) also keep" in prompt
         # Empty entry should not appear
-        assert "3." not in prompt
+        assert "- (Restricted) " not in prompt.replace("- (Restricted) keep", "").replace("- (Restricted) also keep", "")
 
     def test_raw_content_never_injected(self) -> None:
         with patch(
@@ -145,9 +145,8 @@ class TestGetSystemPromptWithContext:
             prompt = get_system_prompt_with_context(
                 memories, mood="Content", token_budget=100
             )
-        assert "1. " in prompt
-        assert "4. " in prompt
-        assert "5. " not in prompt
+        assert "- (Restricted) " in prompt
+        assert prompt.count("- (Restricted) ") == 3
 
     def test_token_budget_zero_drops_all_memories(self) -> None:
         memories = [_make_memory("alpha"), _make_memory("beta")]
@@ -158,7 +157,7 @@ class TestGetSystemPromptWithContext:
             prompt = get_system_prompt_with_context(
                 memories, mood="Content", token_budget=0
             )
-        assert "## Recalled Memories" in prompt
+        assert "[RECENT MEMORIES]" in prompt
         assert "alpha" not in prompt
         assert "beta" not in prompt
 
@@ -170,8 +169,7 @@ class TestGetSystemPromptWithContext:
         ):
             # Should not raise; default budget should accommodate small memories
             prompt = get_system_prompt_with_context(memories, mood="Content")
-        assert "1. " in prompt
-        assert "5. " in prompt
+        assert prompt.count("- (Restricted) ") == 5
 
     def test_logger_called_with_metadata_only(self) -> None:
         memories = [_make_memory("alpha")]

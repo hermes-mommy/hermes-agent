@@ -14,7 +14,7 @@ from typing import Any, Final
 import structlog
 
 from .colors import SUCCESS
-from ._embed_helpers import (
+from ._embed_utils import (
     EmbedData,
     EmbedField,
     defer_ephemeral,
@@ -33,7 +33,7 @@ FOOTER_ICON: Final[str] = "\U0001f4ac Conversation"
 
 async def new_session_callback(interaction: Any) -> None:
     """Handle a ``/new`` interaction — clear Hermes session for the caller."""
-    from .commands import is_faiz_interaction
+    from ._auth_guard import is_faiz_interaction
 
     if not is_faiz_interaction(interaction):
         await send_denied(interaction)
