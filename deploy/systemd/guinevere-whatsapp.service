@@ -1,0 +1,50 @@
+# Guinevere WhatsApp Channel — systemd Service Unit — Phase 11
+# Repository template for the dedicated WhatsApp channel process.
+# Canonical source: research-reports/p11-expansion/P11-022.md
+
+[Unit]
+Description=Guinevere WhatsApp Channel (Neonize)
+Documentation=https://github.com/faizz/guinevere
+After=network-online.target guinevere-api.service redis.service
+Wants=network-online.target
+Requires=redis.service
+
+[Service]
+Type=simple
+User=guinevere
+Group=guinevere
+WorkingDirectory=/opt/guinevere
+EnvironmentFile=/opt/guinevere/.env.whatsapp
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/guinevere/.venv/bin/python -m src.channels.whatsapp.service
+Restart=on-failure
+RestartSec=10
+StartLimitBurst=3
+StartLimitIntervalSec=60
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=guinevere-whatsapp
+LimitNOFILE=65536
+TimeoutStopSec=30
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictNamespaces=true
+SystemCallArchitectures=native
+ReadWritePaths=/opt/guinevere/data/whatsapp
+ReadWritePaths=/opt/guinevere/logs
+ReadWritePaths=/opt/guinevere/.neonize_auth
+# NOTE: MemoryDenyWriteExecute=true is intentionally omitted.
+# Neonize uses Go/CGo/FFI and may require writable+executable memory.
+
+[Install]
+WantedBy=multi-user.target
