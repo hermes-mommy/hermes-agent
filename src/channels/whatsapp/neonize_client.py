@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 from collections.abc import Awaitable, Callable, Coroutine
+from concurrent.futures import Future
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -72,6 +73,7 @@ class NeonizeClient:
         self._message_handlers: list[MessageHandler] = []
         self._qr_handler: QrHandler | None = None
         self._paircode_handler: PairCodeHandler | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
         self._reconnect: ReconnectionHandler = ReconnectionHandler(
             redis_client=self._redis,
             reconnect_callback=self._attempt_reconnect,
@@ -100,6 +102,7 @@ class NeonizeClient:
         self._message_handlers.append(handler)
 
     async def connect(self) -> None:
+        self._loop = asyncio.get_running_loop()
         _ = await self._auth.ensure_runtime_dir()
         await asyncio.to_thread(self._client.connect)
 
@@ -148,13 +151,16 @@ class NeonizeClient:
         event_bus(PairStatusEv)(self._on_pair_status)
         event_bus(LoggedOutEv)(self._on_logged_out)
 
-    def _schedule(self, coro: Coroutine[Any, Any, Any]) -> None:
+    def _schedule(self, coro: Coroutine[Any, Any, Any]) -> Future[Any] | asyncio.Task[Any] | None:
         try:
             loop = asyncio.get_running_loop()
+            return loop.create_task(coro)
         except RuntimeError:
-            logger.warning("whatsapp_event_without_running_loop")
-            return
-        _ = loop.create_task(coro)
+            if self._loop is None or self._loop.is_closed():
+                logger.warning("whatsapp_event_without_running_loop")
+                coro.close()
+                return None
+            return asyncio.run_coroutine_threadsafe(coro, self._loop)
 
     def _on_qr(self, _: NewClient, data_qr: bytes) -> None:
         logger.info("whatsapp_qr_emitted", size_bytes=len(data_qr))
