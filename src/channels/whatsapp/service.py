@@ -4,11 +4,17 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
+import os
+import threading
 from datetime import UTC, datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.error import URLError
 from urllib.request import urlopen
+
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 import asyncpg
 import structlog
@@ -54,8 +60,9 @@ INTERNAL_ERROR_RESPONSE = "Ada kendala internal di jalur WhatsApp. Coba lagi seb
 
 
 class WhatsAppService:
-    def __init__(self, *, phone_number: str | None = None) -> None:
-        self._phone_number = phone_number
+    def __init__(self, *, phone_number: str | None = None, qr_mode: str | None = None) -> None:
+        self._phone_number = phone_number or os.environ.get("WHATSAPP_PHONE_NUMBER")
+        self._qr_mode = qr_mode or os.environ.get("WHATSAPP_QR_MODE")
         self._redis = build_whatsapp_redis_client()
         self._auth = WhatsAppAuthManager(redis_client=self._redis)
         self._client = NeonizeClient(redis_client=self._redis, auth_manager=self._auth)
@@ -81,7 +88,11 @@ class WhatsAppService:
             adapter=self._adapter,
             presence=self._presence,
         )
+        self._health_port = int(os.environ.get("HEALTH_PORT", "8095"))
+        self._health_host = os.environ.get("HEALTH_HOST", "127.0.0.1")
         self._health_task: asyncio.Task[None] | None = None
+        self._health_httpd: ThreadingHTTPServer | None = None
+        self._health_http_thread: threading.Thread | None = None
         self._running = False
         self._last_connection_state = "unknown"
         self._adapter.add_inbound_handler(self.handle_envelope)
@@ -113,12 +124,31 @@ class WhatsAppService:
 
     async def start(self) -> None:
         configure_structlog()
+        self._configure_pairing_handlers()
         _ = await self._auth.ensure_runtime_dir()
+        self._health_httpd = self._build_health_server()
+        self._health_http_thread = threading.Thread(
+            target=self._health_httpd.serve_forever,
+            name="guinevere-whatsapp-health",
+            daemon=True,
+        )
+        self._health_http_thread.start()
         self._health_task = asyncio.create_task(self._health.run())
         await self._client.connect()
+        if self._phone_number:
+            try:
+                code = await self._client.pair_phone(self._phone_number)
+                logger.info("whatsapp_pairing_code_requested", code=code)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("whatsapp_pairing_code_failed", error=str(exc))
         self._running = True
         await self._sync_runtime_state()
-        logger.info("whatsapp_service_started")
+        logger.info(
+            "whatsapp_service_started",
+            health_host=self._health_host,
+            health_port=self._health_port,
+            qr_mode=self._qr_mode,
+        )
 
     async def stop(self) -> None:
         self._running = False
@@ -128,6 +158,13 @@ class WhatsAppService:
                 await self._health_task
             except asyncio.CancelledError:
                 pass
+        if self._health_httpd is not None:
+            self._health_httpd.shutdown()
+            self._health_httpd.server_close()
+            self._health_httpd = None
+        if self._health_http_thread is not None:
+            self._health_http_thread.join(timeout=2)
+            self._health_http_thread = None
         await self._presence.force_clear_all()
         await self._client.stop()
         await self._client.close()
@@ -268,6 +305,76 @@ class WhatsAppService:
         return await asyncio.to_thread(_ping)
 
 
+    def _configure_pairing_handlers(self) -> None:
+        if self._qr_mode == "terminal":
+            self._client.set_qr_handler(self._handle_terminal_qr)
+        self._client.set_paircode_handler(self._handle_paircode)
+
+    def _handle_terminal_qr(self, data_qr: bytes) -> None:
+        qr_text = data_qr.decode("utf-8", errors="ignore")
+        if not qr_text:
+            logger.warning("whatsapp_qr_empty")
+            return
+        try:
+            import segno
+
+            print("\n=== WHATSAPP QR START ===")
+            segno.make(qr_text).terminal(compact=True)
+            print("=== WHATSAPP QR END ===\n")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("whatsapp_qr_render_failed", error=str(exc), qr_text=qr_text)
+            print(f"WHATSAPP_QR_RAW={qr_text}")
+
+    def _handle_paircode(self, code: str, connected: bool) -> None:
+        logger.info("whatsapp_paircode_available", code=code, connected=connected)
+        print(f"WHATSAPP_PAIRCODE={code} connected={connected}")
+
+    def _build_health_server(self) -> ThreadingHTTPServer:
+        service = self
+
+        class HealthHandler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802
+                if self.path not in {"/health", "/health/detailed", "/metrics"}:
+                    self.send_response(404)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(b'{"error":"not found"}')
+                    return
+
+                if self.path == "/metrics":
+                    payload = generate_latest()
+                    self.send_response(200)
+                    self.send_header("Content-Type", CONTENT_TYPE_LATEST)
+                    self.send_header("Content-Length", str(len(payload)))
+                    self.end_headers()
+                    self.wfile.write(payload)
+                    return
+
+                snapshot = service._health.get_probe_response()
+                payload = {
+                    "status": snapshot["status"],
+                    "connection_state": snapshot["connection_state"],
+                    "needs_manual": snapshot["needs_manual"],
+                    "session_age_seconds": snapshot["session_age_seconds"],
+                    "last_check": snapshot["last_check"],
+                    "degraded_reason": snapshot["degraded_reason"],
+                    "heartbeat_stale": snapshot["heartbeat_stale"],
+                    "service_running": service._running,
+                }
+                body = json.dumps(payload).encode("utf-8")
+                status_code = 200 if payload["status"] == "ready" else 503
+                self.send_response(status_code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+                logger.debug("whatsapp_health_http", message=format % args)
+
+        return ThreadingHTTPServer((self._health_host, self._health_port), HealthHandler)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Guinevere WhatsApp service")
     parser.add_argument("--qr-mode", choices=["terminal"], default=None)
@@ -277,7 +384,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 async def _main_async(args: argparse.Namespace) -> None:
-    service = WhatsAppService(phone_number=args.phone_number)
+    service = WhatsAppService(phone_number=args.phone_number, qr_mode=args.qr_mode)
     if args.test_connect:
         await service.test_connect()
         return

@@ -5,19 +5,18 @@
 [Unit]
 Description=Guinevere WhatsApp Channel (Neonize)
 Documentation=https://github.com/faizz/guinevere
-After=network-online.target guinevere-api.service redis.service
-Wants=network-online.target
-Requires=redis.service
+After=network-online.target guinevere-core.service docker.service
+Wants=network-online.target docker.service
 
 [Service]
 Type=simple
 User=guinevere
 Group=guinevere
-WorkingDirectory=/opt/guinevere
+WorkingDirectory=/home/guinevere/code/guinevere
 EnvironmentFile=/opt/guinevere/.env.whatsapp
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
-ExecStart=/opt/guinevere/.venv/bin/python -m src.channels.whatsapp.service
+ExecStart=/home/guinevere/code/guinevere/.venv/bin/python -m src.channels.whatsapp.service --qr-mode=terminal
 Restart=on-failure
 RestartSec=10
 StartLimitBurst=3
@@ -40,9 +39,9 @@ LockPersonality=true
 RestrictRealtime=true
 RestrictNamespaces=true
 SystemCallArchitectures=native
-ReadWritePaths=/opt/guinevere/data/whatsapp
-ReadWritePaths=/opt/guinevere/logs
-ReadWritePaths=/opt/guinevere/.neonize_auth
+ReadWritePaths=/home/guinevere/data/whatsapp
+ReadWritePaths=/home/guinevere/code/guinevere/secrets
+ReadWritePaths=/opt/guinevere
 # NOTE: MemoryDenyWriteExecute=true is intentionally omitted.
 # Neonize uses Go/CGo/FFI and may require writable+executable memory.
 
