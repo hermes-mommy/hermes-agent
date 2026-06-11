@@ -266,47 +266,144 @@ class NeonizeClient:
 
     def _normalize_message_event(self, message: MessageEv) -> WhatsAppEvent:
         info = getattr(message, "Info", None)
-        raw_jid = self._extract_jid(info)
+        raw_jid = self._extract_sender_jid(info)
+        chat_jid = self._extract_chat_jid(info) or raw_jid
+        timestamp = self._extract_timestamp(info)
+        body = self._extract_body(message)
+        message_type = self._extract_message_type(message)
+        push_name = self._optional_str(getattr(info, "Pushname", None))
+        message_id = self._optional_str(getattr(info, "ID", None))
         raw_bytes = getattr(message, "Raw", b"")
         if isinstance(raw_bytes, str):
             raw_bytes = raw_bytes.encode("utf-8", errors="ignore")
         byte_length = len(raw_bytes) if isinstance(raw_bytes, (bytes, bytearray)) else 0
         return WhatsAppEvent(
             event_type=EventType.MESSAGE_RECEIVED,
-            timestamp=datetime.now(UTC),
+            timestamp=timestamp,
             jid_hash=self._hash_jid(raw_jid) if raw_jid else None,
-            message_type=self._extract_message_type(message),
+            message_type=message_type,
             byte_length=byte_length,
             metadata={
                 "retry_count": getattr(message, "RetryCount", None),
                 "raw_jid": raw_jid,
+                "chat_jid": chat_jid,
+                "message_id": message_id,
+                "body": body,
+                "push_name": push_name,
+                "timestamp": timestamp,
+                "media_type": None if message_type == "message" else message_type,
+                "media_size_bytes": byte_length if byte_length > 0 else None,
             },
         )
 
     def _extract_message_type(self, message: MessageEv) -> str:
-        if getattr(message, "IsDocumentWithCaption", False):
+        payload = getattr(message, "Message", None)
+        if getattr(message, "IsDocumentWithCaption", False) or getattr(payload, "documentMessage", None):
             return "document"
-        if getattr(message, "IsLottieSticker", False):
+        if getattr(message, "IsLottieSticker", False) or getattr(payload, "stickerMessage", None):
             return "sticker"
+        if getattr(payload, "imageMessage", None):
+            return "image"
+        if getattr(payload, "audioMessage", None):
+            return "audio"
+        if getattr(payload, "videoMessage", None):
+            return "video"
+        if getattr(payload, "contactMessage", None):
+            return "contact"
+        if getattr(payload, "locationMessage", None) or getattr(payload, "liveLocationMessage", None):
+            return "location"
         if getattr(message, "IsViewOnce", False) or getattr(message, "IsViewOnceV2", False):
             return "view_once"
-        if getattr(message, "Message", None) is not None:
+        if payload is not None:
             return "message"
         return "unknown"
 
-    def _extract_jid(self, info: Any) -> str | None:
+    def _extract_sender_jid(self, info: Any) -> str | None:
         if info is None:
             return None
-        sender = getattr(info, "Sender", None)
-        chat = getattr(info, "Chat", None)
-        for candidate in (sender, chat):
+        source = getattr(info, "MessageSource", None)
+        candidates = []
+        if source is not None:
+            candidates.extend(
+                [
+                    getattr(source, "Sender", None),
+                    getattr(source, "SenderAlt", None),
+                    getattr(source, "RecipientAlt", None),
+                    getattr(source, "Chat", None),
+                ]
+            )
+        candidates.extend(
+            [
+                getattr(info, "Sender", None),
+                getattr(info, "SenderAlt", None),
+                getattr(info, "RecipientAlt", None),
+                getattr(info, "Chat", None),
+            ]
+        )
+        return self._first_valid_jid(*candidates)
+
+    def _extract_chat_jid(self, info: Any) -> str | None:
+        if info is None:
+            return None
+        source = getattr(info, "MessageSource", None)
+        candidates = []
+        if source is not None:
+            candidates.extend(
+                [
+                    getattr(source, "Chat", None),
+                    getattr(source, "RecipientAlt", None),
+                    getattr(source, "Sender", None),
+                ]
+            )
+        candidates.extend(
+            [
+                getattr(info, "Chat", None),
+                getattr(info, "RecipientAlt", None),
+                getattr(info, "Sender", None),
+            ]
+        )
+        return self._first_valid_jid(*candidates)
+
+    def _first_valid_jid(self, *candidates: Any) -> str | None:
+        for candidate in candidates:
             if candidate is None:
                 continue
-            user = getattr(candidate, "User", "")
-            server = getattr(candidate, "Server", "")
+            user = self._optional_str(getattr(candidate, "User", ""))
+            server = self._optional_str(getattr(candidate, "Server", ""))
             if user and server:
                 return f"{user}@{server}"
         return None
+
+    def _extract_timestamp(self, info: Any) -> datetime:
+        timestamp = getattr(info, "Timestamp", None) if info is not None else None
+        if timestamp is None:
+            return datetime.now(UTC)
+        try:
+            return datetime.fromtimestamp(int(timestamp), tz=UTC)
+        except (TypeError, ValueError, OSError):
+            return datetime.now(UTC)
+
+    def _extract_body(self, message: MessageEv) -> str:
+        payload = getattr(message, "Message", None)
+        if payload is None:
+            return ""
+        for candidate in (
+            self._optional_str(getattr(payload, "conversation", None)),
+            self._optional_str(getattr(getattr(payload, "extendedTextMessage", None), "text", None)),
+            self._optional_str(getattr(getattr(payload, "imageMessage", None), "caption", None)),
+            self._optional_str(getattr(getattr(payload, "videoMessage", None), "caption", None)),
+            self._optional_str(getattr(getattr(payload, "documentWithCaptionMessage", None), "caption", None)),
+            self._optional_str(getattr(getattr(payload, "documentMessage", None), "caption", None)),
+        ):
+            if candidate:
+                return candidate
+        return ""
+
+    def _optional_str(self, value: Any) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
 
     def _hash_jid(self, raw_jid: str) -> str:
         return hashlib.sha256(raw_jid.encode("utf-8")).hexdigest()[:12]
