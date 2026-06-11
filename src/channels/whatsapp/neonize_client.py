@@ -326,21 +326,21 @@ class NeonizeClient:
         if source is not None:
             candidates.extend(
                 [
-                    getattr(source, "Sender", None),
                     getattr(source, "SenderAlt", None),
                     getattr(source, "RecipientAlt", None),
+                    getattr(source, "Sender", None),
                     getattr(source, "Chat", None),
                 ]
             )
         candidates.extend(
             [
-                getattr(info, "Sender", None),
                 getattr(info, "SenderAlt", None),
                 getattr(info, "RecipientAlt", None),
+                getattr(info, "Sender", None),
                 getattr(info, "Chat", None),
             ]
         )
-        return self._first_valid_jid(*candidates)
+        return self._prefer_personal_jid(*candidates)
 
     def _extract_chat_jid(self, info: Any) -> str | None:
         if info is None:
@@ -352,6 +352,7 @@ class NeonizeClient:
                 [
                     getattr(source, "Chat", None),
                     getattr(source, "RecipientAlt", None),
+                    getattr(source, "SenderAlt", None),
                     getattr(source, "Sender", None),
                 ]
             )
@@ -359,19 +360,43 @@ class NeonizeClient:
             [
                 getattr(info, "Chat", None),
                 getattr(info, "RecipientAlt", None),
+                getattr(info, "SenderAlt", None),
                 getattr(info, "Sender", None),
             ]
         )
-        return self._first_valid_jid(*candidates)
+        return self._prefer_personal_jid(*candidates)
+
+    def _prefer_personal_jid(self, *candidates: Any) -> str | None:
+        personal: list[str] = []
+        fallback: list[str] = []
+        for candidate in candidates:
+            jid = self._jid_to_string(candidate)
+            if not jid:
+                continue
+            if jid.endswith("@s.whatsapp.net"):
+                personal.append(jid)
+            else:
+                fallback.append(jid)
+        if personal:
+            return personal[0]
+        if fallback:
+            return fallback[0]
+        return None
+
+    def _jid_to_string(self, candidate: Any) -> str | None:
+        if candidate is None:
+            return None
+        user = self._optional_str(getattr(candidate, "User", ""))
+        server = self._optional_str(getattr(candidate, "Server", ""))
+        if user and server:
+            return f"{user}@{server}"
+        return None
 
     def _first_valid_jid(self, *candidates: Any) -> str | None:
         for candidate in candidates:
-            if candidate is None:
-                continue
-            user = self._optional_str(getattr(candidate, "User", ""))
-            server = self._optional_str(getattr(candidate, "Server", ""))
-            if user and server:
-                return f"{user}@{server}"
+            jid = self._jid_to_string(candidate)
+            if jid:
+                return jid
         return None
 
     def _extract_timestamp(self, info: Any) -> datetime:
