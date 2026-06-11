@@ -96,6 +96,7 @@ class WhatsAppService:
         self._health_port = int(os.environ.get("HEALTH_PORT", "8095"))
         self._health_host = os.environ.get("HEALTH_HOST", "127.0.0.1")
         self._health_task: asyncio.Task[None] | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
         self._health_httpd: ThreadingHTTPServer | None = None
         self._health_http_thread: threading.Thread | None = None
         self._running = False
@@ -264,6 +265,7 @@ class WhatsAppService:
         log_message_sent(jid=envelope.sender_raw_jid, message_id=envelope.message_id, byte_length=total_bytes)
 
     async def run_forever(self) -> None:
+        self._loop = asyncio.get_running_loop()
         if not self._running:
             await self.start()
         await asyncio.Event().wait()
@@ -373,6 +375,50 @@ class WhatsAppService:
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
+
+            def do_POST(self) -> None:  # noqa: N802
+                if self.path != "/admin/send-test":
+                    self.send_response(404)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(b'{"error":"not found"}')
+                    return
+                try:
+                    length = int(self.headers.get("Content-Length", 0))
+                    body = json.loads(self.rfile.read(length)) if length else {}
+                except Exception:
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(b'{"error":"invalid json"}')
+                    return
+                target = body.get("target", "6281234084693@s.whatsapp.net")
+                message = body.get("message", "tes admin send")
+                loop = service._loop
+                if loop is None:
+                    self.send_response(503)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(b'{"error":"event loop not ready"}')
+                    return
+                import asyncio as _aio
+                try:
+                    coro = service._adapter.send_text(target, message)
+                    fut = _aio.run_coroutine_threadsafe(coro, loop)
+                    result = fut.result(timeout=30)
+                    resp = json.dumps({"ok": True, "target": target, "result": str(result)}).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(resp)))
+                    self.end_headers()
+                    self.wfile.write(resp)
+                except Exception as exc:
+                    resp = json.dumps({"ok": False, "error": str(exc)}).encode()
+                    self.send_response(500)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(resp)))
+                    self.end_headers()
+                    self.wfile.write(resp)
 
             def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
                 logger.debug("whatsapp_health_http", message=format % args)

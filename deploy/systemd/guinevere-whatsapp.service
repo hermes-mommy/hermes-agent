@@ -41,6 +41,7 @@ RestrictNamespaces=true
 SystemCallArchitectures=native
 ReadWritePaths=/home/guinevere/data/whatsapp
 ReadWritePaths=/home/guinevere/code/guinevere/secrets
+ReadWritePaths=/home/guinevere/.hermes/logs
 ReadWritePaths=/opt/guinevere
 # NOTE: MemoryDenyWriteExecute=true is intentionally omitted.
 # Neonize uses Go/CGo/FFI and may require writable+executable memory.
