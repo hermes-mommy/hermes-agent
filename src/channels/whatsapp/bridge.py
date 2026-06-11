@@ -8,7 +8,9 @@ existing Hermes runtime/session surface, and returns a typed result.
 """
 
 import asyncio
+import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable
 
 import structlog
@@ -72,7 +74,7 @@ class WhatsAppHermesBridge:
 
     def is_available(self) -> bool:
         try:
-            self._hermes_getter()
+            self._get_hermes_runtime()
         except Exception:  # noqa: BLE001
             return False
         return True
@@ -83,7 +85,7 @@ class WhatsAppHermesBridge:
         system_prompt = self._prompt_builder(envelope)
 
         try:
-            hermes = self._hermes_getter()
+            hermes = self._get_hermes_runtime()
         except Exception as exc:  # noqa: BLE001
             logger.error("whatsapp_hermes_unavailable", error=str(exc))
             raise HermesUnavailable("Hermes runtime unavailable") from exc
@@ -127,6 +129,24 @@ class WhatsAppHermesBridge:
 
     def _default_prompt_builder(self, _envelope: WhatsAppMessageEnvelope) -> str:
         return get_system_prompt_with_context(memories=None, mood="Content", token_budget=800)
+
+    def _get_hermes_runtime(self) -> Any:
+        original_sys_path = list(sys.path)
+        try:
+            sys.path = self._sanitized_sys_path(original_sys_path)
+            return self._hermes_getter()
+        finally:
+            sys.path = original_sys_path
+
+    def _sanitized_sys_path(self, paths: list[str]) -> list[str]:
+        repo_root = str(Path(__file__).resolve().parents[3])
+        cwd = str(Path.cwd().resolve())
+        shadowing_roots = {"", repo_root, cwd}
+        preferred = [p for p in paths if p not in shadowing_roots]
+        trailing = [p for p in paths if p in shadowing_roots and p]
+        if "" in paths:
+            trailing.insert(0, "")
+        return preferred + trailing
 
     def _safe_metadata(self, hermes: Any, user_id: str) -> dict[str, Any]:
         try:
