@@ -69,7 +69,8 @@ class NeonizeClient:
     ) -> None:
         self._redis: aioredis.Redis = redis_client or build_whatsapp_redis_client()
         self._auth: WhatsAppAuthManager = auth_manager or WhatsAppAuthManager(redis_client=self._redis)
-        self._client: NewClient = NewClient(name)
+        self._database_path: str = str(self._auth.session_dir / "neonize.db")
+        self._client: NewClient = NewClient(self._database_path, uuid=name)
         self._message_handlers: list[MessageHandler] = []
         self._qr_handler: QrHandler | None = None
         self._paircode_handler: PairCodeHandler | None = None
@@ -236,14 +237,21 @@ class NeonizeClient:
 
     async def _handle_pair_status(self, *, status: Any, error: Any) -> None:
         normalized_status = str(status or "").lower()
-        if any(token in normalized_status for token in ["paired", "connected", "success"]):
+        numeric_status: int | None
+        try:
+            numeric_status = int(status) if status is not None else None
+        except (TypeError, ValueError):
+            numeric_status = None
+
+        if numeric_status == 2 or any(token in normalized_status for token in ["paired", "connected", "success"]):
             _ = await self._auth.update_state(SessionState.PAIRED)
             _ = await self._auth.mark_phone_online()
             return
-        if error:
+
+        if numeric_status == 1 or error:
             _ = await self._auth.update_state(
                 SessionState.ERROR,
-                error=str(error),
+                error=str(error) if error else f"pair_status={status}",
             )
 
     async def _attempt_reconnect(self) -> bool:

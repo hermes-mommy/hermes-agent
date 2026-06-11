@@ -65,7 +65,12 @@ class WhatsAppService:
         self._qr_mode = qr_mode or os.environ.get("WHATSAPP_QR_MODE")
         self._redis = build_whatsapp_redis_client()
         self._auth = WhatsAppAuthManager(redis_client=self._redis)
-        self._client = NeonizeClient(redis_client=self._redis, auth_manager=self._auth)
+        database_path = str(self._auth.session_dir / "neonize.db")
+        self._client = NeonizeClient(
+            name=database_path,
+            redis_client=self._redis,
+            auth_manager=self._auth,
+        )
         self._adapter = WhatsAppIngressEgressAdapter(self._client)
         self._whitelist = WhitelistManager(redis_client=self._redis)
         self._hard_stop = WhatsAppHardStopGate(get_shared_hard_stop_handler())
