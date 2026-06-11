@@ -298,25 +298,39 @@ class NeonizeClient:
 
     def _extract_message_type(self, message: MessageEv) -> str:
         payload = getattr(message, "Message", None)
-        if getattr(message, "IsDocumentWithCaption", False) or getattr(payload, "documentMessage", None):
+        if payload is None:
+            return "unknown"
+        if getattr(message, "IsDocumentWithCaption", False) or self._payload_has_field(payload, "documentMessage"):
             return "document"
-        if getattr(message, "IsLottieSticker", False) or getattr(payload, "stickerMessage", None):
+        if getattr(message, "IsLottieSticker", False) or self._payload_has_field(payload, "stickerMessage"):
             return "sticker"
-        if getattr(payload, "imageMessage", None):
+        if self._payload_has_field(payload, "imageMessage"):
             return "image"
-        if getattr(payload, "audioMessage", None):
+        if self._payload_has_field(payload, "audioMessage"):
             return "audio"
-        if getattr(payload, "videoMessage", None):
+        if self._payload_has_field(payload, "videoMessage"):
             return "video"
-        if getattr(payload, "contactMessage", None):
+        if self._payload_has_field(payload, "contactMessage"):
             return "contact"
-        if getattr(payload, "locationMessage", None) or getattr(payload, "liveLocationMessage", None):
+        if self._payload_has_field(payload, "locationMessage") or self._payload_has_field(payload, "liveLocationMessage"):
             return "location"
         if getattr(message, "IsViewOnce", False) or getattr(message, "IsViewOnceV2", False):
             return "view_once"
-        if payload is not None:
+        if self._payload_has_field(payload, "conversation") or self._payload_has_field(payload, "extendedTextMessage"):
             return "message"
-        return "unknown"
+        return "message"
+
+    def _payload_has_field(self, payload: Any, field_name: str) -> bool:
+        if payload is None:
+            return False
+        has_field = getattr(payload, "HasField", None)
+        if callable(has_field):
+            try:
+                return bool(has_field(field_name))
+            except ValueError:
+                return False
+        value = getattr(payload, field_name, None)
+        return value is not None
 
     def _extract_sender_jid(self, info: Any) -> str | None:
         if info is None:
@@ -326,18 +340,18 @@ class NeonizeClient:
         if source is not None:
             candidates.extend(
                 [
+                    getattr(source, "Chat", None),
                     getattr(source, "SenderAlt", None),
                     getattr(source, "RecipientAlt", None),
                     getattr(source, "Sender", None),
-                    getattr(source, "Chat", None),
                 ]
             )
         candidates.extend(
             [
+                getattr(info, "Chat", None),
                 getattr(info, "SenderAlt", None),
                 getattr(info, "RecipientAlt", None),
                 getattr(info, "Sender", None),
-                getattr(info, "Chat", None),
             ]
         )
         return self._prefer_personal_jid(*candidates)
