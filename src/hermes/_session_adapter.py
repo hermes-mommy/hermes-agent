@@ -184,7 +184,7 @@ class HermesSessionAdapter:
     async def send_message(
         self,
         user_id: str,
-        content: str,
+        content: str | list[dict[str, Any]],
         system_prompt: str,
     ) -> str:
         """Send message via AIAgent, update session history, return response.
@@ -249,7 +249,8 @@ class HermesSessionAdapter:
             )
             return FALLBACK_MESSAGE
 
-        final_response: str = str(result.get("final_response", ""))
+        raw_response = result.get("final_response")
+        final_response: str = str(raw_response) if raw_response else ""
         if not final_response:
             logger.warning(
                 "hermes_empty_response",
@@ -268,7 +269,18 @@ class HermesSessionAdapter:
         }
 
         # ── Append new turn ───────────────────────────────────────────────
-        history.append({"role": "user", "content": content})
+        # For multimodal content (list of parts), store only the text
+        # portion in history to avoid bloating Redis with base64 image data.
+        history_content: str
+        if isinstance(content, list):
+            text_parts = [
+                p.get("text", "") for p in content
+                if isinstance(p, dict) and p.get("type") == "text"
+            ]
+            history_content = " ".join(text_parts).strip() or "[image]"
+        else:
+            history_content = content
+        history.append({"role": "user", "content": history_content})
         history.append({"role": "assistant", "content": final_response})
         history = self._prune_history(history)
 

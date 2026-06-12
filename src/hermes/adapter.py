@@ -46,7 +46,7 @@ def get_adapter() -> "HermesSessionAdapter":
             redis_client=Redis(),
             llm_config={
                 "base_url": "http://localhost:20128/v1",
-                "model": "ds/deepseek-v4-flash",
+                "model": "guinevere",
                 "provider": "9router",
                 "api_key": "sk-local",
             },

@@ -8,6 +8,7 @@ existing Hermes runtime/session surface, and returns a typed result.
 """
 
 import asyncio
+import base64
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -90,11 +91,13 @@ class WhatsAppHermesBridge:
             logger.error("whatsapp_hermes_unavailable", error=str(exc))
             raise HermesUnavailable("Hermes runtime unavailable") from exc
 
+        content: str | list[dict[str, Any]] = self._build_content(envelope)
+
         try:
             response_text = await asyncio.wait_for(
                 hermes.send_message(
                     user_id=user_id,
-                    content=envelope.body,
+                    content=content,
                     system_prompt=system_prompt,
                 ),
                 timeout=self._timeout_seconds,
@@ -126,6 +129,35 @@ class WhatsAppHermesBridge:
     async def process(self, envelope: WhatsAppMessageEnvelope) -> str:
         result = await self.invoke(envelope)
         return result.response_text
+
+    def _build_content(self, envelope: WhatsAppMessageEnvelope) -> str | list[dict[str, Any]]:
+        """Build content payload for Hermes: plain string or multimodal parts list."""
+        if not envelope.has_image:
+            return envelope.body
+
+        # Build OpenAI-compatible multimodal content parts.
+        parts: list[dict[str, Any]] = []
+
+        # Image part — base64 data URL.
+        b64_data = base64.b64encode(envelope.image_bytes).decode("ascii")  # type: ignore[arg-type]
+        parts.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/jpeg;base64,{b64_data}"},
+        })
+
+        # Text part — caption or default instruction.
+        text = envelope.body.strip() if envelope.body else ""
+        if not text:
+            text = "Describe this image."
+        parts.append({"type": "text", "text": text})
+
+        logger.info(
+            "whatsapp_multimodal_content_built",
+            message_id=envelope.message_id,
+            image_size_bytes=len(envelope.image_bytes),  # type: ignore[arg-type]
+            has_caption=bool(envelope.body.strip()),
+        )
+        return parts
 
     def _default_prompt_builder(self, _envelope: WhatsAppMessageEnvelope) -> str:
         return get_system_prompt_with_context(memories=None, mood="Content", token_budget=800)

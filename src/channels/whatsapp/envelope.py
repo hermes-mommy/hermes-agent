@@ -34,6 +34,7 @@ class WhatsAppMessageEnvelope:
     push_name: str | None = None
     media_type: str | None = None
     media_size_bytes: int | None = None
+    image_bytes: bytes | None = None
     sender_identity: str | None = None
 
     @property
@@ -43,6 +44,10 @@ class WhatsAppMessageEnvelope:
     @property
     def has_media(self) -> bool:
         return bool(self.media_type)
+
+    @property
+    def has_image(self) -> bool:
+        return self.media_type == "image" and self.image_bytes is not None
 
     def validate(self) -> None:
         if not self.sender_jid_hash:

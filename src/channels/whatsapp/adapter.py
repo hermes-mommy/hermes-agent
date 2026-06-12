@@ -9,6 +9,7 @@ Neonize-style event payloads. All downstream consumers receive canonical
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from typing import Any
 
 import structlog
@@ -58,6 +59,29 @@ class WhatsAppIngressEgressAdapter:
         envelope = self.from_whatsapp_event(event)
         if envelope is None:
             return
+
+        # Download image bytes for image messages via Neonize.
+        if envelope.media_type == "image":
+            raw_e2e = event.metadata.get("raw_e2e_message")
+            if raw_e2e is not None:
+                try:
+                    image_bytes: bytes = await asyncio.to_thread(
+                        self._client.client.download_any, raw_e2e,
+                    )
+                    if image_bytes:
+                        envelope = replace(envelope, image_bytes=image_bytes)
+                        logger.info(
+                            "whatsapp_image_downloaded",
+                            message_id=envelope.message_id,
+                            size_bytes=len(image_bytes),
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "whatsapp_image_download_failed",
+                        message_id=envelope.message_id,
+                        error=str(exc),
+                    )
+
         for handler in self._inbound_handlers:
             result = handler(envelope)
             if asyncio.iscoroutine(result):

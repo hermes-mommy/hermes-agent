@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from .envelope import WhatsAppMessageEnvelope
 
 MEDIA_ACK_RESPONSE = (
-    "Aku sudah menerima medianya, tapi untuk Phase 11 aku masih text-only. "
-    "Coba kirim isi atau instruksinya dalam bentuk teks ya."
+    "Aku sudah menerima medianya, tapi saat ini aku hanya bisa memproses "
+    "teks dan gambar. Coba kirim dalam bentuk teks atau foto ya."
 )
 
 
@@ -54,6 +54,9 @@ class WhatsAppPolicyGate:
         )
 
     def _is_media_message(self, envelope: WhatsAppMessageEnvelope) -> bool:
+        # Images with downloaded bytes are allowed through for vision processing.
+        if envelope.has_image:
+            return False
         if envelope.media_type:
             return True
         return not envelope.is_text

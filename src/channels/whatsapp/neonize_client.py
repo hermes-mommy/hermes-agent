@@ -277,6 +277,10 @@ class NeonizeClient:
         if isinstance(raw_bytes, str):
             raw_bytes = raw_bytes.encode("utf-8", errors="ignore")
         byte_length = len(raw_bytes) if isinstance(raw_bytes, (bytes, bytearray)) else 0
+        # Preserve the raw E2E Message protobuf for downstream media download.
+        # MessageEv.Message is the E2E payload (waE2E); needed by download_any().
+        raw_e2e_message = getattr(message, "Message", None)
+
         return WhatsAppEvent(
             event_type=EventType.MESSAGE_RECEIVED,
             timestamp=timestamp,
@@ -293,6 +297,7 @@ class NeonizeClient:
                 "timestamp": timestamp,
                 "media_type": None if message_type == "message" else message_type,
                 "media_size_bytes": byte_length if byte_length > 0 else None,
+                "raw_e2e_message": raw_e2e_message,
             },
         )
 
