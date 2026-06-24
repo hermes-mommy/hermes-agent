@@ -520,6 +520,12 @@ class HeartbeatService:
             f"recall=mem:{n_mem}/kg:{n_kg} world_model={world_model} "
             f"hard_stop={hard_stop}"
         )
+        # DUX-01 fix: Discord rejects plain-text messages over 2000 chars.
+        # Long intent/focus values could push this line past the limit, so
+        # cap it well below 2000 (1900 leaves headroom for any wrapper).
+        _DISCORD_LOG_MAX = 1900
+        if len(line) > _DISCORD_LOG_MAX:
+            line = line[: _DISCORD_LOG_MAX - 3] + "..."
         now = time.time()
         # Throttle: skip if the line is identical to the last one we wrote, OR
         # if we wrote any line less than _LIFECYCLE_LOG_THROTTLE_SECONDS ago.
@@ -591,24 +597,44 @@ class HeartbeatService:
                         ReflectionEvaluator,
                     )
 
-                    evaluator = ReflectionEvaluator()
+                    # ReflectionEvaluator requires the compiled graph + config
+                    # (RUN-01/DOC-02 fix: it was instantiated with no args,
+                    # raising TypeError every hour and silently breaking
+                    # AC-LIFE-009). Pass the heartbeat's graph + thread config.
+                    graph_config = {
+                        "configurable": {"thread_id": "heartbeat"},
+                        "recursion_limit": 25,
+                    }
+                    evaluator = ReflectionEvaluator(
+                        graph=self.graph,
+                        graph_config=graph_config,
+                        hermes_brain=self._hermes_brain,
+                    )
                     tracker = ImprovementTracker()
-                    candidates = evaluator.evaluate(state)
+                    # evaluate() is sync (in-memory heuristics) — run it off
+                    # the event loop so a future heavier implementation cannot
+                    # block the 1h heartbeat (RUN-02).
+                    candidates = await asyncio.to_thread(evaluator.evaluate, state)
                     for candidate in candidates:
                         tracker.propose(candidate)
+                    # ImprovementCandidate exposes `.category` (a
+                    # CandidateCategory enum), not `candidate_type` (AUTO-06
+                    # fix — the old getattr logged '?' for every candidate).
+                    categories = [
+                        str(getattr(c, "category", "?")) for c in candidates
+                    ]
                     logger.info(
                         "heartbeat_1h_self_improvement",
                         candidates_generated=len(candidates),
-                        candidate_types=[getattr(c, "candidate_type", "?") for c in candidates],
+                        candidate_categories=categories,
                     )
                     if candidates and self._log_channel is not None:
-                        # Log a calm narrative line (throttled by the same
-                        # lifecycle mechanism) so the improvement candidates
-                        # are visible without spam.
+                        # Log a calm narrative line so the improvement
+                        # candidates are visible without spam.
                         try:
                             await self._log_channel.write(
                                 f"[reflection] generated {len(candidates)} self-improvement "
-                                f"candidate(s): {[getattr(c, 'candidate_type', '?') for c in candidates]}"
+                                f"candidate(s): {categories}"
                             )
                         except Exception:  # noqa: BLE001 — fail-soft
                             pass

@@ -256,6 +256,14 @@ async def lifespan(app: FastAPI):
             try:
                 from src.memory.read_pipeline import recall_memories as _recall_memories
 
+                # SAF-02: default to safe_mode=True for autonomous recall so raw
+                # Critical/Restricted-classified episode content is redacted to a
+                # safe placeholder before reaching the brain prompt (the principal
+                # guinevere_core has CRITICAL clearance, but autonomous recall into
+                # a Discord-visible path should be safe-by-default). An operator
+                # can opt into raw Critical content via LIFE_KERNEL_RAW_RECALL=1.
+                _life_raw_recall = os.environ.get("LIFE_KERNEL_RAW_RECALL", "0") == "1"
+
                 async def _life_recall_fn(*, query_text: str, principal: str = "guinevere_core", exclude_dnr: bool = True):
                     async with _lk_session_factory() as _lk_session:
                         return await _recall_memories(
@@ -264,7 +272,7 @@ async def lifespan(app: FastAPI):
                             limit=20,
                             exclude_dnr=exclude_dnr,
                             principal=principal,
-                            safe_mode=False,
+                            safe_mode=not _life_raw_recall,
                         )
 
                 from src.life_kernel.p18_adapter import MemoryRecallAdapter
