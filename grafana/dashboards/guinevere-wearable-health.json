@@ -1,0 +1,1238 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Wearable health pipeline — GHI score, health metric trends (HR / SpO2 / steps / stress / sleep), anomalies, pipeline health (sync, API latency, ingest/drop), and consent/alert status.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "uid": "guinevere-wearable-health",
+  "title": "Guinevere — Wearable Health Pipeline",
+  "tags": ["guinevere", "wearable", "health", "P14"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "weekStart": "",
+  "preload": false,
+  "refresh": "5m",
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "1d"]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "label": "Prometheus",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "options": [],
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false
+      },
+      {
+        "name": "DS_TIMESCALEDB",
+        "label": "TimescaleDB",
+        "type": "datasource",
+        "query": "postgres",
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "options": [],
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false
+      }
+    ]
+  },
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Row 1 — Overview",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "gauge",
+      "title": "Current GHI Score",
+      "description": "Latest Guinevere Health Index score (0-100). Tier thresholds: Critical<40, Poor 40-59, Fair 60-74, Good 75-89, Excellent >=90.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "guinevere_wearable_ghi_score",
+          "legendFormat": "GHI Score",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "unit": "none",
+          "decimals": 1,
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#DC2626", "value": null },
+              { "color": "#DC2626", "value": 40 },
+              { "color": "#CA8A04", "value": 60 },
+              { "color": "#16A34A", "value": 75 },
+              { "color": "#16A34A", "value": 90 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto"
+      },
+      "pluginVersion": "10.4.0"
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "GHI Tier",
+      "description": "Current GHI tier classification.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "guinevere_wearable_ghi_tier",
+          "legendFormat": "Tier",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#DC2626", "value": null }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "CRITICAL", "color": "#DC2626", "index": 0 },
+                "1": { "text": "POOR",     "color": "#DC2626", "index": 1 },
+                "2": { "text": "FAIR",     "color": "#CA8A04", "index": 2 },
+                "3": { "text": "GOOD",     "color": "#16A34A", "index": 3 },
+                "4": { "text": "EXCELLENT","color": "#16A34A", "index": 4 }
+              }
+            }
+          ],
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal"
+      },
+      "pluginVersion": "10.4.0"
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Last Sync Age",
+      "description": "Time elapsed since the last successful wearable sync.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "time() - guinevere_wearable_last_sync_timestamp_seconds",
+          "legendFormat": "Sync Age",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#16A34A", "value": null },
+              { "color": "#CA8A04", "value": 300 },
+              { "color": "#DC2626", "value": 900 }
+            ]
+          },
+          "unit": "s",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "horizontal"
+      },
+      "pluginVersion": "10.4.0"
+    },
+    {
+      "id": 5,
+      "type": "gauge",
+      "title": "Baseline Warmup",
+      "description": "Percentage of wearable metrics that have completed their baseline warmup period.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "(sum(guinevere_wearable_baseline_warmed) / count(guinevere_wearable_baseline_warmed)) * 100",
+          "legendFormat": "Warmed %",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "unit": "percent",
+          "decimals": 0,
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#DC2626", "value": null },
+              { "color": "#CA8A04", "value": 50 },
+              { "color": "#16A34A", "value": 90 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto"
+      },
+      "pluginVersion": "10.4.0"
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Row 2 — Health Metrics (7-day trends)",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "panels": []
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Heart Rate (avg / min / max)",
+      "description": "Hourly aggregates of heart rate from health.heart_rate.",
+      "datasource": { "type": "postgres", "uid": "${DS_TIMESCALEDB}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "${DS_TIMESCALEDB}" },
+          "rawSql": "SELECT time_bucket('1 hour', timestamp) AS time, avg(avg_bpm) AS avg_bpm, min(min_bpm) AS min_bpm, max(max_bpm) AS max_bpm FROM health.heart_rate WHERE $__timeFilter(timestamp) GROUP BY 1 ORDER BY 1",
+          "format": "time_series",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "mode": "none" }
+          },
+          "color": { "mode": "palette-classic" },
+          "unit": "bpm"
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "avg_bpm" }, "properties": [{ "id": "color", "value": { "fixedColor": "#DC2626", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "min_bpm" }, "properties": [{ "id": "color", "value": { "fixedColor": "#2563EB", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "max_bpm" }, "properties": [{ "id": "color", "value": { "fixedColor": "#F97316", "mode": "fixed" } }] }
+        ]
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "none" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true, "calcs": ["mean", "min", "max"] }
+      },
+      "pluginVersion": "10.4.0"
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "SpO2 (with thresholds)",
+      "description": "Hourly average SpO2 from health.spo2. Threshold lines: 94% (warn/yellow), 92% (orange), 90% (red).",
+      "datasource": { "type": "postgres", "uid": "${DS_TIMESCALEDB}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "${DS_TIMESCALEDB}" },
+          "rawSql": "SELECT time_bucket('1 hour', timestamp) AS time, avg(value) AS spo2 FROM health.spo2 WHERE $__timeFilter(timestamp) GROUP BY 1 ORDER BY 1",
+          "format": "time_series",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "mode": "none" },
+            "fillBelowTo": null,
+            "thresholdsStyle": { "mode": "line" }
+          },
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#DC2626", "value": null },
+              { "color": "#F97316", "value": 90 },
+              { "color": "#CA8A04", "value": 92 },
+              { "color": "#16A34A", "value": 94 }
+            ]
+          },
+          "unit": "percent",
+          "min": 85,
+          "max": 100,
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "none" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true, "calcs": ["mean", "min", "max"] }
+      },
+      "pluginVersion": "10.4.0"
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Steps (daily)",
+      "description": "Daily step totals from health.daily_activity.",
+      "datasource": { "type": "postgres", "uid": "${DS_TIMESCALEDB}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 14 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "${DS_TIMESCALEDB}" },
+          "rawSql": "SELECT time_bucket('1 day', timestamp) AS time, sum(value) AS steps FROM health.daily_activity WHERE $__timeFilter(timestamp) AND metric = 'steps' GROUP BY 1 ORDER BY 1",
+          "format": "time_series",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 70,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "mode": "none" }
+          },
+          "color": { "mode": "fixed", "fixedColor": "#16A34A" },
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#DC2626", "value": null },
+              { "color": "#CA8A04", "value": 5000 },
+              { "color": "#16A34A", "value": 10000 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "single", "sort": "none" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true, "calcs": ["sum", "mean"] }
+      },
+      "pluginVersion": "10.4.0"
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Stress Level",
+      "description": "Hourly average stress level from health.stress.",
+      "datasource": { "type": "postgres", "uid": "${DS_TIMESCALEDB}" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 14 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "${DS_TIMESCALEDB}" },
+          "rawSql": "SELECT time_bucket('1 hour', timestamp) AS time, avg(value) AS stress FROM health.stress WHERE $__timeFilter(timestamp) GROUP BY 1 ORDER BY 1",
+          "format": "time_series",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "mode": "none" }
+          },
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#16A34A", "value": null },
+              { "color": "#CA8A04", "value": 40 },
+              { "color": "#DC2626", "value": 70 }
+            ]
+          },
+          "unit": "none",
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "none" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true, "calcs": ["mean", "max"] }
+      },
+      "pluginVersion": "10.4.0"
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Sleep Duration (hours)",
+      "description": "Daily sleep duration in hours from health.sleep_sessions.",
+      "datasource": { "type": "postgres", "uid": "${DS_TIMESCALEDB}" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 14 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "${DS_TIMESCALEDB}" },
+          "rawSql": "SELECT time_bucket('1 day', timestamp) AS time, sum(duration_seconds) / 3600.0 AS sleep_hours FROM health.sleep_sessions WHERE $__timeFilter(timestamp) GROUP BY 1 ORDER BY 1",
+          "format": "time_series",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 25,
+            "showPoints": "auto",
+            "spanNulls": true,
+            "stacking": { "mode": "none" }
+          },
+          "color": { "mode": "fixed", "fixedColor": "#6366F1" },
+          "unit": "h",
+          "decimals": 1,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#DC2626", "value": null },
+              { "color": "#CA8A04", "value": 6 },
+              { "color": "#16A34A", "value": 7 },
+              { "color": "#16A34A", "value": 9 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "single", "sort": "none" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true, "calcs": ["mean", "min", "max"] }
+      },
+      "pluginVersion": "10.4.0"
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "Row 3 — GHI & Analysis",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 },
+      "panels": []
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "GHI Score Over Time",
+      "description": "Guinevere Health Index time series with tier reference lines (40/60/75/90).",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "guinevere_wearable_ghi_score",
+          "legendFormat": "GHI Score"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "vector(40)",
+          "legendFormat": "Poor Threshold (40)",
+          "hide": false
+        },
+        {
+          "refId": "C",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "vector(60)",
+          "legendFormat": "Fair Threshold (60)"
+        },
+        {
+          "refId": "D",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "vector(75)",
+          "legendFormat": "Good Threshold (75)"
+        },
+        {
+          "refId": "E",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "vector(90)",
+          "legendFormat": "Excellent Threshold (90)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 3,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "mode": "none" },
+            "lineStyle": { "fill": "solid" }
+          },
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#DC2626", "value": null },
+              { "color": "#DC2626", "value": 40 },
+              { "color": "#CA8A04", "value": 60 },
+              { "color": "#16A34A", "value": 75 },
+              { "color": "#16A34A", "value": 90 }
+            ]
+          },
+          "unit": "none",
+          "min": 0,
+          "max": 100
+        },
+        "overrides": [
+          { "matcher": { "id": "byFrameRefID", "options": "B" }, "properties": [{ "id": "color", "value": { "fixedColor": "#9CA3AF", "mode": "fixed" } }, { "id": "custom.lineWidth", "value": 1 }, { "id": "custom.lineStyle", "value": { "fill": "dash" } }] },
+          { "matcher": { "id": "byFrameRefID", "options": "C" }, "properties": [{ "id": "color", "value": { "fixedColor": "#9CA3AF", "mode": "fixed" } }, { "id": "custom.lineWidth", "value": 1 }, { "id": "custom.lineStyle", "value": { "fill": "dash" } }] },
+          { "matcher": { "id": "byFrameRefID", "options": "D" }, "properties": [{ "id": "color", "value": { "fixedColor": "#9CA3AF", "mode": "fixed" } }, { "id": "custom.lineWidth", "value": 1 }, { "id": "custom.lineStyle", "value": { "fill": "dash" } }] },
+          { "matcher": { "id": "byFrameRefID", "options": "E" }, "properties": [{ "id": "color", "value": { "fixedColor": "#9CA3AF", "mode": "fixed" } }, { "id": "custom.lineWidth", "value": 1 }, { "id": "custom.lineStyle", "value": { "fill": "dash" } }] }
+        ]
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "none" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true, "calcs": ["mean", "min", "max", "lastNotNull"] }
+      },
+      "pluginVersion": "10.4.0"
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "GHI Pillar Breakdown",
+      "description": "Stacked breakdown of GHI pillar scores (sleep / cardio / activity / recovery).",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "guinevere_wearable_ghi_pillar_score{component=\"sleep\"}",
+          "legendFormat": "Sleep"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "guinevere_wearable_ghi_pillar_score{component=\"cardio\"}",
+          "legendFormat": "Cardio"
+        },
+        {
+          "refId": "C",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "guinevere_wearable_ghi_pillar_score{component=\"activity\"}",
+          "legendFormat": "Activity"
+        },
+        {
+          "refId": "D",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "guinevere_wearable_ghi_pillar_score{component=\"recovery\"}",
+          "legendFormat": "Recovery"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 50,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "mode": "normal", "group": "A" }
+          },
+          "color": { "mode": "palette-classic" },
+          "unit": "none",
+          "min": 0
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Sleep" },    "properties": [{ "id": "color", "value": { "fixedColor": "#6366F1", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Cardio" },   "properties": [{ "id": "color", "value": { "fixedColor": "#DC2626", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Activity" }, "properties": [{ "id": "color", "value": { "fixedColor": "#16A34A", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Recovery" }, "properties": [{ "id": "color", "value": { "fixedColor": "#0EA5E9", "mode": "fixed" } }] }
+        ]
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "none" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true, "calcs": ["mean", "lastNotNull"] }
+      },
+      "pluginVersion": "10.4.0"
+    },
+    {
+      "id": 23,
+      "type": "table",
+      "title": "Recent Anomalies",
+      "description": "Most recent wearable anomalies (limit 50) ordered by time descending.",
+      "datasource": { "type": "postgres", "uid": "${DS_TIMESCALEDB}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 31 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "postgres", "uid": "${DS_TIMESCALEDB}" },
+          "rawSql": "SELECT time AS \"Time\", metric AS \"Metric\", severity AS \"Severity\", value AS \"Value\", threshold AS \"Threshold\" FROM health.anomalies WHERE $__timeFilter(time) ORDER BY time DESC LIMIT 50",
+          "format": "table",
+          "rawQuery": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "transparent", "value": null }
+            ]
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" }
+          }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Time" },      "properties": [{ "id": "custom.width", "value": 180 }] },
+          { "matcher": { "id": "byName", "options": "Metric" },    "properties": [{ "id": "custom.width", "value": 140 }] },
+          { "matcher": { "id": "byName", "options": "Severity" },  "properties": [
+            { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+            { "id": "color", "value": { "mode": "thresholds" } },
+            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+              { "color": "#16A34A", "value": null },
+              { "color": "#CA8A04", "value": 1 },
+              { "color": "#DC2626", "value": 2 }
+            ] } }
+          ] },
+          { "matcher": { "id": "byName", "options": "Value" },     "properties": [{ "id": "custom.width", "value": 100 }] },
+          { "matcher": { "id": "byName", "options": "Threshold" }, "properties": [{ "id": "custom.width", "value": 100 }] }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [{ "displayName": "Time", "desc": true }],
+        "footer": { "show": false }
+      },
+      "pluginVersion": "10.4.0"
+    },
+    {
+      "id": 24,
+      "type": "stat",
+      "title": "Anomalies (24h)",
+      "description": "Total wearable anomalies recorded in the last 24 hours.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 4, "x": 12, "y": 31 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum(increase(guinevere_wearable_anomalies_total[24h]))",
+          "legendFormat": "24h",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#16A34A", "value": null },
+              { "color": "#CA8A04", "value": 5 },
+              { "color": "#DC2626", "value": 20 }
+            ]
+          },
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "horizontal"
+      },
+      "pluginVersion": "10.4.0"
+    },
+    {
+      "id": 25,
+      "type": "stat",
+      "title": "Anomalies (7d)",
+      "description": "Total wearable anomalies recorded in the last 7 days.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 4, "x": 16, "y": 31 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum(increase(guinevere_wearable_anomalies_total[7d]))",
+          "legendFormat": "7d",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#16A34A", "value": null },
+              { "color": "#CA8A04", "value": 25 },
+              { "color": "#DC2626", "value": 100 }
+            ]
+          },
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "horizontal"
+      },
+      "pluginVersion": "10.4.0"
+    },
+    {
+      "id": 26,
+      "type": "stat",
+      "title": "Anomalies (30d)",
+      "description": "Total wearable anomalies recorded in the last 30 days.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 4, "x": 20, "y": 31 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum(increase(guinevere_wearable_anomalies_total[30d]))",
+          "legendFormat": "30d",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#16A34A", "value": null },
+              { "color": "#CA8A04", "value": 100 },
+              { "color": "#DC2626", "value": 500 }
+            ]
+          },
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "horizontal"
+      },
+      "pluginVersion": "10.4.0"
+    },
+    {
+      "id": 30,
+      "type": "row",
+      "title": "Row 4 — Pipeline Health",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 39 },
+      "panels": []
+    },
+    {
+      "id": 31,
+      "type": "timeseries",
+      "title": "Sync Duration (p50 / p95 / p99)",
+      "description": "Wearable sync duration percentiles computed from the histogram bucket metric.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 40 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.50, sum(rate(guinevere_wearable_sync_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.95, sum(rate(guinevere_wearable_sync_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95"
+        },
+        {
+          "refId": "C",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.99, sum(rate(guinevere_wearable_sync_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "mode": "none" }
+          },
+          "color": { "mode": "palette-classic" },
+          "unit": "s",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true, "calcs": ["mean", "max", "lastNotNull"] }
+      },
+      "pluginVersion": "10.4.0"
+    },
+    {
+      "id": 32,
+      "type": "gauge",
+      "title": "Sync Success Rate (24h)",
+      "description": "Percentage of successful wearable syncs in the last 24 hours.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 40 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "(sum(rate(guinevere_wearable_sync_success_total[24h])) / sum(rate(guinevere_wearable_sync_total[24h]))) * 100",
+          "legendFormat": "Success Rate",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "unit": "percent",
+          "decimals": 2,
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#DC2626", "value": null },
+              { "color": "#CA8A04", "value": 95 },
+              { "color": "#16A34A", "value": 99 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto"
+      },
+      "pluginVersion": "10.4.0"
+    },
+    {
+      "id": 33,
+      "type": "timeseries",
+      "title": "API Latency (p50 / p95 / p99)",
+      "description": "Wearable API endpoint latency percentiles from histogram bucket metric.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 40 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.50, sum(rate(guinevere_wearable_api_latency_seconds_bucket[5m])) by (le, endpoint))",
+          "legendFormat": "p50 {{endpoint}}"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.95, sum(rate(guinevere_wearable_api_latency_seconds_bucket[5m])) by (le, endpoint))",
+          "legendFormat": "p95 {{endpoint}}"
+        },
+        {
+          "refId": "C",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.99, sum(rate(guinevere_wearable_api_latency_seconds_bucket[5m])) by (le, endpoint))",
+          "legendFormat": "p99 {{endpoint}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "mode": "none" }
+          },
+          "color": { "mode": "palette-classic" },
+          "unit": "s",
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "list", "placement": "right", "showLegend": true, "calcs": ["mean", "max", "lastNotNull"] }
+      },
+      "pluginVersion": "10.4.0"
+    },
+    {
+      "id": 34,
+      "type": "stat",
+      "title": "Metrics Ingested (24h)",
+      "description": "Total wearable metrics ingested in the last 24 hours, broken down by metric type.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 4, "w": 12, "x": 0, "y": 48 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum(increase(guinevere_wearable_metrics_ingested_total[24h]))",
+          "legendFormat": "Total",
+          "instant": true
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum by (type) (increase(guinevere_wearable_metrics_ingested_total[24h]))",
+          "legendFormat": "{{type}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#16A34A", "value": null },
+              { "color": "#CA8A04", "value": 1 }
+            ]
+          },
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "horizontal"
+      },
+      "pluginVersion": "10.4.0"
+    },
+    {
+      "id": 35,
+      "type": "stat",
+      "title": "Metrics Dropped (24h)",
+      "description": "Total wearable metrics dropped in the last 24 hours, broken down by drop reason.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 48 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum(increase(guinevere_wearable_metrics_dropped_total[24h]))",
+          "legendFormat": "Total",
+          "instant": true
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum by (reason) (increase(guinevere_wearable_metrics_dropped_total[24h]))",
+          "legendFormat": "{{reason}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#16A34A", "value": null },
+              { "color": "#CA8A04", "value": 1 },
+              { "color": "#DC2626", "value": 50 }
+            ]
+          },
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "horizontal"
+      },
+      "pluginVersion": "10.4.0"
+    },
+    {
+      "id": 40,
+      "type": "row",
+      "title": "Row 5 — Alerts & Consent",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 52 },
+      "panels": []
+    },
+    {
+      "id": 41,
+      "type": "stat",
+      "title": "Alerts Sent (24h by severity)",
+      "description": "Wearable alert count over the last 24 hours, broken down by severity (info / warning / critical).",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 53 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum(increase(guinevere_wearable_alerts_sent_total{severity=\"info\"}[24h]))",
+          "legendFormat": "Info",
+          "instant": true
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum(increase(guinevere_wearable_alerts_sent_total{severity=\"warning\"}[24h]))",
+          "legendFormat": "Warning",
+          "instant": true
+        },
+        {
+          "refId": "C",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum(increase(guinevere_wearable_alerts_sent_total{severity=\"critical\"}[24h]))",
+          "legendFormat": "Critical",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#16A34A", "value": null },
+              { "color": "#CA8A04", "value": 5 },
+              { "color": "#DC2626", "value": 20 }
+            ]
+          },
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Critical" }, "properties": [{ "id": "color", "value": { "fixedColor": "#DC2626", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Warning" },  "properties": [{ "id": "color", "value": { "fixedColor": "#CA8A04", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Info" },     "properties": [{ "id": "color", "value": { "fixedColor": "#16A34A", "mode": "fixed" } }] }
+        ]
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "horizontal"
+      },
+      "pluginVersion": "10.4.0"
+    },
+    {
+      "id": 42,
+      "type": "timeseries",
+      "title": "Consent Checks (granted vs denied)",
+      "description": "Wearble consent check rate, split by result (granted / denied), stacked.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 8, "y": 53 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum(rate(guinevere_wearable_consent_checks_total{result=\"granted\"}[5m]))",
+          "legendFormat": "Granted"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum(rate(guinevere_wearable_consent_checks_total{result=\"denied\"}[5m]))",
+          "legendFormat": "Denied"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "fillOpacity": 50,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "mode": "normal", "group": "A" }
+          },
+          "color": { "mode": "palette-classic" },
+          "unit": "ops",
+          "decimals": 2
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Granted" }, "properties": [{ "id": "color", "value": { "fixedColor": "#16A34A", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Denied" },  "properties": [{ "id": "color", "value": { "fixedColor": "#DC2626", "mode": "fixed" } }] }
+        ]
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "none" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true, "calcs": ["mean", "lastNotNull"] }
+      },
+      "pluginVersion": "10.4.0"
+    },
+    {
+      "id": 43,
+      "type": "stat",
+      "title": "Active Consent Scopes",
+      "description": "Count of currently granted wearable-health.* consent scopes.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 4, "x": 20, "y": 53 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "count(count by (scope) (guinevere_wearable_consent_scope_active == 1))",
+          "legendFormat": "Active Scopes",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#DC2626", "value": null },
+              { "color": "#CA8A04", "value": 1 },
+              { "color": "#16A34A", "value": 3 }
+            ]
+          },
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value_and_name",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal"
+      },
+      "pluginVersion": "10.4.0"
+    }
+  ]
+}

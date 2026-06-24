@@ -1,0 +1,41 @@
+[Unit]
+Description=Guinevere Wearable Daily Analysis
+After=guinevere-wearable-sync.service
+PartOf=guinevere.slice
+
+[Service]
+Type=oneshot
+User=guinevere
+WorkingDirectory=/home/guinevere/code/guinevere
+Environment=PYTHONPATH=/home/guinevere/code/guinevere
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=VIRTUAL_ENV=/home/guinevere/code/guinevere/.venv
+EnvironmentFile=/home/guinevere/code/guinevere/.env.wearable
+ExecStart=/home/guinevere/code/guinevere/.venv/bin/python -m src.wearable.analysis
+StandardOutput=journal
+StandardError=journal
+Slice=guinevere.slice
+
+# Resource limits
+MemoryHigh=512M
+MemoryMax=1G
+CPUQuota=100%
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/guinevere/code/guinevere/logs
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

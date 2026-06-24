@@ -9,6 +9,17 @@ from src.observability import init_sentry
 logger = structlog.get_logger()
 
 # ---------------------------------------------------------------------------
+# P20: Alias the 9Router API key for the HermesBrain AIAgent.
+# The AIAgent derives its API-key env var from the provider name — provider
+# "9router" -> it reads 9ROUTER_API_KEY from os.environ. The secret ships as
+# GUINEVERE_9ROUTER_API_KEY (in .env.core); we alias it at MODULE IMPORT TIME
+# (not in the lifespan) so it is present before uvicorn forks workers and
+# before run_agent is imported. This is set as early as possible.
+# ---------------------------------------------------------------------------
+if not os.environ.get("9ROUTER_API_KEY") and os.environ.get("GUINEVERE_9ROUTER_API_KEY"):
+    os.environ["9ROUTER_API_KEY"] = os.environ["GUINEVERE_9ROUTER_API_KEY"]
+
+# ---------------------------------------------------------------------------
 # P3-015 consolidation scheduler registration (optional — no DB by default)
 # ---------------------------------------------------------------------------
 # To activate the daily consolidation scheduler at runtime, inject an async
@@ -27,11 +38,29 @@ logger = structlog.get_logger()
 # require a running scheduler or real database.
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# P16-002: KG ingestion cron registration (optional — requires P16 schema)
+# ---------------------------------------------------------------------------
+# To activate the daily KG ingestion scheduler at runtime, inject an async
+# SQLAlchemy session factory (async_sessionmaker) into the lifespan:
+#
+#   from src.knowledge_graph.ingestion import register_kg_ingestion_job
+#
+#   scheduler = AsyncIOScheduler()  # reuse same scheduler instance
+#   await register_kg_ingestion_job(scheduler, session_factory=AsyncSessionLocal)
+#   # scheduler.start() — already started above
+#
+# The KG ingestion cron runs at 03:30 ICT daily, 30 minutes after the
+# consolidation cron (03:00 ICT). It reads semantic_facts created by
+# consolidation and extracts entities + relations into the KG.
+# ---------------------------------------------------------------------------
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import asyncio
     from src.loops.manager import LoopManager
+    from src.core.services.hard_stop_handler import HardStopHandler
 
     # P8-012: Initialize Sentry error tracking
     init_sentry(
@@ -45,8 +74,37 @@ async def lifespan(app: FastAPI):
     start_llm_metrics_server(port=9191)
     logger.info("llm_metrics_server_started", port=9191)
 
-    loop_manager = LoopManager()
+    # P20 Living Autonomy Kernel: HermesBrain as the real autonomous brain
+    hermes_brain = None
+    try:
+        from src.life_kernel import HermesBrain, HermesBrainConfig
+
+        # 9ROUTER_API_KEY is aliased at module import time (top of this file)
+        # so the AIAgent provider resolver can find it before any fork.
+        brain_config = HermesBrainConfig(
+            base_url="http://localhost:20128/v1",
+            model="guinevere",
+            provider="9router",
+            api_key=os.getenv("9ROUTER_API_KEY", os.getenv("GUINEVERE_9ROUTER_API_KEY", "")),
+            max_iterations=5,
+        )
+        hermes_brain = HermesBrain(llm_config=brain_config)
+        app.state.hermes_brain = hermes_brain
+        logger.info("hermes_brain_initialized")
+    except Exception as brain_err:
+        logger.warning("hermes_brain_init_failed", error=str(brain_err))
+
+    loop_manager = LoopManager(llm_router=None)
     app.state.loop_manager = loop_manager
+
+    # F-05: Init HardStopHandler and wire to loop guardian
+    hard_stop_handler = HardStopHandler()
+    app.state.hard_stop_handler = hard_stop_handler
+    if hasattr(loop_manager.guardian, "set_hard_stop_handler"):
+        loop_manager.guardian.set_hard_stop_handler(hard_stop_handler)
+        logger.info("hard_stop_handler_initialized_and_wired")
+    else:
+        logger.warning("hard_stop_handler_init_skipped", reason="LoopGuardian missing set_hard_stop_handler")
 
     guardian_task = asyncio.create_task(
         loop_manager.guardian.monitor(),
@@ -106,12 +164,304 @@ async def lifespan(app: FastAPI):
     except Exception as surv_err:
         logger.warning("surveillance_consumer_start_failed", error=str(surv_err))
 
+    # P16-002: Start KG ingestion cron (03:30 ICT daily)
+    kg_scheduler = None
+    try:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from src.knowledge_graph.ingestion import register_kg_ingestion_job
+        from src.knowledge_graph.ingestion.pipeline import KGIngestionPipeline
+        from src.knowledge_graph.resolution.resolver import EntityResolver
+        from src.knowledge_graph.extraction.entity_extractor import EntityExtractor
+        from src.knowledge_graph.extraction.relation_extractor import RelationExtractor
+        from src.knowledge_graph.consent.manager import ConsentManager
+        from src.knowledge_graph.observability.metrics import KGMetrics
+
+        _kg_resolver = EntityResolver(_session_factory)
+        _kg_extractor = EntityExtractor(_kg_resolver)
+        _kg_rel_extractor = RelationExtractor(_kg_extractor)
+        _kg_consent = ConsentManager(_session_factory)
+        _kg_metrics = KGMetrics.get_instance()
+        kg_pipeline = KGIngestionPipeline(
+            session_factory=_session_factory,
+            entity_extractor=_kg_extractor,
+            entity_resolver=_kg_resolver,
+            relation_extractor=_kg_rel_extractor,
+            consent_manager=_kg_consent,
+            metrics=_kg_metrics,
+        )
+
+        kg_scheduler = AsyncIOScheduler()
+        register_kg_ingestion_job(
+            kg_scheduler, session_factory=_session_factory, pipeline=kg_pipeline,
+        )
+        kg_scheduler.start()
+        app.state.kg_scheduler = kg_scheduler
+        logger.info("kg_ingestion_cron_started")
+    except Exception as kg_err:
+        logger.warning("kg_ingestion_cron_start_failed", error=str(kg_err))
+
+    # P20 Living Autonomy Kernel: compile life_mind graph + start autonomous heartbeat
+    try:
+        from src.life_kernel import (
+            create_life_mind_graph,
+            HeartbeatService,
+            create_postgres_checkpointer,
+            DiscordRestClient,
+            DashboardRenderer,
+            DashboardWriter,
+            DiscordLogChannel,
+            StructlogLogChannel,
+        )
+
+        try:
+            _db_url = os.environ.get("DATABASE_URL", "postgresql://guinevere_core@localhost:5433/guinevere")
+            # AsyncPostgresSaver expects plain postgresql:// DSN, not postgresql+asyncpg://
+            _checkpointer_dsn = _db_url.replace("postgresql+asyncpg://", "postgresql://")
+            checkpointer = await create_postgres_checkpointer(_checkpointer_dsn)
+        except Exception as cp_err:
+            logger.warning("postgres_checkpointer_unavailable", error=str(cp_err))
+            checkpointer = None
+
+        # HermesBrain (created above, if available) drives LLM autonomy in
+        # the graph. When None, the graph falls back to static logic.
+        #
+        # P20 Continuation (LK-010): build REAL P16/P18 recall adapters and a
+        # JournalWriter, and inject them into the graph so observe_node
+        # populates recalled_concepts/recalled_memories/world_model_status
+        # and reflect_node writes journal entries (AC-LIFE-005 / AC-LIFE-008).
+        # All fail-soft: if the DB/session/embedding is unavailable, the
+        # adapters degrade to empty results and the kernel runs headless.
+        kg_adapter = None
+        memory_adapter = None
+        journal_writer = None
+        try:
+            from sqlalchemy.ext.asyncio import (
+                AsyncSession as _LKAsyncSession,
+                async_sessionmaker as _lk_async_sessionmaker,
+                create_async_engine as _lk_create_async_engine,
+            )
+
+            _lk_db_url = os.environ.get(
+                "DATABASE_URL",
+                "postgresql+asyncpg://guinevere_core@localhost:5433/guinevere_core",
+            )
+            _lk_engine = _lk_create_async_engine(_lk_db_url, pool_size=2, pool_pre_ping=True)
+            _lk_session_factory = _lk_async_sessionmaker(
+                _lk_engine, class_=_LKAsyncSession, expire_on_commit=False,
+            )
+            app.state.life_kernel_engine = _lk_engine
+
+            # P18 memory recall adapter: wrap recall_memories with a per-call
+            # session so the kernel never holds a long-lived session open.
+            try:
+                from src.memory.read_pipeline import recall_memories as _recall_memories
+
+                async def _life_recall_fn(*, query_text: str, principal: str = "guinevere_core", exclude_dnr: bool = True):
+                    async with _lk_session_factory() as _lk_session:
+                        return await _recall_memories(
+                            _lk_session,
+                            query_text,
+                            limit=20,
+                            exclude_dnr=exclude_dnr,
+                            principal=principal,
+                            safe_mode=False,
+                        )
+
+                from src.life_kernel.p18_adapter import MemoryRecallAdapter
+
+                memory_adapter = MemoryRecallAdapter(memory_client=_life_recall_fn)
+                logger.info("life_kernel_memory_adapter_wired")
+            except Exception as mem_err:
+                logger.warning("life_kernel_memory_adapter_failed", error=str(mem_err))
+
+            # P16 KG recall adapter: wrap KGQueryEngine.search_entities (the
+            # engine borrows sessions from its own session_factory), returning
+            # concept-shaped dicts for the decision context.
+            try:
+                from src.knowledge_graph.query.engine import KGQueryEngine as _KGQueryEngine
+
+                _kg_engine_instance = _KGQueryEngine(session_factory=_lk_session_factory)
+
+                async def _life_kg_fn(*, query_text: str):
+                    rows = await _kg_engine_instance.search_entities(query_text)
+                    return [
+                        {
+                            "name": getattr(r, "display_name", None) or str(getattr(r, "entity_id", "")),
+                            "relevance": float(getattr(r, "relevance", 0.0)),
+                            "source": "p16",
+                        }
+                        for r in (rows or [])
+                    ]
+
+                from src.life_kernel.p16_adapter import KGRecallAdapter
+
+                kg_adapter = KGRecallAdapter(kg_client=_life_kg_fn)
+                logger.info("life_kernel_kg_adapter_wired")
+            except Exception as kg_err:
+                logger.warning("life_kernel_kg_adapter_failed", error=str(kg_err))
+
+            # Journal writer (AC-LIFE-008): wrap PostgresAuditJournal.
+            try:
+                from src.life_kernel.domain_minds.durability import PostgresAuditJournal
+                from src.life_kernel.journal import JournalWriter
+
+                _audit_journal = PostgresAuditJournal(
+                    dsn=_lk_db_url, schema="life_kernel", table="audit_journal",
+                )
+                journal_writer = JournalWriter(audit_journal=_audit_journal)
+                logger.info("life_kernel_journal_writer_wired")
+            except Exception as j_err:
+                logger.warning("life_kernel_journal_writer_failed", error=str(j_err))
+
+        except Exception as adapter_err:
+            logger.warning("life_kernel_adapters_setup_failed", error=str(adapter_err))
+
+        graph = create_life_mind_graph(
+            checkpointer=checkpointer,
+            hermes_brain=hermes_brain,
+            kg_adapter=kg_adapter,
+            memory_adapter=memory_adapter,
+            journal_writer=journal_writer,
+        )
+        app.state.life_mind_graph = graph
+        logger.info(
+            "life_mind_graph_created",
+            checkpointer=checkpointer is not None,
+            hermes_brain=hermes_brain is not None,
+        )
+
+        import redis.asyncio as aioredis
+
+        _redis_password = os.environ.get("REDIS_PASSWORD", "")
+        _redis_url = f"redis://guinevere_core:{_redis_password}@localhost:6380/6"
+        redis_client = aioredis.from_url(_redis_url)
+
+        # Discord-visible autonomy (Option B): core-integrated REST publisher.
+        # The standalone guinevere-discord.service stays intentionally masked
+        # (P2-022); the core publishes the dashboard (edit-not-spam) and the
+        # append-only lifecycle log directly via Discord REST. Fail-soft: if
+        # the token or channel ids are absent, the kernel runs headless.
+        _dashboard_channel_id = os.environ.get("LIFE_KERNEL_DASHBOARD_CHANNEL_ID", "")
+        _log_channel_id = os.environ.get("LIFE_KERNEL_LOG_CHANNEL_ID", "")
+        discord_rest = DiscordRestClient()
+        app.state.discord_rest = discord_rest
+        if _dashboard_channel_id and discord_rest.enabled:
+            dashboard_writer = DashboardWriter(
+                rest_client=discord_rest,
+                renderer=DashboardRenderer(),
+                redis_client=redis_client,
+                channel_id=int(_dashboard_channel_id),
+            )
+            app.state.dashboard_writer = dashboard_writer
+            log_channel: object = DiscordLogChannel(discord_rest, int(_log_channel_id)) if _log_channel_id else StructlogLogChannel()
+            logger.info(
+                "discord_visible_autonomy_wired",
+                dashboard_channel=_dashboard_channel_id,
+                log_channel=_log_channel_id or "(structlog fallback)",
+            )
+        else:
+            dashboard_writer = None
+            log_channel = StructlogLogChannel()
+            logger.warning(
+                "discord_visible_autonomy_disabled",
+                reason="missing_channel_id_or_token",
+            )
+
+        heartbeat = HeartbeatService(
+            graph=graph,
+            redis_client=redis_client,
+            checkpointer=checkpointer,
+            discord_publisher=dashboard_writer,
+            hermes_brain=hermes_brain,
+            log_channel=log_channel,
+        )
+        await heartbeat.start()
+        app.state.heartbeat = heartbeat
+        logger.info("heartbeat_service_started")
+    except Exception as kernel_err:
+        logger.warning("life_kernel_startup_failed", error=str(kernel_err))
+
+    # P5-023: Hermes Bridge is superseded by the Living Autonomy Kernel;
+    # kept for backward compatibility but no longer drives autonomy.
+    hermes_bridge = None
+    try:
+        from src.loops.hermes_bridge import create_hermes_bridge
+
+        hermes_bridge = create_hermes_bridge(loop_manager)
+        await hermes_bridge.start()
+        app.state.hermes_bridge = hermes_bridge
+        logger.info("hermes_bridge_started_superseded_by_kernel")
+    except Exception as bridge_err:
+        logger.warning("hermes_bridge_start_failed", error=str(bridge_err))
+
+    # P5-023: Boot-time resume of pending loops
+    try:
+        resumed = await loop_manager.resume_pending_loops()
+        logger.info("boot_resume_complete", resumed_count=resumed)
+    except Exception as resume_err:
+        logger.warning("boot_resume_failed", error=str(resume_err))
+
+    # P5-025: Environment Monitor initialization
+    env_monitor = None
+    try:
+        from src.loops.environment import EnvironmentMonitor
+        env_monitor = EnvironmentMonitor()
+        app.state.env_monitor = env_monitor
+        initial_snapshot = await env_monitor.check_all()
+        app.state.env_snapshot = initial_snapshot
+        logger.info("environment_monitor_started", degradation_level=initial_snapshot.degradation_level)
+    except Exception as env_err:
+        logger.warning("environment_monitor_start_failed", error=str(env_err))
+
     logger.info("guinevere_starting", version="0.1.0")
     yield
     logger.info("guinevere_stopping")
 
+    # P20: stop heartbeat first (autonomous clock must halt before downstream shutdown)
+    if hasattr(app.state, "heartbeat"):
+        try:
+            await app.state.heartbeat.stop()
+            logger.info("heartbeat_stopped")
+        except Exception as hb_err:
+            logger.warning("heartbeat_stop_failed", error=str(hb_err))
+
+    # P20: close the shared Discord REST client (connection pool release)
+    if hasattr(app.state, "discord_rest"):
+        try:
+            await app.state.discord_rest.close()
+            logger.info("discord_rest_closed")
+        except Exception as dr_err:
+            logger.warning("discord_rest_close_failed", error=str(dr_err))
+
+    # P20 Continuation: dispose the life_kernel DB engine (recall adapters)
+    if hasattr(app.state, "life_kernel_engine"):
+        try:
+            await app.state.life_kernel_engine.dispose()
+            logger.info("life_kernel_engine_disposed")
+        except Exception as lke_err:
+            logger.warning("life_kernel_engine_dispose_failed", error=str(lke_err))
+
     # Graceful shutdown
     report_scheduler.shutdown(wait=False)
+
+    # P16-002: KG scheduler shutdown
+    kg_sched = getattr(app.state, "kg_scheduler", None)
+    if kg_sched is not None:
+        kg_sched.shutdown(wait=False)
+        logger.info("kg_ingestion_cron_stopped")
+
+    # P20: HermesBrain cleanup
+    if hasattr(app.state, "hermes_brain"):
+        try:
+            await app.state.hermes_brain.dispose()
+            logger.info("hermes_brain_disposed")
+        except Exception as brain_err:
+            logger.warning("hermes_brain_dispose_failed", error=str(brain_err))
+
+    # P5-023: Hermes Bridge shutdown (superseded by kernel but kept for compat)
+    if hasattr(app.state, "hermes_bridge"):
+        await app.state.hermes_bridge.stop()
+        logger.info("hermes_bridge_stopped")
 
     # RG-004: Graceful surveillance consumer shutdown
     surv_consumer = getattr(app.state, "surveillance_consumer", None)
@@ -147,7 +497,7 @@ app = FastAPI(
 # RG-007: Prometheus metrics endpoint
 # ---------------------------------------------------------------------------
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request as StarletteRequest
 from starlette.responses import Response
 import time
@@ -172,7 +522,11 @@ _HEALTH_FAILURES = Counter(
 class _PrometheusMiddleware(BaseHTTPMiddleware):
     """Track request count and duration for Prometheus."""
 
-    async def dispatch(self, request: StarletteRequest, call_next):  # type: ignore[override]
+    async def dispatch(
+        self,
+        request: StarletteRequest,
+        call_next: RequestResponseEndpoint,
+    ) -> Response:
         method = request.method
         endpoint = request.url.path
         start = time.monotonic()
@@ -230,11 +584,12 @@ async def health_detailed(request: Request):
         components["guardian"] = {"status": "not_running"}
         status_code = 503
 
-    # Redis connectivity (optional — fail-soft, don't block health)
+        # Redis connectivity (optional — fail-soft, don't block health)
     try:
         import redis.asyncio as aioredis
 
-        redis_url = os.environ.get("REDIS_URL", "redis://localhost:6380/0")
+        redis_url = os.environ.get("REDIS_URL", "redis://localhost:***@localhost:5433/guinevere_core",
+        )
         r = aioredis.from_url(redis_url, socket_connect_timeout=2)
         await r.ping()
         await r.aclose()
@@ -243,13 +598,13 @@ async def health_detailed(request: Request):
         components["redis"] = {"status": "unavailable"}
         # Redis is non-critical for health — don't set 503
 
-    # RG-009: PostgreSQL connectivity check
+    # PostgreSQL connectivity check
     try:
         import asyncpg
 
         _pg_url = os.environ.get(
             "DATABASE_URL",
-            "postgresql://guinevere_core@localhost:5433/guinevere_core",
+            "postgresql+asyncpg://guinevere_core@localhost:5433/guinevere_core",
         )
         # Convert asyncpg URL for sync check
         _pg_url_sync = _pg_url.replace("postgresql+asyncpg://", "postgresql://")
@@ -286,6 +641,30 @@ async def health_detailed(request: Request):
     )
 
 
+@app.get("/status")
+async def get_status():
+    """P5-025: Full environment status for agent consumption."""
+    env_monitor = getattr(app.state, "env_monitor", None)
+    if env_monitor is None:
+        return {"status": "monitor_unavailable"}
+    snapshot = await env_monitor.check_all()
+    app.state.env_snapshot = snapshot
+    return {
+        "timestamp": snapshot.timestamp.isoformat(),
+        "degradation_level": snapshot.degradation_level,
+        "services": [
+            {"name": s.name, "healthy": s.healthy, "latency_ms": s.latency_ms}
+            for s in snapshot.services
+        ],
+        "resources": {
+            "cpu": snapshot.resources.cpu_percent,
+            "memory": snapshot.resources.memory_percent,
+            "disk": snapshot.resources.disk_percent,
+            "active_loops": snapshot.resources.active_loops,
+        },
+    }
+
+
 @app.get("/")
 async def root():
     return {"message": "Guinevere de Baroque is online.", "status": "active"}
@@ -294,9 +673,10 @@ async def root():
 # ---------------------------------------------------------------------------
 # P5-001: Internal API router — loop management
 # ---------------------------------------------------------------------------
-from src.core.api.routes import router
+from src.core.api.routes import router, internal_router
 
 app.include_router(router)
+app.include_router(internal_router)
 
 # ---------------------------------------------------------------------------
 # P7-001: Surveillance webhook receiver

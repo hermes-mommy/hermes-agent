@@ -1,0 +1,10 @@
+[Unit]
+Description=Guinevere Wearable Daily Analysis Timer
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

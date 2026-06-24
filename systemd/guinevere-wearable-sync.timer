@@ -1,0 +1,11 @@
+[Unit]
+Description=Guinevere Wearable Health Sync Timer
+
+[Timer]
+OnBootSec=120
+OnUnitActiveSec=1800
+AccuracySec=30
+Persistent=true
+
+[Install]
+WantedBy=timers.target
