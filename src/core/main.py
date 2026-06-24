@@ -256,13 +256,20 @@ async def lifespan(app: FastAPI):
             try:
                 from src.memory.read_pipeline import recall_memories as _recall_memories
 
-                # SAF-02: default to safe_mode=True for autonomous recall so raw
-                # Critical/Restricted-classified episode content is redacted to a
-                # safe placeholder before reaching the brain prompt (the principal
-                # guinevere_core has CRITICAL clearance, but autonomous recall into
-                # a Discord-visible path should be safe-by-default). An operator
-                # can opt into raw Critical content via LIFE_KERNEL_RAW_RECALL=1.
-                _life_raw_recall = os.environ.get("LIFE_KERNEL_RAW_RECALL", "0") == "1"
+                # SAF-02 (revised after deploy runtime check): the brain path
+                # uses principal=guinevere_core which has CRITICAL clearance
+                # (src/memory/read_pipeline._PRINCIPAL_CEILINGS). safe_mode=True
+                # downgrades the ceiling to Internal and filters out ALL
+                # Restricted+ memories — which starves the brain of context
+                # (deploy showed "All 3 candidates filtered by classification
+                # ceiling 'Internal'"). The brain NEEDS raw recall (it has
+                # clearance); Discord safety is handled separately: the
+                # dashboard memory_status field shows counts only (MEM-06),
+                # never raw content, and DashboardRenderer._sanitize redacts
+                # any secret patterns. Default safe_mode=False (raw recall for
+                # the brain); an operator can opt into redacted recall via
+                # LIFE_KERNEL_SAFE_RECALL=1 if a stricter posture is wanted.
+                _life_safe_recall = os.environ.get("LIFE_KERNEL_SAFE_RECALL", "0") == "1"
 
                 async def _life_recall_fn(*, query_text: str, principal: str = "guinevere_core", exclude_dnr: bool = True):
                     async with _lk_session_factory() as _lk_session:
@@ -272,7 +279,7 @@ async def lifespan(app: FastAPI):
                             limit=20,
                             exclude_dnr=exclude_dnr,
                             principal=principal,
-                            safe_mode=not _life_raw_recall,
+                            safe_mode=_life_safe_recall,
                         )
 
                 from src.life_kernel.p18_adapter import MemoryRecallAdapter
@@ -316,6 +323,18 @@ async def lifespan(app: FastAPI):
                 _audit_journal = PostgresAuditJournal(
                     dsn=_lk_db_url, schema="life_kernel", table="audit_journal",
                 )
+                # Ensure the audit_journal table + schema exist before any
+                # journal write (otherwise reflect_node's journal write fails
+                # with UndefinedTableError every cycle). Fail-soft: if DDL
+                # fails the journal writer stays wired but writes degrade.
+                try:
+                    _ensured = await _audit_journal.ensure_table()
+                    if _ensured:
+                        logger.info("life_kernel_audit_journal_table_ensured")
+                    else:
+                        logger.warning("life_kernel_audit_journal_table_ensure_failed")
+                except Exception as et_err:
+                    logger.warning("life_kernel_audit_journal_ensure_failed", error=str(et_err))
                 journal_writer = JournalWriter(audit_journal=_audit_journal)
                 # Register the audit journal on app.state so its private engine
                 # pool can be disposed on shutdown (MEM-04: avoid leaking a
