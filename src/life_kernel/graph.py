@@ -220,12 +220,15 @@ async def observe_node(state: LifeMindState) -> dict[str, Any]:
             "memory_context": recalled_memories,
         }
 
-        # Build a concise memory_status string for the dashboard.
-        top_mem = recalled_memories[0].get("content", "")[:60] if recalled_memories else ""
+        # Build a concise memory_status string for the Discord dashboard.
+        # We surface COUNTS and the top KG concept NAME only — never raw
+        # memory content, which may be Critical-classified and must not land
+        # in a Discord-visible field. Raw memories stay in state for the
+        # brain (which has CRITICAL clearance) but are not echoed here.
         top_con = recalled_concepts[0].get("name", "") if recalled_concepts else ""
         memory_status = (
             f"{world_model_status}: {len(recalled_memories)} mem, {len(recalled_concepts)} kg"
-            + (f" | top: {top_mem or top_con}" if (top_mem or top_con) else "")
+            + (f" | top concept: {top_con}" if top_con else "")
         )
 
     logger.debug(
@@ -507,11 +510,17 @@ async def reflect_node(state: LifeMindState) -> dict[str, Any]:
     journal_writer = _ADAPTERS.get("journal")
     last_decision = state.get("last_autonomous_decision", "")
     next_action = state.get("next_planned_action", "")
+    # A cycle is "meaningful" if the brain produced a decision/next-action or
+    # recall surfaced context. We intentionally do NOT gate on `act_count`
+    # here: it is read from state before this cycle's act_node reducer merges,
+    # so it is stale on the first post-boot cycle. The decision/next-action
+    # and recall fields are set by observe/decide/act/idle within this cycle
+    # and are reliable signals.
     meaningful = (
-        act_count > 0
-        or bool(last_decision)
+        bool(last_decision)
         or bool(next_action)
         or bool(state.get("recalled_memories"))
+        or bool(state.get("recalled_concepts"))
     )
     if journal_writer is not None and meaningful and not hard_stop_requested:
         reasoning = (

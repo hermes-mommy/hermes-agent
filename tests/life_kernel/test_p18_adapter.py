@@ -8,7 +8,7 @@ return ``_degraded: True`` with empty results when no client is available
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -22,7 +22,7 @@ def _make_recall_result(content: str, score: float = 0.9) -> dict[str, Any]:
         "safe_content": content,
         "classification": "Public",
         "importance": 5,
-        "created_at": datetime.utcnow(),
+        "created_at": datetime.now(timezone.utc),
         "combined_score": score,
         "is_summarized": False,
     }

@@ -1,9 +1,12 @@
 """P16 Knowledge Graph recall adapter for the Living Autonomy Kernel.
 
-This module provides a lightweight, placeholder-aware adapter that lets the
-life-mind kernel ask the Knowledge Graph (P16) for relevant concepts given a
-contextual observation.  Real KG traversal is intentionally stubbed; wiring to
-``src.knowledge_graph`` is deferred to a later milestone.
+This adapter lets the life-mind kernel ask the Knowledge Graph (P16) for
+relevant concepts given a contextual observation. When a real ``kg_client``
+callable is injected (wrapping ``KGQueryEngine.search_entities`` with a
+pre-bound session, as wired in ``src/core/main.py``), the adapter calls it
+and normalises the results. When no client is injected, or recall fails,
+the adapter returns ``_degraded: True`` with empty results so the kernel
+runs headless without crashing (graceful offline fallback).
 """
 
 from __future__ import annotations
@@ -17,22 +20,24 @@ logger = structlog.get_logger(__name__)
 
 
 class KGRecallAdapter:
-    """Placeholder adapter for Knowledge Graph concept recall.
+    """Real KG concept recall adapter for the life-mind kernel.
 
-    When a real ``kg_client`` is provided it will be used by future
-    implementations.  For now the adapter always returns deterministic mock
-    results so that ``DecisionContextBuilder`` and downstream graph nodes can be
-    tested without a live KG backend.
+    ``kg_client`` is an async callable accepting ``query_text=`` (and
+    optionally ``principal``/``exclude_dnr``) kwargs, returning a list of
+    concept dicts/shapes (each exposing ``name``/``display_name``,
+    ``relevance``, ``source``). When ``None``, recall degrades gracefully.
 
     Attributes:
-        kg_client: Optional KG client/repository instance.  Currently unused.
+        kg_client: Optional async recall callable wired to the real P16
+            query surface. When ``None`` the adapter is offline.
     """
 
     def __init__(self, kg_client: Any | None = None) -> None:
-        """Initialize the adapter with an real or placeholder KG client.
+        """Initialize the adapter with an optional real KG recall callable.
 
         Args:
-            kg_client: Optional KG client.  Defaults to ``None``.
+            kg_client: Optional async callable wrapping the P16 query
+                surface. Defaults to ``None`` (offline/degraded).
         """
         self.kg_client = kg_client
 
@@ -78,7 +83,12 @@ class KGRecallAdapter:
                     relevance = float(r.get("relevance", r.get("score", 0.0)))
                     source = str(r.get("source", "p16"))
                 else:
-                    name = str(getattr(r, "name", ""))
+                    # EntityMatch dataclass exposes display_name (not name).
+                    name = str(
+                        getattr(r, "display_name", None)
+                        or getattr(r, "name", "")
+                        or getattr(r, "entity_id", "")
+                    )
                     relevance = float(getattr(r, "relevance", 0.0))
                     source = str(getattr(r, "source", "p16"))
                 concepts.append({"name": name, "relevance": relevance, "source": source})

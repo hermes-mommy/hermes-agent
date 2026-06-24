@@ -6,7 +6,7 @@ the reflect phase. Fail-soft: DB failure never crashes the kernel.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import structlog
@@ -52,7 +52,7 @@ class JournalWriter:
                 "reasoning": reasoning,
                 "lessons_learned": lessons_learned,
                 "confidence": confidence,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
             entry_id = await self._audit_journal.record(entry)

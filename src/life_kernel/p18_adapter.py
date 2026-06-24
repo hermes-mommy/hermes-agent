@@ -1,9 +1,14 @@
 """P18 Memory recall adapter for the Living Autonomy Kernel.
 
-This module provides a lightweight, placeholder-aware adapter that lets the
-life-mind kernel ask the Memory subsystem (P18) for relevant past memories
-given a contextual observation.  Real memory recall is intentionally stubbed;
-wiring to ``src.memory`` is deferred to a later milestone.
+This adapter lets the life-mind kernel ask the Memory subsystem (P18) for
+relevant past memories given a contextual observation. When a real
+``memory_client`` callable is injected (wrapping
+``src.memory.read_pipeline.recall_memories`` with a pre-bound session, as
+wired in ``src/core/main.py``), the adapter calls it and normalises the
+results (``safe_content``→``content``, ``combined_score``→``relevance``,
+``created_at``→``timestamp``). When no client is injected, or recall
+fails, the adapter returns ``_degraded: True`` with empty results so the
+kernel runs headless without crashing (graceful offline fallback).
 """
 
 from __future__ import annotations
@@ -17,23 +22,25 @@ logger = structlog.get_logger(__name__)
 
 
 class MemoryRecallAdapter:
-    """Placeholder adapter for Memory subsystem recall.
+    """Real P18 memory recall adapter for the life-mind kernel.
 
-    When a real ``memory_client`` is provided it will be used by future
-    implementations.  For now the adapter always returns deterministic mock
-    results so that ``DecisionContextBuilder`` and downstream graph nodes can be
-    tested without a live memory backend.
+    ``memory_client`` is an async callable accepting ``query_text=``,
+    ``principal=``, ``exclude_dnr=`` kwargs (matching ``recall_memories``),
+    returning a list of result dicts with ``safe_content``/``combined_score``/
+    ``created_at``. When ``None``, recall degrades gracefully.
 
     Attributes:
-        memory_client: Optional memory client/repository instance.  Currently
-            unused.
+        memory_client: Optional async recall callable wired to the real P18
+            read pipeline. When ``None`` the adapter is offline.
     """
 
     def __init__(self, memory_client: Any | None = None) -> None:
-        """Initialize the adapter with an optional memory client.
+        """Initialize the adapter with an optional real memory recall callable.
 
         Args:
-            memory_client: Optional memory client.  Defaults to ``None``.
+            memory_client: Optional async callable wrapping the P18
+                ``recall_memories`` read pipeline. Defaults to ``None``
+                (offline/degraded).
         """
         self.memory_client = memory_client
 

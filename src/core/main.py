@@ -309,6 +309,10 @@ async def lifespan(app: FastAPI):
                     dsn=_lk_db_url, schema="life_kernel", table="audit_journal",
                 )
                 journal_writer = JournalWriter(audit_journal=_audit_journal)
+                # Register the audit journal on app.state so its private engine
+                # pool can be disposed on shutdown (MEM-04: avoid leaking a
+                # second connection pool alongside life_kernel_engine).
+                app.state.life_kernel_audit_journal = _audit_journal
                 logger.info("life_kernel_journal_writer_wired")
             except Exception as j_err:
                 logger.warning("life_kernel_journal_writer_failed", error=str(j_err))
@@ -440,6 +444,19 @@ async def lifespan(app: FastAPI):
             logger.info("life_kernel_engine_disposed")
         except Exception as lke_err:
             logger.warning("life_kernel_engine_dispose_failed", error=str(lke_err))
+
+    # P20 Continuation: dispose the PostgresAuditJournal's private engine
+    # pool (MEM-04 fix — it creates its own engine separate from
+    # life_kernel_engine).
+    _audit_journal = getattr(app.state, "life_kernel_audit_journal", None)
+    if _audit_journal is not None:
+        try:
+            _aj_engine = getattr(_audit_journal, "_engine", None)
+            if _aj_engine is not None:
+                await _aj_engine.dispose()
+                logger.info("life_kernel_audit_journal_engine_disposed")
+        except Exception as aj_err:
+            logger.warning("life_kernel_audit_journal_engine_dispose_failed", error=str(aj_err))
 
     # Graceful shutdown
     report_scheduler.shutdown(wait=False)
