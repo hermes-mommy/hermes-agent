@@ -313,3 +313,132 @@ DECISION: CLEAN. No restart needed (deploy restart already done at 05:54).
   PRODUCTION PASS still HOLD: needs 24h clean soak (brain thinking, no
   blockers) from 05:54 WIB. Will NOT upgrade until target reached + clean.
 ```
+
+---
+
+## Soak Snapshot — 2026-06-25 08:50:46 WIB (CLEAN)
+
+| Field | Value |
+|---|---|
+| Check type | Auto 5-min fast soak health check |
+| Trigger | P20 SOAK MONITORING CHECK (auto) |
+| Current wall-clock | 2026-06-25 08:50:46 WIB |
+| Soak-zero (clock reset) | 2026-06-25 08:26:43 WIB (cleanup deploy `03f84b5` — SAF-CONS-01 privacy fix) |
+| Soak target completion | 2026-06-26 08:26 WIB (NOT YET REACHED — do not upgrade) |
+| Verdict | **CLEAN** — no restart, continue monitoring |
+
+> **Clock reset note.** The original 05:54:51 WIB soak clock (and the
+> 2026-06-26 05:54 WIB target referenced in the auto-check trigger) was
+> **voided** by the brutal-cleanup deploy of commit `03f84b5`
+> (SAF-CONS-01 privacy fix) at 2026-06-25 08:26:43 WIB. The VPS ran
+> pre-privacy-fix code between 05:54 and 08:26 WIB (raw P18 memory
+> content reached the LLM brain prompts during that window), so that
+> interval does not count toward the clean 24h soak. Honest soak-zero is
+> 08:26:43 WIB; target 2026-06-26 08:26 WIB. See
+> `continuation/cleanup-verification-audit.md` and
+> `continuation/soak-readiness-report.md`.
+
+### 1. Core state
+```
+SERVICE: guinevere-core=active  NRestarts=0  Result=success  SubState=running
+ActiveEnterTimestamp=Thu 2026-06-25 08:26:43 WIB
+```
+NRestarts=0 since the cleanup-deploy restart. No crash, no auto-restart. ✅
+
+### 2. Memory
+```
+MemoryCurrent = 571,981,824  (~546 MB)
+MemoryPeak    = 572,764,160  (~546 MB)
+MemoryHigh    = 2,147,483,648 (2 GB)   ← ceiling
+MemoryMax     = 4,294,967,296 (4 GB)   ← hard max
+```
+Healthy and stable. Current is ~25% of the 2 GB High ceiling; peak tracks
+current (no leak growth visible in the 5-min window). No OOM risk. ✅
+
+### 3. HermesBrain (last 5 min)
+```
+hermes_brain_think_complete = 7
+hermes_brain_fallback_used = 0
+```
+Brain thinking continuously (7 completions in 5 min ≈ once per 43 s, within
+the 60 s heartbeat cadence). Zero fallbacks — no LLM outage, no quota
+exhaustion. ✅
+
+### 4. Dashboard (last 5 min)
+```
+dashboard_edited         = 7
+dashboard_publish_failed = 0
+dashboard_edit_failed    = 0
+```
+Edit-in-place working (7 edits in 5 min, matches the 60 s heartbeat). Zero
+publish/edit failures. ✅
+
+### 5. Blockers (last 5 min) — ALL 0
+```
+HARD_STOP requested - routing to END = 0
+hard_stop_detected_live              = 0
+hermes_brain_think_failed            = 0
+aiagent_create_failed                = 0
+heartbeat_stopped                    = 0
+GraphRecursionError                  = 0
+traceback                            = 0
+```
+No stuck HARD STOP, no recursion blowup, no brain failure, no heartbeat
+halt, no traceback. ✅
+
+### 6. Discord REST (live)
+**Dashboard channel 1510914604291588237** (last 50 messages):
+```
+total messages returned : 1
+messages with embeds    : 1
+bot-authored messages   : 1
+embed msg id            : 1519135545501028549  (matches expected)
+color                   : 0x5865f2 (blurple)   ✅
+edited_timestamp        : 2026-06-25T01:46:28Z (edited in place)  ✅
+title                   : Guinevere — Living Autonomy Dashboard
+```
+Exactly 1 dashboard embed (edit-not-spam confirmed), correct id, blurple
+color, recently edited. ✅
+
+**Log channel 1510914623367413850** (last 5 messages, append-only):
+```
+[2026-06-25T01:44:03Z] [cycle 197401] phase=idle focus=Finance Health Check acts=24
+[2026-06-25T01:43:25Z] [cycle 197400] phase=idle focus=Finance Health Check acts=24
+[2026-06-25T01:38:33Z] [cycle 197393] phase=idle focus=Finance Health Check acts=24
+[2026-06-25T01:38:07Z] [cycle 197393] phase=idle focus=Finance Health Check acts=24
+[2026-06-25T01:32:45Z] [cycle 197386] phase=idle focus=Finance Health Check acts=23
+```
+Fresh append-only lifecycle events (T12 narrative field), cycles advancing.
+✅
+
+### 7. Redis
+```
+life_kernel:dashboard_message_id = 1519135545501028549  ✅ (matches live embed id)
+```
+Found in db 0 and db 6 of the `guinevere-redis` docker instance
+(host 127.0.0.1:6380). Value matches the live Discord embed id, so the
+edit-in-place publisher resolves the correct message each cycle. ✅
+
+> **Pre-existing config note (not a blocker):** `REDIS_URL` in `.env.core`
+> points at `redis://localhost:6380/5` (DB 5), but the `life_kernel:*`
+> keys are written to DB 0/DB 6. This DB-index drift is harmless for the
+> dashboard publisher (it sets and gets the key on the same connection
+> the app uses) but is worth reconciling post-PRODUCTION-PASS. Host redis
+> on :6379 (the `aizanta-redis` container) is a separate instance and
+> does not carry these keys.
+
+### Decision
+**CLEAN.** All seven dimensions pass: core stable (NRestarts=0), memory
+healthy (~546 MB / 2 GB), brain thinking (7 completions, 0 fallback),
+dashboard editing in place (7 edits, 0 failures), zero blockers, 1 blurple
+dashboard embed edited recently, fresh log-channel events, Redis message-id
+matches the live embed.
+
+**No restart performed.** Continue monitoring.
+
+### Status gate
+Soak target (2026-06-26 08:26 WIB) has **NOT** been reached. PRODUCTION
+PASS remains **HOLD**. This snapshot is a CLEAN 5-min sample toward the
+24h clean-soak requirement. The final gate (full 24h blocker scan + 24h
+of clean dashboard_edited + brain think_complete, then upgrade) will run
+only after 2026-06-26 08:26 WIB.
