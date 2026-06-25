@@ -466,7 +466,31 @@ class HeartbeatService:
                         "recursion_limit": 25,
                     },
                 )
-                logger.info("graph_invoked_decision_heartbeat", result=result)
+                # PRIVACY (cleanup blocker #2): never log the raw graph result
+                # — it contains recalled_memories (P18 content, possibly
+                # Critical-classified), journal_entries (reflective reasoning),
+                # and observations. Logging it verbatim leaks personal/intimate
+                # data into structlog (and the Discord log channel via the
+                # lifecycle line). Log a SANITIZED SUMMARY only: counts and
+                # the decision/next-action labels (which are display-only and
+                # already sanitised by DashboardRenderer before publishing).
+                _summary = {
+                    "phase": result.get("current_phase"),
+                    "decision": result.get("decision"),
+                    "last_autonomous_decision": result.get("last_autonomous_decision"),
+                    "cycle_count": result.get("cycle_count"),
+                    "act_count": result.get("act_count"),
+                    "n_goals": len(result.get("goals", []) or []),
+                    "n_commitments": len(result.get("commitments", []) or []),
+                    "n_concerns": len(result.get("concerns", []) or []),
+                    "n_observations": len(result.get("observations", []) or []),
+                    "n_recalled_memories": len(result.get("recalled_memories", []) or []),
+                    "n_recalled_concepts": len(result.get("recalled_concepts", []) or []),
+                    "n_journal_entries": len(result.get("journal_entries", []) or []),
+                    "world_model_status": result.get("world_model_status"),
+                    "hard_stop_requested": result.get("hard_stop_requested"),
+                }
+                logger.info("graph_invoked_decision_heartbeat", **_summary)
             except Exception as e:
                 logger.error("graph_invoke_failed", error=str(e), exc_info=True)
 

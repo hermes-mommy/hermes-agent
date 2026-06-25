@@ -85,7 +85,11 @@ _IDLE_SYSTEM_PROMPT = (
     "keeps you usefully alive and improving (review recent observations, "
     "evaluate a process, consolidate a learning, or plan a small "
     "self-improvement). Reply with a short label and a one-sentence "
-    "description. Keep it display-only — never propose real side-effects."
+    "description. Keep it display-only — never propose real side-effects. "
+    "PRIVACY: your reply is shown on a Discord dashboard and log channel. "
+    "Never quote, paraphrase, or reveal the content of any recalled memory — "
+    "produce only a generic activity label (e.g. 'Finance Health Check', "
+    "'Review recent decisions', 'Consolidate a learning')."
 )
 
 
@@ -404,11 +408,15 @@ async def act_node(state: LifeMindState) -> dict[str, Any]:
         )
 
         highest_priority_goal = sorted_goals[0]
+        # Log a truncated label only (SAF-CONS-06): the full goal description
+        # may contain context we don't want in logs; 60 chars is enough for
+        # debugging which goal is active without dumping raw content.
+        _goal_label = str(highest_priority_goal.get("description", ""))[:60]
         logger.info(
             "act_node_selected_goal",
             goal_id=highest_priority_goal.get("goal_id"),
             priority=highest_priority_goal.get("priority"),
-            description=highest_priority_goal.get("description"),
+            description_label=_goal_label,
         )
 
         # Log action intent
@@ -417,7 +425,7 @@ async def act_node(state: LifeMindState) -> dict[str, Any]:
             phase=state.get("current_phase"),
             goal_id=highest_priority_goal.get("goal_id"),
             priority=highest_priority_goal.get("priority"),
-            description=highest_priority_goal.get("description"),
+            description_label=_goal_label,
         )
     else:
         # No active goals — idle cycle
@@ -614,12 +622,23 @@ async def idle_node(state: LifeMindState) -> dict[str, Any]:
     recalled_memories = state.get("recalled_memories", []) or []
 
     if recalled_memories:
-        top_memory = recalled_memories[0].get("content", "")[:120]
+        # PRIVACY (cleanup SAF-CONS-01): never interpolate raw recalled
+        # memory content into task_description — that field is logged
+        # (idle_node_generated_task) and flows to current_focus /
+        # next_planned_action (dashboard + lifecycle log). Use a sanitized
+        # display label that references the memory by metadata (relevance,
+        # timestamp) only. The raw content stays in recalled_memories state
+        # for the brain (which has CRITICAL clearance) — see _make_brain_idle.
+        top_mem = recalled_memories[0]
+        mem_relevance = top_mem.get("relevance", 0.0)
+        mem_ts = str(top_mem.get("timestamp", ""))[:10]  # date only
         task_type = "memory_driven"
         task_description = (
-            f"Self-directed: follow up on recalled context — {top_memory}"
+            f"Self-directed: follow up on a recalled memory "
+            f"(relevance={mem_relevance:.2f}, date={mem_ts or 'n/a'})"
         )
     elif recalled_concepts:
+        # KG concept names are not personal/episodic content — safe to label.
         top_concept = recalled_concepts[0].get("name", "")
         task_type = "concept_driven"
         task_description = (
@@ -640,7 +659,10 @@ async def idle_node(state: LifeMindState) -> dict[str, Any]:
     logger.info(
         "idle_node_generated_task",
         task_type=task_type,
+        # Log only the sanitized label + counts, never raw memory content.
         description=task_description,
+        n_recalled_memories=len(recalled_memories),
+        n_recalled_concepts=len(recalled_concepts),
     )
 
     # Append task to observations
@@ -743,13 +765,20 @@ def _make_brain_decide(hermes_brain: Any) -> Any:
         concerns = state.get("concerns", [])
         # Feed recalled memory/KG context into the decide prompt (AC-LIFE-005)
         # so the brain's routing is memory-informed, not blind to world-state.
+        # PRIVACY: feed concept names (not personal) + memory METADATA
+        # (relevance/date) only — never raw memory content — to avoid
+        # exposing personal/episodic data to the LLM.
         recalled_concepts = state.get("recalled_concepts", []) or []
         recalled_memories = state.get("recalled_memories", []) or []
+        mem_meta = [
+            {"relevance": m.get("relevance", 0.0), "date": str(m.get("timestamp", ""))[:10]}
+            for m in recalled_memories[:5]
+        ]
         user_msg = (
-            f"Goals: {goals}. Commitments: {commitments}. Concerns: {concerns}. "
+            f"Goals: {len(goals)}. Commitments: {len(commitments)}. Concerns: {len(concerns)}. "
             f"Observations: {len(state.get('observations', []))}. "
             f"Recalled KG concepts: {[c.get('name') for c in recalled_concepts[:5]]}. "
-            f"Recalled memories: {[m.get('content', '')[:60] for m in recalled_memories[:5]]}. "
+            f"Recalled memory signals (metadata only): {mem_meta}. "
             f"Cycle: {state.get('cycle_count', 0)}. "
             "Decide the next phase: act, reflect, idle, or observe."
         )
@@ -816,20 +845,28 @@ def _make_brain_idle(hermes_brain: Any) -> Any:
 
     async def brain_idle(state: LifeMindState) -> dict[str, Any]:
         result = await idle_node(state)
-        # Feed the recalled KG concepts + P18 memories into the brain prompt
-        # so the self-directed agenda is memory-driven (AC-LIFE-005), not a
-        # generic filler question.
+        # Feed the recalled KG concepts + P18 memory METADATA (not raw
+        # content) into the brain prompt so the self-directed agenda is
+        # memory-driven (AC-LIFE-005) without exposing personal/episodic
+        # memory content to the LLM or the downstream Discord display fields.
+        # The brain sees concept names (not personal) + memory relevance/
+        # timestamps (metadata only) and is instructed to produce a generic
+        # display label, never a quote of raw memory content.
         recalled_concepts = state.get("recalled_concepts", []) or []
         recalled_memories = state.get("recalled_memories", []) or []
         concept_names = [c.get("name", "") for c in recalled_concepts[:5]]
-        memory_summaries = [m.get("content", "")[:80] for m in recalled_memories[:5]]
+        memory_meta = [
+            {"relevance": m.get("relevance", 0.0), "date": str(m.get("timestamp", ""))[:10]}
+            for m in recalled_memories[:5]
+        ]
         user_msg = (
             "The operator is silent and there is no pending work. "
             f"Recent KG concepts: {concept_names}. "
-            f"Recent memories: {memory_summaries}. "
-            "Propose ONE self-directed agenda item grounded in this recalled "
-            "context to stay usefully alive. Reply with a short label and a "
-            "one-sentence description."
+            f"Recent memory signals (metadata only, content not shown): {memory_meta}. "
+            "Propose ONE self-directed agenda item grounded in this context "
+            "to stay usefully alive. Reply with a short generic activity "
+            "label and a one-sentence description. Do NOT reveal or quote "
+            "any memory content."
         )
         proposal = await _safe_think(hermes_brain, user_msg, _IDLE_SYSTEM_PROMPT)
         if proposal:
