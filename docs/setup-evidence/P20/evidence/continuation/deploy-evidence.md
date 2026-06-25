@@ -123,6 +123,10 @@ The earlier 05:54 WIB soak clock is **voided** — pre-fix code ran raw memory c
 
 ## 6. Status
 
-**CONTINUATION DEPLOYED — SOAK READY — PASS HOLD.**
+**P20 EARLY PRODUCTION ACCEPTANCE — OPERATOR WAIVED 24H SOAK — PASS WITH ACCEPTED RISK.**
 
-PRODUCTION PASS remains HOLD: a fresh full 24h clean soak (brain thinking, no blockers, zero raw-memory-in-logs) from 2026-06-25 08:26:43 WIB is required. Target: 2026-06-26 08:26 WIB.
+The 24h clean-soak gate was **not** completed — Faiz explicitly waived the
+remaining wait on 2026-06-25 (see `discord-visible-autonomy/operator-soak-waiver.md`).
+The kernel was SOAK READY and the latest verified snapshot (08:50:46 WIB) is
+CLEAN, but the 24h window was deliberately not waited out. Acceptance carries
+accepted residual risk; any future runtime incident reverts P20 to PASS HOLD.

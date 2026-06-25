@@ -1,8 +1,15 @@
 # P20 — Living Autonomy Kernel: Index
 
-**Status:** CONTINUATION IMPLEMENTED — DEPLOYED — SOAK/OBSERVATION IN PROGRESS — PRODUCTION PASS HOLD  
-**Date:** 2026-06-25 (continuation deployed)  
+**Status:** P20 EARLY PRODUCTION ACCEPTANCE — OPERATOR WAIVED 24H SOAK — PASS WITH ACCEPTED RISK  
+**Date:** 2026-06-25 (continuation deployed + operator soak waiver)  
 **Phase:** Merged P5+P20 + Living Autonomy Continuation
+
+> **Not a 24h-soak-completed claim and not an unconditional PRODUCTION PASS.**
+> Faiz waived the remaining 24h soak wait on 2026-06-25; the 24h clean-soak
+> gate was deliberately not satisfied. Acceptance is based on a verified
+> CLEAN runtime snapshot + the operator's accepted-risk decision. See
+> `evidence/discord-visible-autonomy/operator-soak-waiver.md`. Any future
+> runtime incident reverts P20 to PASS HOLD.
 
 ## Planned Scope
 
@@ -46,7 +53,7 @@ P20/
 | PLAN-003 | COMPLETE | Master replan |
 | PLAN-004 | COMPLETE | Todo and verification scaffold |
 | LK-001..LK-016 | LOCAL COMPLETE (code implemented, tests pass locally) | Implementation waves |
-| LK-017 | PRODUCTION DEPLOYED — SOAK IN PROGRESS — PRODUCTION PASS HOLD | Production deployed 2026-06-23, HARD STOP tested, 24h soak in progress |
+| LK-017 | PRODUCTION DEPLOYED — EARLY ACCEPTANCE (operator waived 24h soak) | Production deployed 2026-06-23, HARD STOP tested; 24h soak waived by operator 2026-06-25 (see operator-soak-waiver.md) |
 
 ## Plan Bundle
 

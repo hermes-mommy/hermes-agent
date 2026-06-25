@@ -144,11 +144,11 @@ A full independent re-audit of the safety-consent surface against commit `03f84b
 
 ## 8. Final Status
 
-**CONTINUATION DEPLOYED — SOAK READY — PASS HOLD**
+**P20 EARLY PRODUCTION ACCEPTANCE — OPERATOR WAIVED 24H SOAK — PASS WITH ACCEPTED RISK**
 
-Soak clock reset to **2026-06-25 08:26:43 WIB** (post-privacy-fix restart). PRODUCTION PASS target: 2026-06-26 08:26 WIB — a clean 24h soak with zero blockers required.
+Soak clock reset to **2026-06-25 08:26:43 WIB** (post-privacy-fix restart). Full 24h target 2026-06-26 08:26 WIB — **operator waived the wait; 24h soak NOT completed.** See `discord-visible-autonomy/operator-soak-waiver.md`.
 
-The privacy blocker that was silently un-deployed has been committed (`03f84b5`), deployed, and verified live. The report's false "0 FAIL" claim is corrected here.
+The privacy blocker that was silently un-deployed has been committed (`03f84b5`), deployed, and verified live. The report's false "0 FAIL" claim is corrected here. Acceptance is early, with accepted residual risk (soak immaturity, outstanding safety-consent re-audit against `03f84b5`); any future runtime incident reverts P20 to PASS HOLD.
 
 ## 9. Footer
 
@@ -158,5 +158,5 @@ The privacy blocker that was silently un-deployed has been committed (`03f84b5`)
 | Deploy method | scp + systemctl restart guinevere-core (policy-gated) |
 | Backup | `/tmp/guinevere-cleanup-bak.1782350738/` on VPS |
 | Verification | local pytest 420/7/0; VPS live 0 blockers; privacy grep 0 |
-| Honest status | CONTINUATION DEPLOYED — SOAK READY — PASS HOLD |
-| PRODUCTION PASS | NOT CLAIMED — requires 24h clean soak from 08:26 WIB restart |
+| Honest status | P20 EARLY PRODUCTION ACCEPTANCE — OPERATOR WAIVED 24H SOAK — PASS WITH ACCEPTED RISK |
+| 24h soak completed? | NO — operator waived the wait (see operator-soak-waiver.md); not an unconditional PRODUCTION PASS |

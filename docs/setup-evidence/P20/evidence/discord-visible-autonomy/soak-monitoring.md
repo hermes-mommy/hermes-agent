@@ -442,3 +442,28 @@ PASS remains **HOLD**. This snapshot is a CLEAN 5-min sample toward the
 24h clean-soak requirement. The final gate (full 24h blocker scan + 24h
 of clean dashboard_edited + brain think_complete, then upgrade) will run
 only after 2026-06-26 08:26 WIB.
+
+---
+
+## Operator Soak Waiver — 2026-06-25 (supersedes the "do not upgrade" note above)
+
+**Operator (Faiz) explicitly waived the remaining 24h soak wait.**
+
+The 08:50:46 WIB CLEAN snapshot above was recorded *before* the waiver and
+correctly noted "target NOT reached — do not upgrade." That note is now
+superseded by the operator's waiver decision: P20 is accepted early, with
+the 24h soak gate **deliberately not satisfied**.
+
+- Soak-zero: 2026-06-25 08:26:43 WIB
+- Full 24h target: 2026-06-26 08:26 WIB — **waived, not waited**
+- 24h soak completed? **NO** — waived by operator
+- Latest verified snapshot: CLEAN (08:50:46 WIB) — see entry above
+
+**Binding status:** P20 EARLY PRODUCTION ACCEPTANCE — OPERATOR WAIVED 24H
+SOAK — PASS WITH ACCEPTED RISK. See `operator-soak-waiver.md` for the full
+waiver record and accepted residual risks.
+
+This is **not** a "24h soak completed" claim and **not** an unconditional
+PRODUCTION PASS. Monitoring should continue; any future runtime incident
+(crash loop, recursion, fallback storm, OOM, dashboard failure, privacy
+regression) voids this acceptance and reverts P20 to PASS HOLD.

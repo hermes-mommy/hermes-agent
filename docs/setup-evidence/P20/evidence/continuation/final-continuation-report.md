@@ -3,14 +3,20 @@
 | Field | Value |
 |---|---|
 | Date | 2026-06-25 |
-| Status | **CONTINUATION DEPLOYED — SOAK READY — PASS HOLD** (see cleanup-verification-audit.md) |
+| Status | **P20 EARLY PRODUCTION ACCEPTANCE — OPERATOR WAIVED 24H SOAK — PASS WITH ACCEPTED RISK** (see discord-visible-autonomy/operator-soak-waiver.md) |
 | Evidence root | `docs/setup-evidence/P20/evidence/continuation/` |
 | Commits | `a272587` (impl), `df83f70` + `ff1c9fa` (audit fixes), `c29a461` (deploy fixes), `03f84b5` (cleanup: SAF-CONS-01 privacy + test fixes) |
 | Tests | 420 passed, 7 skipped, 0 failed, 2242 warnings (local); VPS live + clean |
 | Audits | Wave 1 (8 auditors) + Wave 2 (8 auditors). **Honest correction:** round-2 safety-consent verdict on disk was **FAIL (hard-rejection)** against pre-fix code; the SAF-CONS-01 privacy fix in `03f84b5` resolves it — see cleanup-verification-audit.md §2, §7. |
-| Soak clock | Reset **2026-06-25 08:26:43 WIB** (post-privacy-fix restart; earlier 05:54 WIB soak voided — pre-fix code ran raw memory content to LLM). PRODUCTION PASS target 2026-06-26 08:26 WIB. |
+| Soak clock | Reset **2026-06-25 08:26:43 WIB** (post-privacy-fix restart; earlier 05:54 WIB soak voided — pre-fix code ran raw memory content to LLM). Full 24h target 2026-06-26 08:26 WIB — **operator waived the wait**; 24h soak NOT completed. |
 
-> **NOT P20 PRODUCTION PASS.** A fresh clean 24h soak (brain thinking, zero blockers, zero raw-memory-in-logs) from the 08:26:43 WIB restart is required before upgrade. The earlier 05:54 WIB soak clock is voided — see soak-readiness-report.md §2.
+> **NOT a 24h-soak-completed claim and NOT an unconditional PRODUCTION PASS.**
+> Faiz explicitly waived the remaining 24h soak wait on 2026-06-25. The 24h
+> clean-soak gate was deliberately not satisfied; acceptance is based on a
+> verified CLEAN runtime snapshot + the operator's accepted-risk decision.
+> See `discord-visible-autonomy/operator-soak-waiver.md` for the binding
+> waiver and residual risks. Any future runtime incident reverts P20 to
+> PASS HOLD pending a genuine clean soak.
 
 ## 1. Executive Summary
 
@@ -105,6 +111,6 @@ Policy-gated scp deploy to VPS. 3 fail-soft runtime bugs surfaced and were fixed
 
 ## 8. Final Status
 
-**CONTINUATION DEPLOYED — SOAK READY — PASS HOLD.**
+**P20 EARLY PRODUCTION ACCEPTANCE — OPERATOR WAIVED 24H SOAK — PASS WITH ACCEPTED RISK.**
 
-Guinevere is now visibly alive and memory-driven: she generates self-directed agenda from real recalled memories, acts on it, journals the reasoning, and self-improvement candidates are produced hourly — all visible in Discord, all autonomous without Faiz's trigger. The privacy blocker (SAF-CONS-01) that was silently un-deployed has been committed (`03f84b5`), deployed, and verified live (raw memory content in logs = 0). The only remaining gate is a fresh clean 24h soak from the 08:26:43 WIB restart.
+Guinevere is now visibly alive and memory-driven: she generates self-directed agenda from real recalled memories, acts on it, journals the reasoning, and self-improvement candidates are produced hourly — all visible in Discord, all autonomous without Faiz's trigger. The privacy blocker (SAF-CONS-01) that was silently un-deployed has been committed (`03f84b5`), deployed, and verified live (raw memory content in logs = 0). The 24h clean-soak gate was **not** completed — Faiz explicitly waived the remaining wait on 2026-06-25 (see `discord-visible-autonomy/operator-soak-waiver.md`). Acceptance carries accepted residual risk; any future runtime incident reverts P20 to PASS HOLD.

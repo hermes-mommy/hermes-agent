@@ -5,8 +5,8 @@
 | Date | 2026-06-25 |
 | Status | **PLAN EXECUTED — COMPLETE** |
 | Trigger | Ground-truth blocker audit revealed the round-2 safety-consent FAIL verdict was silently un-deployed (the real blocker), plus research count drift and 6 P20 test bugs |
-| Target status | **CONTINUATION DEPLOYED — SOAK READY — PASS HOLD** (achieved) |
-| PRODUCTION PASS gate | 24h clean soak from 08:26:43 WIB restart; not claimed here |
+| Achieved status | **P20 EARLY PRODUCTION ACCEPTANCE — OPERATOR WAIVED 24H SOAK — PASS WITH ACCEPTED RISK** (operator waived the 24h wait; see discord-visible-autonomy/operator-soak-waiver.md) |
+| 24h soak gate | NOT completed — waived by operator; not an unconditional PRODUCTION PASS |
 | Cleanup commit | `03f84b5` |
 
 ## Ground-Truth Summary
@@ -119,6 +119,10 @@ No destructive ops. Docs edits are reversible via git. Tests only touch `tests/l
 
 ## Final Allowed Status
 
-**CONTINUATION DEPLOYED — SOAK READY — PASS HOLD**
+**P20 EARLY PRODUCTION ACCEPTANCE — OPERATOR WAIVED 24H SOAK — PASS WITH ACCEPTED RISK**
 
-Only after a fresh clean 24h soak: **P20 PRODUCTION PASS**.
+The operator waived the 24h clean-soak wait on 2026-06-25 (see
+`discord-visible-autonomy/operator-soak-waiver.md`); the 24h gate was
+deliberately not satisfied. This is not an unconditional PRODUCTION PASS
+and not a "24h soak completed" claim. An unconditional P20 PRODUCTION PASS
+would require a genuine clean 24h soak, which was waived, not completed.

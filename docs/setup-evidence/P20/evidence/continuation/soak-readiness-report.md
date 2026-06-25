@@ -3,12 +3,19 @@
 | Field | Value |
 |---|---|
 | Date | 2026-06-25 |
-| Status | **CONTINUATION DEPLOYED — SOAK READY — PASS HOLD** |
+| Status | **P20 EARLY PRODUCTION ACCEPTANCE — OPERATOR WAIVED 24H SOAK — PASS WITH ACCEPTED RISK** |
 | Soak clock | Reset to **2026-06-25 08:26:43 WIB** (post-privacy-fix restart) |
-| PRODUCTION PASS target | 2026-06-26 08:26 WIB (24h clean soak, zero blockers) |
+| Full 24h target | 2026-06-26 08:26 WIB — **operator waived the wait; NOT completed** |
 | Cleanup commit | `03f84b5` |
+| Waiver | `discord-visible-autonomy/operator-soak-waiver.md` |
 
-> **NOT P20 PRODUCTION PASS.** A fresh clean 24h soak from the 08:26:43 WIB restart is required before upgrade. The earlier 05:54 WIB soak clock is **voided** — the VPS was running pre-privacy-fix code during that window (raw P18 memory content reached the LLM brain prompts), so it does not count toward the clean soak.
+> **NOT a 24h-soak-completed claim and NOT an unconditional PRODUCTION PASS.**
+> The kernel was SOAK READY (all blocker conditions resolved, verified CLEAN
+> snapshot at 08:50:46 WIB), but Faiz explicitly waived the remaining 24h
+> wait on 2026-06-25 rather than let the window mature. Acceptance is early,
+> with accepted residual risk (see waiver §4). The earlier 05:54 WIB soak
+> clock is voided — the VPS ran pre-privacy-fix code (raw P18 memory to the
+> LLM) during that window.
 
 ## 1. Soak-Readiness Verdict
 
@@ -92,8 +99,8 @@ Only then: **P20 PRODUCTION PASS**.
 
 | Field | Value |
 |---|---|
-| Report date | 2026-06-25 08:27 WIB |
+| Report date | 2026-06-25 08:27 WIB (waiver 2026-06-25) |
 | Soak-zero | 2026-06-25 08:26:43 WIB |
 | Cleanup commit | `03f84b5` |
-| Status | CONTINUATION DEPLOYED — SOAK READY — PASS HOLD |
-| Next gate | 24h clean soak → PRODUCTION PASS |
+| Status | P20 EARLY PRODUCTION ACCEPTANCE — OPERATOR WAIVED 24H SOAK — PASS WITH ACCEPTED RISK |
+| Next gate | (waived) 24h clean soak was the gate; operator waived the wait — see operator-soak-waiver.md |

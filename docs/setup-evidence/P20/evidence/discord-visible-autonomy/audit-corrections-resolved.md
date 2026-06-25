@@ -102,11 +102,20 @@ Over a 3-min window after fix: `dashboard_edited=5`, `dashboard_publish_failed=0
 
 ---
 
-## Blocker 5 — Soak gate ✅ ENFORCED (PASS HOLD)
+## Blocker 5 — Soak gate ✅ ENFORCED (PASS HOLD) → SUPERSEDED by operator waiver
 
-**Status remains:** `VISIBLE AUTONOMY ONLINE — SOAK IN PROGRESS — P20 PASS HOLD`.
+**Status at time of correction:** `VISIBLE AUTONOMY ONLINE — SOAK IN PROGRESS — P20 PASS HOLD`.
 
 The audit explicitly forbids upgrading to PRODUCTION PASS until a full 24h clean soak completes. Core was restarted during this correction work (2026-06-24 07:27 WIB), so the soak clock restarted. The 24h gate is **not** met. No claim of PRODUCTION PASS is made.
+
+> **Superseded 2026-06-25:** The PASS HOLD above was the correct status at
+> the time of the 2026-06-24 brutal audit. On 2026-06-25, after the
+> continuation + SAF-CONS-01 cleanup deploy (`03f84b5`, soak reset to
+> 08:26:43 WIB), Faiz **explicitly waived the remaining 24h soak wait**.
+> The 24h gate remains **not completed** (waived, not satisfied). Binding
+> status is now **P20 EARLY PRODUCTION ACCEPTANCE — OPERATOR WAIVED 24H
+> SOAK — PASS WITH ACCEPTED RISK** — not an unconditional PRODUCTION PASS
+> and not a "24h soak completed" claim. See `operator-soak-waiver.md`.
 
 Soak-start state (post-correction):
 ```

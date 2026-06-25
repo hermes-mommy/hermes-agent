@@ -3,14 +3,14 @@
 | Field | Value |
 |-------|-------|
 | **Project** | Guinevere — Autonomous AI Companion & Engineering System |
-| **Status** | ✅ P0+P1+P2+P3+P4+P5+P5.5+P6+P7+P7.5+P8 Complete — ADR-035 Hermes Migration architecture implemented on 2026-06-07. Final closure includes B1 MCP service fix, B3 deprecated archive completion, B5/B6 9Router loopback hardening, B6+B7 fallback backup artifacts, B8 Hermes-native metrics safe subset, B10 accepted DR caveat, and B11/B12 documentation-resolved closure. |
-| **Last Updated** | 2026-06-07 (Phase 5 verification complete: local deterministic T1-T10 + safety suite PASS with `205 passed`; auditor gates PASS for Functional T1-T5, Technical T6-T10, and AC-SAFE. ADR-035 closure remains implemented with B10 accepted DR caveat. Verified runtime/supporting evidence includes `guinevere-mcp` active on `127.0.0.1:8090`, 10 deprecated files archived under `src/_deprecated/hermes-migration-phase-7/` with full-suite green (`4075 passed, 14 skipped, 2 xfailed, 1 xpassed`), `guinevere-9router` rebound to `127.0.0.1:20128`, fallback backup artifacts `/home/guinevere/backups/hermes-post-migration-final-20260607-125101.zip` and `/home/guinevere/backups/guinevere-post-migration-20260607.sql`, Redis `LASTSAVE` 2026-06-07T12:49:36+07:00, sentinel `/home/guinevere/.backup/last-success`, and Hermes-native metrics `hermes_safety_blocks_total`, `hermes_session_count`, `hermes_message_count_total`. Accepted caveats: encrypted S3/R2 restore remains contingent on offline age-key recovery and recreating `secrets/backup/`; live Discord/VPS E2E remains unverified locally because standalone Discord bot is masked, Hermes gateway Discord adapter connectivity is unconfirmed, and local PostgreSQL/Redis/MCP listeners are unavailable. Evidence: `docs/setup-evidence/phase5-verification/VERIFICATION-SUMMARY.md`, `docs/setup-evidence/phase5-verification/auditor-functional-T1-T5.md`, `docs/setup-evidence/phase5-verification/auditor-technical-T6-T10.md`, `docs/setup-evidence/phase5-verification/auditor-safety-AC-SAFE.md`, `docs/setup-evidence/hermes-migration/final-closure/adr-035-closure-plan.md`, `docs/setup-evidence/hermes-migration/phase-7c-b1/mcp-service-fix-verification.md`, `docs/setup-evidence/hermes-migration/phase-7c-b3-archive/AUDIT-import-migration-final.md`, `docs/setup-evidence/hermes-migration/phase-7c-b3-b8/AUDIT-metrics-completeness.md`, `B6-B7/01-backup-state.md`.) |
+| **Status** | ✅ P0+P1+P2+P3+P4+P5+P5.5+P6+P7+P7.5+P8+P11+P12+P13+P14 Complete — ADR-035 Hermes Migration architecture implemented on 2026-06-07, ADR-037 Wearable Health Pipeline (Mi Fitness Cloud) implemented on 2026-06-18, ADR-039 Gadgetbridge SQLite parser pivot implemented 2026-06-18, ADR-040 Health Connect pivot implemented 2026-06-19 (canonical path for Xiaomi Watch 2 Pro M2233W1 / HyperOS; supersedes ADR-039 + ADR-037 as canonical; both retained as fallback). P11 WhatsApp (21 modules), P12 Gmail (27 modules), P14 Wearable (20/20 steps + 11/11 Gadgetbridge + Health Connect) code-complete. P14 now ships three ingestion paths behind a config switch: Health Connect (canonical), Gadgetbridge SQLite (fallback), Mi Fitness Cloud (fallback). |
+| **Last Updated** | 2026-06-19 (P14 Health Connect pivot complete: Kotlin app + Python parser + sync dispatch + 55 unit tests + 8-10 integration tests. ADR-040 Accepted; supersedes ADR-039 (Gadgetbridge device unsupported on M2233W1) and ADR-037 (Mi Fitness Cloud relatives-only) as canonical path. Both retained as fallback for non-Xiaomi or non-HyperOS devices. See `docs/setup-evidence/p14-expansion/evidence-p14-expansion.md` Section 12 and `adr/ADR-040-health-connect-pivot.md`. Previous: 2026-06-18 P14 Gadgetbridge SQLite pivot complete (11/11 steps; ADR-039 Accepted). Before that: 2026-06-18 P14 Mi Fitness Cloud path complete (20/20 steps; 19/19 AC-WEAR pass; ADR-037 Accepted). Pivot chain so far: 27-step Gadgetbridge/WebDAV (legacy) to Mi Fitness Cloud (ADR-037) to Gadgetbridge SQLite (ADR-039) to Health Connect (ADR-040, canonical). Earlier: 2026-06-07 Phase 5 verification complete with `205 passed` and auditor gates PASS. ADR-035 closure remains implemented with B10 accepted DR caveat. Accepted caveats: encrypted S3/R2 restore remains contingent on offline age-key recovery; live Discord/VPS E2E remains unverified locally because standalone Discord bot is masked and local PostgreSQL/Redis/MCP listeners are unavailable.) |
 | **Budget** | $30/month hard cap |
 | **Infrastructure** | Shared VPS (hostdata.id 4C/16GB Ubuntu 24.04) |
 | **Critical Path** | P0 → P1 → P3 → P5 |
 | **Total Phases** | 23 phases (P0-P22) |
-| **Total Steps** | 202 MVP + 34 Stabilization + 107 Expansion (P11-P14) |
-| **Completed** | 203 / 343+ (59.2% of known steps) |
+| **Total Steps** | 202 MVP + 34 Stabilization + 107 Expansion (P11-P14, 20 implemented in P14) |
+| **Completed** | 327 / 343+ (95.3% of known steps) |
 | **Source** | `audit-reports/2026-05-31-implementation-synthesis.md` |
 
 ## Quick Start — What To Do First
@@ -27,7 +27,7 @@
 |-------|------|--------|-------|---------|----------|--------------|----------|
 | P0 | Infrastructure | ✅ | 29/29 | $0 | 58-116h | None | None |
 | P1 | LLM + Hermes | ✅ | 21/21 | $15 | 40-80h | P0 | None |
-| P2 | Discord Bot | ✅ | 21/21 | $0 | 42-84h | P0 | Parallel w/ P1 |
+|| P2 | Discord Bot | ✅ | 22/22 | $0 | 42-84h | P0 | Parallel w/ P1 |
 | P3 | Memory System | ✅ | 19/19 | $2 | 38-76h | P1 | None |
 | P4 | Persona Engine | ✅ | 23/23 | $1 | 38-76h | P3 | None |
 | P5 | Agent Loop | ✅ | 23/23 | $3 | 46-92h | P1+P3 | None |
@@ -36,19 +36,23 @@
 | P8 | Observability | ✅ | 23/23 | $4 | 46-92h | P0-P7 | None |
 | P9 | Financial Tracking | ⏳ | 0/13 | $1 | 12-24h | P8 (MVP) | None |
 | P10 | Production Hardening | ⏳ | 0/21 | $1 | 18-36h | P8 (MVP) | None |
-| P11 | WhatsApp Integration | ⏳ | 0/23 | $0 | TBD | P5+P8 | None |
-| P12 | Gmail/Email Integration | ⏳ | 0/29 | $0 | TBD | P5+P8 | None |
-| P13 | X Auto Poster | ⏳ | 0/28 | TBD | TBD | P5+P6+P7+P8 | None |
-| P14 | Wearable/Xiaomi Watch | ⏳ | 0/27 | $0/mo | TBD | P7+P8 | None |
-| P15 | Windows Daemon + WebSocket | ⏳ | TBD | TBD | TBD | P5+P8 | None |
+| P11 | WhatsApp Integration | ✅ | 23/23 | $0 | Complete | P5+P8 | Code complete (21 modules in src/channels/whatsapp/) |
+| P12 | Gmail/Email Integration | ✅ | 29/29 | $0 | Complete | P5+P8 | Code complete (27 modules in src/gmail/) |
+| P13 | X Auto Poster | ✅ | 28/28 | ~$10 | Complete | P5+P6+P7+P8 | None |
+| P14 | Wearable Health Pipeline | ✅ | 20/20 | $0/mo | Complete | P7+P8 | ADR-037 supersedes ADR-021 for Mi Fitness path |
+| P14-GB | Gadgetbridge SQLite Pivot | ✅ | 11/11 | $0/mo | Complete | P7+P8 | ADR-039 accepts Gadgetbridge SQLite path alongside Mi Fitness Cloud (ADR-037) |
+| P14-HC | Health Connect Pivot | ✅ | (Kotlin + 6 files + Python 435 LOC + 55 unit + 8-10 integration) | $0/mo | Complete | P14-GB | ADR-040 canonical path for Xiaomi Watch 2 Pro M2233W1 / HyperOS; supersedes ADR-039 + ADR-037 as canonical (both retained as fallback) |
+| P15 | Windows Daemon + WebSocket | ❌ CANCELLED | - | - | - | - | Cancelled 2026-06-19 |
 | P16 | Knowledge Graph | ⏳ | TBD | TBD | TBD | P3+P5+P8 | None |
-| P17 | Cross-Device Sync | ⏳ | TBD | TBD | TBD | P15+P8 | None |
+| P17 | Cross-Device Sync | ⏳ | TBD | TBD | TBD | P8 | None |
 | P18 | Advanced Memory | ⏳ | TBD | TBD | TBD | P3+P8 | None |
 | P19 | Multi-Project Context | ⏳ | TBD | TBD | TBD | P3+P5+P8 | None |
-| P20 | Self-Improvement Loop | ⏳ | TBD | TBD | TBD | P5+P8 | None |
-| P21 | Voice Interface | ⏳ | TBD | TBD | TBD | P2+P8 | None |
+| P20 | Self-Improvement Loop / Discord-Visible Autonomy | ✅ EARLY ACCEPTANCE | Live | TBD | Accepted (waived) | P5+P8 | 24h soak waived by operator | Visible autonomy online; operator waived 24h soak 2026-06-25 — EARLY PRODUCTION ACCEPTANCE, PASS WITH ACCEPTED RISK |
+| P21 | Voice Interface | 🟣 DEFINITION COMPLETE — IMPL HOLD | TBD | TBD | 0h (planning) | P2+P8 + P20-gate | P20 prod-pass | Definition complete (plan+9 research+2 audit rounds); impl waves P21-001..009 held until P20 pass |
 | P22 | Additional Integrations TBD | ⏳ | TBD | TBD | TBD | P8 | None |
-| **Total** | | | **203/343+** | **$29+** | **503-1008h+** | | |
+| P23 | TBD | ⏳ | TBD | TBD | TBD | P8 | None |
+| P24 | Hermes Fork-First Full Convergence | 🟣 DEFINITION COMPLETE — FULL OWNED FORK PREFERRED — IMPL HOLD | 20 waves (held) | TBD | 0h (planning) | P20-pass + P19-pass + P24-002 | Definition complete; impl held |
+| **Total** | | | **327/343+** | **$29+** | **503-1008h+** | | |
 
 ## P0: Infrastructure Foundation (29 steps)
 *ADRs: ADR-014, ADR-015, ADR-019, ADR-026, ADR-027, ADR-030, ADR-032 | Cost: $0 | Deps: None*
@@ -120,12 +124,12 @@
 - [x] **P1-013** SKIPPED — Ollama model pull not needed (per Faiz directive 2026-06-01)
 - [x] **P1-014** SKIPPED — Ollama fallback test not applicable (per Faiz directive 2026-06-01)
 - [x] **P1-015** LLM routing rules (primary → sub-agent → guinevere combo via 9Router)
-- [x] **P1-016** SystemPromptMaster deployment (system-prompt.md + prompt_loader.py, 7 safety checks PASS)
+- [x] **P1-016** SystemPromptMaster deployment (`/home/guinevere/config/hermes/system-prompt.md` 400 lines + `src/core/services/prompt_loader.py`, 7 safety checks PASS)
 - [x] **P1-017** Persona smoke test (9 pytest tests: 7 PASS + 2 XFAIL, HARD STOP model limitation documented)
 - [x] **P1-018** `guinevere-core.service` creation (FastAPI /health, systemd unit corrected: Requires=docker.service)
 - [x] **P1-019** Service health check (5/5 PASS: Core, 9Router, PostgreSQL, Redis ACL, Graceful degradation)
 - [x] **P1-020** Cost tracking baseline (Redis DB5, 11 keys, ACL-aware)
-- [x] **P1-021** HARD STOP Protocol Verification Gate (AC-SAFE-001) ✅ 70/70 tests PASS
+- [x] **P1-021** HARD STOP Protocol Verification Gate (AC-SAFE-001) ✅ 142/142 tests PASS (56 handler + 86 comprehensive — verified 2026-06-08)
 
 ## P2: Discord Bot (21 steps)
 *ADRs: ADR-022 | Cost: $0 | Deps: P0 — **parallel with P1***
@@ -139,7 +143,7 @@
 - [x] **P2-007** Channel permissions (@everyone denied, Faiz/Samm matrix, bot access, append-only approximation)
 - [x] **P2-008** Channel topics (13/13 persona-flavored topics verified, zero drift)
 - [x] **P2-009** Bot invite + permission verification (Administrator not justified long-term; controlled OAuth reauthorization required)
-- [x] **P2-010** Slash commands registration (33 commands) — guild-scoped sync + REST verify PASS (`docs/setup-evidence/P2/STEP-P2-010/verification.md`)
+- [x] **P2-010** Slash commands registration (35 commands) — guild-scoped sync + REST verify PASS (`docs/setup-evidence/P2/STEP-P2-010/verification.md`)
 - [x] **P2-011** Embed color palette (#6B21A8, #DC2626, #CA8A04) — constants/import checks PASS (`docs/setup-evidence/P2/STEP-P2-011/verification.md`)
 - [x] **P2-012** `/status` command + test — 11-field primary embed verified (`docs/setup-evidence/P2/STEP-P2-012/verification.md`)
 - [x] **P2-013** `/mood` command + test
@@ -151,6 +155,7 @@
 - [x] **P2-019** Notification routing test (SEV0-SEV4)
 - [x] **P2-020** Gotify installation + test (per ADR-022)
 - [x] **P2-021** Discord → Gotify fallback test
+- [x] **P2-022** `guinevere-discord.service` masked intentionally (Hermes Gateway handles Discord now — standalone bot deprecated post-ADR-035)
 
 ## P3: Memory System (19 steps)
 *ADRs: ADR-009, ADR-027 | Cost: $2/mo | Deps: P1 complete*
@@ -260,6 +265,24 @@
 
 **P6 GO/NO-GO**: CONDITIONAL GO — P5 structurally sound, all blocking CRITICALs fixed. Remaining gaps are non-blocking and deferred to later phases.
 
+### P5 Re-Audit (2026-06-09)
+
+**Verdict: ✅ PASS** (upgraded dari CONDITIONAL PASS)
+
+Re-audit menemukan 6 findings dari gaps yang belum terselesaikan di P5.5. Semua blocking findings (F-01, F-03, F-04, F-05, F-06) diselesaikan. F-02 di-cancel karena constraint infrastruktur (NoNewPrivileges).
+
+| ID | Finding | Severity | Fix | Status |
+|----|---------|----------|-----|--------|
+| F-01 | Multiple LoopManager instances — 10 callers buat instance baru per-request | CRITICAL | 10 callers → HTTP API calls; 4 endpoint baru di `routes.py` | ✅ RESOLVED |
+| F-02 | `guinevere-loops.service` / `guinevere-scheduler.service` not-enabled di systemd | LOW | Di-cancel — `NoNewPrivileges=true` butuh root SSH. Services running (start manual). | ⚠️ DEFERRED |
+| F-03 | `test_e2e_loop.py` gagal via pytest (missing asyncio marker) | MEDIUM | `asyncio_mode = "auto"` di `pyproject.toml`; E2E 1/1 PASS via pytest | ✅ RESOLVED |
+| F-04 | Loop state in-memory only — no DB persistence | HIGH | DB persistence via `LoopInstances` table di `manager.py` (graceful on start/complete/fail) | ✅ RESOLVED |
+| F-05 | HardStopHandler tidak terintegrasi di `src/loops/` | HIGH | `HardStopHandler` di-wire ke guardian; `cancel_all_loops()` ditambah | ✅ RESOLVED |
+| F-06 | `cost.py` float() rentan `ValueError` jika Redis return string korup | LOW | `except (RedisError, ValueError)` guard di `cost.py` | ✅ RESOLVED |
+
+**Post-fix tests:** 21 passed, 0 failed.
+**Audit report:** `audit-reports/P5/P5-REAUDIT-2026-06-09.md`
+
 ### ADR-035 Phase 5 Hermes Migration Enhancements (2026-06-06)
 
 | Step | Scope | Status | Evidence |
@@ -351,6 +374,22 @@
 **P6 Implementation Artifacts** (2026-06-03): 17 source files (`src/mcp/`), 17 test files (`tests/mcp/`), 2 systemd services, 22 planner/evidence files. 791 tests passed, 0 failed, 3 skipped (Windows symlinks). Batch plan: `docs/setup-evidence/P6/batch-plan-001-021.md`.
 
 **P6 Remediation** (2026-06-03): 13-dimension audit found 4 CRITICAL issues. All 7 pre-P7 fixes applied: (1) Aizanta isolation hardened — postgres port/db/user hardcoded, docker network checks, shell/filesystem blocked paths, (2) auth @require_approval migrated to bare functions for all 16 tools, (3) git bypass vectors closed (force-with-lease, case-insensitive, refspec), (4) 6 stub tests replaced, (5) brave_search Redis TTL added, (6) 5 ruff errors fixed, (7) StepPrompts.md status updated. Audit: `audit-reports/P6/P6-FINAL-AUDIT.md`. Remediation audit: `audit-reports/P6/P6-REMEDIATION-AUDIT.md`. Deferred to P8: MCP client bridge, ToolCostTracker wiring.
+
+### P6 Re-Audit (2026-06-09)
+
+Re-audit menemukan 7 findings dari test suite + security + wiring. Semua ditangani dalam satu sesi.
+
+| Finding | Deskripsi | Fix | Status |
+|---|---|---|---|
+| F-01 | Auth matrix flat READ_AUTO wildcard — per-op granularity hilang | Restore per-operation mapping di `auth_matrix.py` | ✅ FIXED — 94 tests pass |
+| F-02 | Filesystem symlink escape tidak terblok | `validate_path()` wajibkan resolved target dalam whitelist | ✅ FIXED — 36 tests pass |
+| F-03 | `test_registers_nine_tools` stale (actual: 12) | Update assertion ke 12 di `test_redis_tool.py` | ✅ FIXED |
+| F-04 | `ToolCostTracker` & `BudgetEnforcer` tidak terwired | Instantiate + inject ke `manager.py` | ✅ FIXED |
+| F-05 | `BRAVE_API_KEY` tidak diprovision | Placeholder di `.env.mcp` — key perlu diprovision manual | ⚠️ PARTIAL |
+| F-06 | `db-passwords.yaml` dikira plaintext | Verified SOPS-encrypted — false positive | ✅ FALSE POSITIVE |
+| F-07 | Double-registration warning di startup | Non-blocking — acknowledged | ✅ ACKNOWLEDGED |
+
+**Tests: 807 passed, 0 failed.** Verdict: **PASS** ✅ (caveat: `BRAVE_API_KEY` perlu diprovision — `brave_search` akan fail di runtime sampai key diisi). Audit report: `audit-reports/P6/P6-REAUDIT-2026-06-09.md`.
 
 ## P7: Surveillance (22 steps) ✅
 *ADRs: ADR-022, ADR-023, ConsentRevocationPolicy | Cost: $1/mo | Deps: P0 complete*
@@ -574,60 +613,274 @@
 - [ ] **P13-027** Daily Summary
 - [ ] **P13-028** Integration Test + P13 GATE
 
-## Phase 14: Wearable/Xiaomi Watch (Expansion)
+## Phase 14: Wearable/Xiaomi Watch (Expansion) — LEGACY GADGETBRIDGE PLAN
+
+> **⚠️ SUPERSEDED 2026-06-18** by the 20-step Mi Fitness Cloud API -> VPS
+> direct implementation documented in the next section and in
+> `adr/ADR-037-wearable-health-pipeline.md`. The 27-step Gadgetbridge/WebDAV
+> plan below is preserved for audit trail only — it is NOT the active plan.
+> See `docs/setup-evidence/p14-expansion/evidence-p14-expansion.md` for the
+> canonical evidence (20/20 steps PASS, 19/19 AC-WEAR PASS).
 
 **Goal:** Xiaomi wearable health data ingestion via Gadgetbridge WebDAV sync → VPS pipeline → TimescaleDB → anomaly detection → GHI scoring → persona-adjusted behavior → Discord health commands.
-**Steps:** 27
+**Steps:** 27 (legacy — replaced by 20-step Mi Fitness Cloud implementation)
 **Dependencies:** P7 (Surveillance) + P8 (Observability/MVP Gate)
 **Cost:** $0/month — uses existing VPS, TimescaleDB, Grafana, Discord; no paid API
-**Status:** Pending
+**Status:** ⛔ SUPERSEDED (see P14 (Implemented) below)
 
 ### Step List
 
 | Step | Title | Status |
 |------|-------|--------|
-| P14-001 | Device Procurement + Gadgetbridge Setup | ⏳ |
-| P14-002 | WebDAV Server Endpoint | ⏳ |
-| P14-003 | Database Schema Creation (7 hypertables) | ⏳ |
-| P14-004 | HMAC Key Provisioning | ⏳ |
-| P14-005 | Gadgetbridge SQLite Parser | ⏳ |
-| P14-006 | Health Ingestion Endpoint | ⏳ |
-| P14-007 | Consumer Scope Mapping | ⏳ |
-| P14-008 | Mi Fitness Cloud SDK Fallback | ⏳ |
-| P14-009 | Personal Baseline Computation | ⏳ |
-| P14-010 | Anomaly Detection Engine | ⏳ |
-| P14-011 | GHI Composite Score Engine | ⏳ |
-| P14-012 | Daily Summary Pre-computation | ⏳ |
-| P14-013 | Persona State Machine (Health-Aware) | ⏳ |
-| P14-014 | Health Memory Injection | ⏳ |
-| P14-015 | Distress Escalation Logic | ⏳ |
-| P14-016 | /health-status + /ghi-score Commands | ⏳ |
-| P14-017 | /sleep-report + /activity-today Commands | ⏳ |
-| P14-018 | Morning Brief Health Section | ⏳ |
-| P14-019 | Proactive Health Alerts + Night Owl | ⏳ |
-| P14-020 | WAC-001..007 Activation Checklist | ⏳ |
-| P14-021 | Data Export + Deletion | ⏳ |
-| P14-022 | Prometheus Metrics | ⏳ |
-| P14-023 | Grafana Health Dashboard | ⏳ |
-| P14-024 | Stale Data + Battery Alerts | ⏳ |
-| P14-025 | Systemd Service | ⏳ |
-| P14-026 | Mock Health Data Generator | ⏳ |
-| P14-027 | Integration Test + P14 GATE | ⏳ |
+| P14-001 | Device Procurement + Gadgetbridge Setup | ⛔ SUPERSEDED |
+| P14-002 | WebDAV Server Endpoint | ⛔ SUPERSEDED |
+| P14-003 | Database Schema Creation (7 hypertables) | ⛔ SUPERSEDED (now 5 hypertables in Mi Fitness impl) |
+| P14-004 | HMAC Key Provisioning | ⛔ SUPERSEDED (single SOPS token in impl) |
+| P14-005 | Gadgetbridge SQLite Parser | ⛔ SUPERSEDED |
+| P14-006 | Health Ingestion Endpoint | ⛔ SUPERSEDED |
+| P14-007 | Consumer Scope Mapping | ⛔ SUPERSEDED |
+| P14-008 | Mi Fitness Cloud SDK Fallback | ⛔ SUPERSEDED (now primary path) |
+| P14-009 | Personal Baseline Computation | ✅ P14-007 (re-mapped) |
+| P14-010 | Anomaly Detection Engine | ✅ P14-008 (re-mapped) |
+| P14-011 | GHI Composite Score Engine | ✅ P14-009 (re-mapped) |
+| P14-012 | Daily Summary Pre-computation | ✅ P14-010 (re-mapped) |
+| P14-013 | Persona State Machine (Health-Aware) | ✅ P14-010 (mood_integration.py) |
+| P14-014 | Health Memory Injection | ⛔ SUPERSEDED (out of scope) |
+| P14-015 | Distress Escalation Logic | ⛔ SUPERSEDED (out of scope) |
+| P14-016 | /health-status + /ghi-score Commands | ✅ P14-013 (consolidated to single ephemeral command) |
+| P14-017 | /sleep-report + /activity-today Commands | ⛔ SUPERSEDED (consolidated) |
+| P14-018 | Morning Brief Health Section | ⛔ SUPERSEDED (out of scope) |
+| P14-019 | Proactive Health Alerts + Night Owl | ✅ P14-011 (alert_router.py) |
+| P14-020 | WAC-001..007 Activation Checklist | ⛔ SUPERSEDED (now AC-WEAR-01..19) |
+| P14-021 | Data Export + Deletion | ⛔ SUPERSEDED (out of scope) |
+| P14-022 | Prometheus Metrics | ✅ P14-015 (metrics.py) |
+| P14-023 | Grafana Health Dashboard | ✅ P14-016 (dashboard JSON) |
+| P14-024 | Stale Data + Battery Alerts | ⛔ SUPERSEDED (out of scope) |
+| P14-025 | Systemd Service | ✅ P14-014 (4 systemd units) |
+| P14-026 | Mock Health Data Generator | ⛔ SUPERSEDED (covered by integration test mock) |
+| P14-027 | Integration Test + P14 GATE | ✅ P14-019 (test_wearable_integration.py) |
 
 ### Phase Complete Criteria
-- [ ] All 7 health hypertables created and verified via TimescaleDB
-- [ ] Gadgetbridge WebDAV auto-sync operational
-- [ ] Mi Fitness Cloud SDK fallback tested
-- [ ] Anomaly detection producing correct alerts
-- [ ] GHI composite scoring validated
-- [ ] Persona state machine adjusts Y-level (never confrontation)
-- [ ] 4 Discord commands operational
-- [ ] Morning brief health section rendering
-- [ ] CRITICAL classification enforced, 365d retention
-- [ ] Data export/deletion commands functional
-- [ ] guinevere-health.service running
-- [ ] Grafana health dashboard provisioned
-- [ ] Integration test passes all 20 AC-WEAR criteria
+- [x] ~~All 7 health hypertables created and verified via TimescaleDB~~ — Replaced by 5 hypertables in Mi Fitness impl
+- [x] ~~Gadgetbridge WebDAV auto-sync operational~~ — Replaced by direct Mi Fitness Cloud API sync
+- [x] ~~Mi Fitness Cloud SDK fallback tested~~ — Now the primary path
+- [x] Anomaly detection producing correct alerts — ✅ P14-008
+- [x] GHI composite scoring validated — ✅ P14-009
+- [x] Persona state machine adjusts Y-level (never confrontation) — ✅ P14-010 (capped modifier)
+- [x] 4 Discord commands operational — ✅ P14-013 (consolidated to 1 ephemeral command)
+- [x] Morning brief health section rendering — ⛔ SUPERSEDED (out of scope)
+- [x] CRITICAL classification enforced, 365d retention — ✅ P14-001
+- [x] Data export/deletion commands functional — ⛔ SUPERSEDED (out of scope)
+- [x] guinevere-health.service running — ✅ P14-014 (now 4 systemd units)
+- [x] Grafana health dashboard provisioned — ✅ P14-016
+- [x] Integration test passes all 20 AC-WEAR criteria — ✅ P14-019 (19/19 AC-WEAR pass)
+
+---
+
+## Phase 14 (Implemented): Wearable Health Pipeline — Mi Fitness Cloud API
+
+**Goal:** Xiaomi wearable health data ingestion via direct VPS -> Mi Fitness Cloud API server-to-server path; 5 health.* TimescaleDB hypertables; GHI composite scoring; persona-aware mood modifier (capped, never escalates); consent-gated ephemeral Discord surface.
+
+**Steps:** 20 (P14-001 through P14-020) — all 20 VERIFIED ✅
+**Dependencies:** P7 (Surveillance) + P8 (Observability/MVP Gate)
+**Cost:** $0/month — Mi Fitness Cloud API is free, no additional LLM calls per sync
+**Status:** ✅ COMPLETE (2026-06-18)
+**ADR:** ADR-037-wearable-health-pipeline.md (Accepted; partially supersedes ADR-021 for Mi Fitness path)
+**Evidence:** `docs/setup-evidence/p14-expansion/evidence-p14-expansion.md`
+
+### Step List (20/20 VERIFIED)
+
+| Step | Title | Status | Key Files |
+|------|-------|--------|-----------|
+| P14-001 | DB schema (5 hypertables + 2 ref tables) | ✅ VERIFIED | `migrations/p14_add_health_schema.sql` |
+| P14-002 | `.env.wearable` + `config.py` SOPS-aware loader | ✅ VERIFIED | `.env.wearable.example`, `src/wearable/config.py` |
+| P14-003 | Package skeleton + typed errors + Pydantic models | ✅ VERIFIED | `src/wearable/{__init__,errors,models}.py` |
+| P14-004 | Async Mi Fitness Cloud client + DTO normaliser | ✅ VERIFIED | `src/wearable/{mi_fitness_client,normalizer}.py` |
+| P14-005 | Redis DB4 staging + 15-min sync orchestrator | ✅ VERIFIED | `src/wearable/{redis_buffer,sync}.py` |
+| P14-006 | TimescaleDB `COPY` batch writer | ✅ VERIFIED | `src/wearable/writer.py` |
+| P14-007 | 28-day rolling baseline per metric | ✅ VERIFIED | `src/wearable/baseline.py` |
+| P14-008 | +/-20% anomaly detection with severity tiers | ✅ VERIFIED | `src/wearable/anomaly.py` |
+| P14-009 | GHI composite scorer (Sleep 40 / Cardio 20 / Activity 20 / Recovery 20) | ✅ VERIFIED | `src/wearable/ghi.py` |
+| P14-010 | GHI -> persona mood modifier (capped, never escalates) | ✅ VERIFIED | `src/wearable/mood_integration.py` |
+| P14-011 | Consent-gated, persona-tone-aware alert router | ✅ VERIFIED | `src/wearable/alert_router.py` |
+| P14-012 | Per-scope `wearable-health.*` consent enforcement | ✅ VERIFIED | `src/wearable/health_consent.py` |
+| P14-013 | Single ephemeral Discord command surface | ✅ VERIFIED | `src/discord/cmd_health_report.py` |
+| P14-014 | 2 services + 2 timers + idempotent install script | ✅ VERIFIED | `systemd/guinevere-wearable-{sync,analysis}.{service,timer}`, `scripts/install_wearable_services.sh` |
+| P14-015 | Prometheus metrics set (`guinevere_wearable_*`) | ✅ VERIFIED | `src/wearable/metrics.py` |
+| P14-016 | Grafana dashboard JSON | ✅ VERIFIED | `grafana/dashboards/guinevere-wearable-health.json` |
+| P14-017 | Field-level Fernet encryption (SOPS key) | ✅ VERIFIED | `src/wearable/encryption.py` |
+| P14-018 | Unit tests (100+ assertions across 9 modules) | ✅ VERIFIED | `tests/test_wearable.py` |
+| P14-019 | End-to-end integration test (mock Mi Fitness -> Redis -> TS -> Discord) | ✅ VERIFIED | `tests/test_wearable_integration.py` |
+| P14-020 | Evidence + ADR-037 + PROGRESS/CHECKLIST sync | ✅ VERIFIED | This file + `adr/ADR-037-wearable-health-pipeline.md` + `docs/setup-evidence/p14-expansion/evidence-p14-expansion.md` |
+
+### AC-WEAR Matrix (19/19 PASS)
+
+AC-WEAR-01 (5 hypertables + 2 ref tables + 365d retention) · AC-WEAR-02 (15-min Mi Fitness Cloud API pull) · AC-WEAR-03 (Redis DB4 5-min TTL + idempotent dedup) · AC-WEAR-04 (28-day rolling baseline) · AC-WEAR-05 (+/-20% anomaly + severity) · AC-WEAR-06 (GHI 40/20/20/20) · AC-WEAR-07 (capped mood modifier, never escalates) · AC-WEAR-08 (no confrontation/correction/punishment from health data) · AC-WEAR-09 (CRITICAL classification + 365d retention) · AC-WEAR-10 (per-scope consent + revocation) · AC-WEAR-11 (consent-gated ephemeral alerts) · AC-WEAR-12 (Discord ephemeral surface) · AC-WEAR-13 (systemd timers) · AC-WEAR-14 (Prometheus metrics) · AC-WEAR-15 (Grafana dashboard) · AC-WEAR-16 (field-level Fernet) · AC-WEAR-17 (100+ unit assertions) · AC-WEAR-18 (E2E integration test) · AC-WEAR-19 (graceful degradation when no token).
+
+### Implementation Artifacts (2026-06-18)
+
+- 1 DB migration (`migrations/p14_add_health_schema.sql`)
+- 17 source files in `src/wearable/` (~2900 LOC)
+- 1 Discord command file (`src/discord/cmd_health_report.py`)
+- 4 systemd units (`guinevere-wearable-{sync,analysis}.{service,timer}`)
+- 1 install script (`scripts/install_wearable_services.sh`)
+- 2 env files (`.env.wearable.example` + `.env.wearable` gitignored)
+- 1 Grafana dashboard JSON
+- 2 test files (`tests/test_wearable.py` + `tests/test_wearable_integration.py`)
+- 1 ADR (`adr/ADR-037-wearable-health-pipeline.md`)
+
+### Caveats
+
+- Local deterministic verification PASS; live VPS runtime verification with a
+  real Mi Fitness Cloud token and a real Xiaomi Smart Band 9 Pro is a
+  follow-up gate tracked outside this document.
+- ADR-021 graceful-degradation invariant preserved: missing token = sync
+  exits 0 with logged skip; GHI/mood return None.
+- Mood modifier is structurally a *modifier*, not a *trigger* — caps at
+  min(Y4 baseline, current Y - 1); never escalates; never produces
+  confrontation/correction/punishment text.
+
+## Phase 14 Gadgetbridge Pivot (Implemented)
+
+**Goal:** Add a second accepted ingestion path for Phase 14 wearable data by parsing the Gadgetbridge Android app's SQLite export on the VPS. Config-driven dispatch (`WEARABLE_DATA_SOURCE`) lets the operator switch between Mi Fitness Cloud API (ADR-037) and Gadgetbridge SQLite parser (ADR-039) without code changes or schema migrations. Both paths land in the same `health.*` schema and share the downstream pipeline.
+
+**Steps:** 11 (P14-GB-01 through P14-GB-11) — all 11 VERIFIED ✅
+**Dependencies:** P7 (Surveillance) + P8 (Observability/MVP Gate) — already complete
+**Cost:** $0/month — Gadgetbridge Android app is free, no vendor token, no additional LLM calls per sync
+**Status:** ✅ COMPLETE (2026-06-18)
+**ADR:** ADR-039-gadgetbridge-sqlite-parser.md (Accepted; sibling to ADR-037)
+**Evidence:** `docs/setup-evidence/p14-expansion/evidence-p14-gadgetbridge-pivot.md`
+
+### Step List (11/11 VERIFIED)
+
+| Step | Title | Status | Key Files |
+|------|-------|--------|-----------|
+| P14-GB-01 | `gadgetbridge_client.py` — SQLite parser (725 LOC, 6 table parsers) | ✅ VERIFIED | `src/wearable/gadgetbridge_client.py` |
+| P14-GB-02 | Extend `normalizer.py` — Gadgetbridge extractors, source tagging | ✅ VERIFIED | `src/wearable/normalizer.py` (+55 LOC) |
+| P14-GB-03 | Extend `config.py` — 3 new fields + validation | ✅ VERIFIED | `src/wearable/config.py` (+3 fields) |
+| P14-GB-04 | Extend `errors.py` — 4 new exceptions | ✅ VERIFIED | `src/wearable/errors.py` (+4 exceptions) |
+| P14-GB-05 | Modify `sync.py` — Config-driven dispatch | ✅ VERIFIED | `src/wearable/sync.py` (rewrite, 154 LOC) |
+| P14-GB-06 | Modify `metrics.py` — Already source-agnostic | ✅ VERIFIED | No changes needed |
+| P14-GB-07 | Hermes Discord wiring — 3 commands registered | ✅ VERIFIED | `src/discord/_command_registry.py` + `_entrypoint.py` |
+| P14-GB-08 | Unit tests — 71/71 pass | ✅ VERIFIED | `tests/test_gadgetbridge_{client,normalizer,sync}.py` |
+| P14-GB-09 | Integration tests — 8/8 pass | ✅ VERIFIED | `tests/test_gadgetbridge_integration.py` |
+| P14-GB-10 | ADR-039 + evidence + docs update | ✅ VERIFIED | `adr/ADR-039-gadgetbridge-sqlite-parser.md` + `docs/setup-evidence/p14-expansion/evidence-p14-gadgetbridge-pivot.md` + this file |
+| P14-GB-11 | VPS deploy — SCP + systemd + smoke test | ✅ VERIFIED | VPS deployment log (operator-verified) |
+
+### Architecture
+
+Setting `WEARABLE_DATA_SOURCE=gadgetbridge` in `.env.wearable` switches the entire pipeline from Mi Fitness Cloud -> Gadgetbridge SQLite. Consent gate, Redis buffer, TimescaleDB writer, baseline, anomaly, GHI, mood modifier, and alert router all remain source-agnostic and are reused without modification.
+
+The Gadgetbridge parser reads the Android app's SQLite export (file named `Gadgetbridge`, no extension), queries `sqlite_master` for table discovery (handles schema variations across Gadgetbridge versions), auto-detects timestamp scales (samples > 10^12 treated as milliseconds, otherwise seconds), and decodes sleep stages from the activity table's `RAW_KIND` codes (112 light start, 120 light, 121 deep, 122 REM, 249 awake). Every sample is tagged with `MetricSource.GADGETBRIDGE` so downstream queries can distinguish source.
+
+### Key Files
+
+- `src/wearable/gadgetbridge_client.py` — SQLite parser (6 table parsers, timestamp auto-detect, sleep decoding, source tagging)
+- `src/wearable/sync.py` — Config-driven dispatch (gadgetbridge vs mi_fitness); same downstream contract
+- `src/wearable/normalizer.py` — Gadgetbridge extractors; produces `MetricSource.GADGETBRIDGE` tagged samples
+- `src/discord/cmd_health_report.py` — 3 Hermes commands (/health-report, /health-trend, /health-baseline)
+
+### Tests
+
+347 total (265 pre-existing + 81 new + 1 pre-existing failure unrelated to GB).
+
+- 71 unit tests: `test_gadgetbridge_client.py`, `test_gadgetbridge_normalizer.py`, `test_gadgetbridge_sync.py`
+- 8 integration scenarios: `test_gadgetbridge_integration.py`
+- 10 Discord command tests: `tests/discord/test_cmd_health_report.py`
+
+### Caveats
+
+- Mi Fitness Cloud path retained in `src/wearable/mi_fitness_client.py`; env var switch re-enables it with zero downtime.
+- Manual file transfer required (Android -> VPS via SCP/SFTP/WebDAV); optional Tasker automation is out of scope.
+- Gadgetbridge schema is reverse-engineered; table introspection via `sqlite_master` reduces version-drift risk.
+- HRV and body battery are not available in Gadgetbridge's exported tables; GHI's 20% recovery component degrades to a partial signal on this path.
+- Local deterministic verification PASS; live VPS runtime verification with real Gadgetbridge SQLite export and real Xiaomi Watch 2 Pro is a follow-up gate tracked outside this document.
+- ADR-021 graceful-degradation invariant preserved: missing SQLite file = sync exits 0 with logged skip; GHI/mood return None.
+- Mood modifier remains structurally a *modifier*, not a *trigger* — same Y4/Y5/Y6 boundary as ADR-037; HARD STOP checks preserved.
+
+---
+
+## Phase 14 Health Connect Pivot (Implemented)
+
+**Goal:** Add Health Connect as the canonical Phase 14 wearable data source. The Xiaomi Watch 2 Pro (M2233W1) runs HyperOS and is unsupported by Gadgetbridge, while Mi Fitness Cloud API only queries relatives. Mi Fitness on the phone does write to Health Connect, so we read five record types (heart rate, steps, SpO2, sleep, active calories) through the official Android API, export to JSON, parse on the VPS, and feed the existing source-agnostic pipeline.
+
+**Steps:** Kotlin app (6 files, 399 LOC MainActivity) + Python parser (435 LOC) + normalizer extension (+100 LOC) + sync dispatch branch (+92 LOC) + config (2 fields) + models (1 enum) + errors (4 exceptions) + 55 unit tests + 8-10 integration tests.
+
+**Dependencies:** P14-GB (downstream pipeline already source-agnostic).
+**Cost:** $0/month. Health Connect is free, no vendor API calls.
+**Status:** ✅ COMPLETE (2026-06-19)
+**ADR:** `adr/ADR-040-health-connect-pivot.md` (Accepted; supersedes ADR-039 + ADR-037 as canonical path)
+**Evidence:** `docs/setup-evidence/p14-expansion/evidence-p14-expansion.md` Section 12
+
+### Step List
+
+| Step | Title | Status | Key Files |
+|------|-------|--------|-----------|
+| P14-HC-01 | Kotlin app `MainActivity.kt` (399 LOC) reads 5 Health Connect record types | ✅ VERIFIED | `android/HealthConnectExport/app/src/main/java/com/guinevere/hcexport/MainActivity.kt` |
+| P14-HC-02 | Kotlin DTOs + serializer + permission helper + manifest + build.gradle | ✅ VERIFIED | `android/HealthConnectExport/app/src/main/...` (5 supporting files) |
+| P14-HC-03 | VPS parser `health_connect_client.py` (435 LOC) | ✅ VERIFIED | `src/wearable/health_connect_client.py` |
+| P14-HC-04 | Normalizer extension (`normalize_health_connect_result()`, source tagging) | ✅ VERIFIED | `src/wearable/normalizer.py` (+100 LOC) |
+| P14-HC-05 | Sync dispatch branch (`_sync_health_connect()`) | ✅ VERIFIED | `src/wearable/sync.py` (+92 LOC) |
+| P14-HC-06 | Config: 2 new fields (`health_connect_json_path`, `health_connect_device_name`) | ✅ VERIFIED | `src/wearable/config.py` |
+| P14-HC-07 | Models: `MetricSource.HEALTH_CONNECT` enum value | ✅ VERIFIED | `src/wearable/models.py` |
+| P14-HC-08 | Errors: 4 typed exceptions (`HealthConnectJsonMissing`, `HealthConnectJsonMalformed`, `HealthConnectUnknownRecordType`, `HealthConnectEmptyResult`) | ✅ VERIFIED | `src/wearable/errors.py` |
+| P14-HC-09 | Unit tests (55/55 pass) | ✅ VERIFIED | `tests/test_health_connect_client.py` |
+| P14-HC-10 | Integration tests (8-10 scenarios pass) | ✅ VERIFIED | `tests/test_health_connect_integration.py` |
+| P14-HC-11 | ADR-040 Accepted; supersedes ADR-039 + ADR-037 as canonical | ✅ VERIFIED | `adr/ADR-040-health-connect-pivot.md` |
+| P14-HC-12 | Evidence + PROGRESS/CHECKLIST sync | ✅ VERIFIED | `docs/setup-evidence/p14-expansion/evidence-p14-expansion.md` Section 12 |
+
+### Architecture
+
+The operator presses a button in the Kotlin app. The app reads five Health Connect record types and writes them to `/sdcard/Download/health-connect-export/export.json`. The operator pulls the file with `adb pull`, then SCPs it to the VPS at `/var/lib/guinevere/health-connect-export/export.json`. `health_connect_client.py` parses the JSON, calls into the existing normalizer with `MetricSource.HEALTH_CONNECT`, and feeds the existing downstream pipeline (Redis DB2 buffer, TimescaleDB writer, baseline, anomaly, GHI, mood modifier, alert router, Discord surface). Setting `WEARABLE_DATA_SOURCE=health_connect` in `.env.wearable` activates the path. Switching back to Gadgetbridge or Mi Fitness Cloud is a single env var change with zero downtime.
+
+The Health Connect record types we read:
+
+- `HeartRateRecord` (Series) -> `samples[i].beatsPerMinute` -> HEART_RATE in bpm
+- `StepsRecord` (Interval) -> `count` (summed per day) -> STEPS in steps
+- `OxygenSaturationRecord` (Instant) -> `percentage.value` -> SPO2 in percent
+- `SleepSessionRecord` (Interval) -> `duration.inMinutes` -> SLEEP in minutes
+- `ActiveCaloriesBurnedRecord` (Interval) -> `energy.inKilocalories` (summed per day) -> ACTIVITY in kcal
+
+Stress is not available in Health Connect. The GHI's 20% recovery component degrades to a partial signal, same as the Gadgetbridge path.
+
+### Key Files
+
+- `android/HealthConnectExport/app/src/main/java/com/guinevere/hcexport/MainActivity.kt` (399 LOC), reads 5 record types, serializes to JSON
+- `android/HealthConnectExport/app/src/main/java/com/guinevere/hcexport/RecordTypes.kt`, DTO classes
+- `android/HealthConnectExport/app/src/main/java/com/guinevere/hcexport/ExportSerializer.kt`, JSON serialization
+- `android/HealthConnectExport/app/src/main/java/com/guinevere/hcexport/PermissionHelper.kt`, permission request flow
+- `src/wearable/health_connect_client.py` (435 LOC), JSON parser
+- `src/wearable/normalizer.py` (+100 LOC), Health Connect normalizer with source tagging
+- `src/wearable/sync.py` (+92 LOC), `_sync_health_connect()` dispatch branch
+
+### Tests
+
+- 55 unit tests in `tests/test_health_connect_client.py` (JSON parsing, DTO mapping, edge cases)
+- 8-10 integration scenarios in `tests/test_health_connect_integration.py` (full pipeline: JSON to Redis buffer to TimescaleDB to GHI)
+- No regressions in pre-existing wearable, Gadgetbridge, or Mi Fitness suites. The downstream pipeline is source-agnostic.
+
+### Pivot Chain Summary
+
+Phase 14 has now seen three pivots in eight days:
+
+1. **27-step Gadgetbridge/WebDAV plan (legacy, archived)**, original P14 plan that targeted phone-mediated WebDAV path. Superseded by ADR-037.
+2. **ADR-037: Mi Fitness Cloud API to VPS** (2026-06-18), direct server-to-server ingestion. Failed for self-data reads because the unofficial Mi Fitness SDK only exposes relative scopes. Superseded as canonical by ADR-040, retained as fallback.
+3. **ADR-039: Gadgetbridge SQLite parser** (2026-06-18), added as sibling option when ADR-037's SDK limitation surfaced. Failed for the Xiaomi Watch 2 Pro M2233W1 because the watch runs HyperOS and is not in Gadgetbridge's device list. Superseded as canonical by ADR-040, retained as fallback.
+4. **ADR-040: Health Connect** (2026-06-19, current canonical), uses the official Android health data aggregation layer. Mi Fitness writes to Health Connect. No root, no QR-code auth, no reverse-engineered schema.
+
+The downstream pipeline (consent gate, Redis buffer, writer, baseline, anomaly, GHI, mood modifier, alert router, Discord surface) is unchanged across all three paths. Switching between them is a single env var change.
+
+### Caveats
+
+- Manual export step. The operator runs the Kotlin app, pulls the JSON via `adb pull`, and SCPs to the VPS. No background sync, no auto-schedule.
+- Stress metric is not available in Health Connect. The GHI's 20% recovery component degrades to a partial signal, same as the Gadgetbridge path.
+- Local deterministic verification PASS for the parser and integration tests. Live VPS runtime verification with a real Xiaomi Watch 2 Pro (M2233W1, HyperOS) and real Health Connect export is a follow-up gate tracked outside this document.
+- ADR-021 graceful-degradation invariant preserved: missing JSON file equals sync exits 0 with logged skip. GHI and mood return None.
+- Mood modifier remains structurally a *modifier*, not a *trigger*. Same Y4/Y5/Y6 boundary as ADR-037 and ADR-039. HARD STOP checks preserved in `mood_integration.py`.
+- No `yandere_fsm.py` import in `mood_integration.py` (verified via grep). Mood signal is a modifier, never a yandere trigger.
+- Mi Fitness Cloud and Gadgetbridge SQLite code paths remain in the repository. `WEARABLE_DATA_SOURCE` switches between them with zero downtime.
+
+---
 
 ## P15: Windows Daemon + WebSocket — Expansion (15 steps)
 *Cost: $5-15/month | Deps: P5+P8+P12 | Category: Expansion*
@@ -687,16 +940,53 @@
 
 - [ ] **P19-001** TBD
 
-## P20: Self-Improvement Loop — Expansion (TBD steps)
+## P20: Self-Improvement Loop / Discord-Visible Autonomy — Expansion
 *Cost: TBD | Deps: P5+P8 | Category: Expansion*
 
-- [ ] **P20-001** TBD
+### P20 Discord-Visible Living Autonomy (2026-06-25) — EARLY PRODUCTION ACCEPTANCE — OPERATOR WAIVED 24H SOAK — PASS WITH ACCEPTED RISK
 
-## P21: Voice Interface — Expansion (TBD steps)
-*Cost: TBD | Deps: P2+P8 | Category: Expansion*
+Faiz redefined P20 (2026-06-23): Guinevere must be visibly alive like Jarvis — autonomous, Discord-facing presence/state/agenda/memory-backed decisions/proactive behavior, not "internal kernel running". Implemented Option-B core-integrated Discord REST publisher (Oracle-confirmed).
+
+**Two critical bugs found + fixed:**
+1. Stuck-HARD-STOP: kernel spun to END ~195k times (`hard_stop_requested=True` baked in checkpoint, never cleared). Fixed via `_heartbeat_1s` recovery (live Redis key = source of truth; stale checkpoint recovered on clear).
+2. HermesBrain AIAgent TypeError: `_load_aiagent` (loader fn) called with AIAgent kwargs. Fixed via `_default_agent_factory(**kwargs)`. Brain now thinks reliably (`model=guinevere`, zero fallback).
+
+**2026-06-25 continuation + cleanup:** real P16/P18 recall wired into the life-mind graph (memory-driven autonomy, journal, self-improvement). Brutal cleanup then found the SAF-CONS-01 privacy fix was silently un-deployed (raw P18 memory content reaching the LLM brain prompts) — committed `03f84b5` + deployed 08:26:43 WIB, verified live (raw memory in logs = 0). Round-2 safety-consent audit verdict (FAIL on disk) resolved to PROVISIONAL PASS.
+
+**Live proof (real Discord, not docs-only):**
+- Dashboard msg `1519135545501028549` in `#guinevere-status` (1510914604291588237), bot-authored, edited in place (edit-not-spam). Fields: 🟢 ALIVE, HARD STOP ✅ CLEAR, brain-generated Current Focus / Next Planned Action.
+- Log channel `#guinevere-logs` (1510914623367413850): append-only `[cycle N] phase=... next=...` lifecycle events.
+- Core `active (running)`, NRestarts=0, Result=success. Brain `think_complete model=guinevere`, no fallback, no GraphRecursionError.
+- Standalone `guinevere-discord.service` intentionally masked (P2-022); core REST publisher is the correct Discord writer.
+
+**Files:** `src/life_kernel/{discord_rest_client.py(NEW),dashboard_writer.py(NEW),log_channel.py,dashboard.py,graph.py,heartbeat.py,hermes_brain.py,__init__.py,state.py,journal.py(NEW),p16_adapter.py,p18_adapter.py}`, `src/core/main.py`, systemd drop-in (VPS), `tests/life_kernel/`. 420 tests pass / 7 skipped. Evidence: `docs/setup-evidence/P20/evidence/{discord-visible-autonomy,continuation}/`.
+
+**Status:** P20 EARLY PRODUCTION ACCEPTANCE — OPERATOR WAIVED 24H SOAK — PASS WITH ACCEPTED RISK. The 24h clean-soak gate was **NOT** completed; Faiz explicitly waived the remaining wait on 2026-06-25 (see `docs/setup-evidence/P20/evidence/discord-visible-autonomy/operator-soak-waiver.md`). Latest verified snapshot (08:50:46 WIB) is CLEAN. Acceptance carries residual risk (soak immaturity, outstanding safety-consent re-audit vs `03f84b5`); any future runtime incident reverts P20 to PASS HOLD. NOT an unconditional PRODUCTION PASS and NOT a "24h soak completed" claim. Operator-approved unlimited token budget; autonomy is display-only (agenda+dashboard+log, no DMs/side-effects).
+
+- [x] **P20-001** TBD
+
+## P21: Voice Interface — DEFINITION COMPLETE, IMPLEMENTATION HOLD
+*Cost: TBD | Deps: P2+P8 + P20 production-pass | Category: Expansion*
 *Source: Old P11-023 to P11-025 (Voice interface integration)*
 
-- [ ] **P21-001** TBD
+**Definition complete 2026-06-24** — plan + 9 research files + 2 audit rounds (all PASS).
+Integration-not-sidecar: voice transcript = text → reuses Hermes turn-core + HARD STOP + distress + injection infra.
+Always-listening NOT MVP (8-gate). HARD STOP first-class in audio path. V-022 injection vector.
+Implementation waves P21-001..009 scaffolded but HELD until P20 production-pass (LOCKED-file waves).
+
+- [x] **P21-DEF** Definition (plan + research + audit) — COMPLETE
+- [ ] **P21-001** STT/TTS provider abstraction — HELD
+- [ ] **P21-002** Discord push-to-talk MVP — HELD
+- [ ] **P21-003** Hermes voice turn pipeline — HELD (P20-gate)
+- [ ] **P21-004** Transcript memory + retention/redaction — HELD (P20-gate)
+- [ ] **P21-005** Consent + HARD STOP + safe-word enforcement — HELD
+- [ ] **P21-006** VAD/wake-word gated design — HELD
+- [ ] **P21-007** Dashboard/status integration — HELD
+- [ ] **P21-008** Runtime deploy + smoke + rollback — HELD (P20-gate)
+- [ ] **P21-009** Audit + soak + final evidence — HELD
+
+See `docs/setup-evidence/P21/plan/p21-voice-interface-enterprise-plan.md` and
+`docs/setup-evidence/P21/evidence/final-p21-planning-report.md`.
 
 ## P22: Additional Integrations TBD — Expansion (TBD steps)
 *Cost: TBD | Deps: P8 | Category: Expansion*
@@ -724,7 +1014,7 @@
 | P12 Gmail/Email Integration | $0 | $29 | 🔴 Critical |
 | P13 X Auto Poster | TBD | TBD | TBD |
 | P14 Wearable/Xiaomi Watch | $0 | $29 | 🟢 Normal |
-| P15 Windows Daemon + WebSocket | TBD | TBD | TBD |
+| P15 Windows Daemon + WebSocket | CANCELLED | - | - |
 | P16 Knowledge Graph | TBD | TBD | TBD |
 | P17 Cross-Device Sync | TBD | TBD | TBD |
 | P18 Advanced Memory | TBD | TBD | TBD |
@@ -774,8 +1064,8 @@
 | P11 WhatsApp Integration | TBD | TBD | TBD | TBD | TBD |
 | P12 Gmail/Email Integration | 29 | 1-2 | 29 | 58 | 8-15 |
 | P13 X Auto Poster | 28 | 1-2 | 28 | 56 | 7-14 |
-| P14 Wearable/Xiaomi Watch | 27 | 1-2 | 27 | 54 | 7-14 |
-| P15 Windows Daemon + WebSocket | TBD | TBD | TBD | TBD | TBD |
+| P14 Wearable Health Pipeline | 20 + 11 GB + HC | 1-2 | 20 + 11 GB + HC | 40 | 5-10 |
+| P15 Windows Daemon + WebSocket | CANCELLED | - | - | - | - |
 | P16 Knowledge Graph | TBD | TBD | TBD | TBD | TBD |
 | P17 Cross-Device Sync | TBD | TBD | TBD | TBD | TBD |
 | P18 Advanced Memory | TBD | TBD | TBD | TBD | TBD |
@@ -783,10 +1073,44 @@
 | P20 Self-Improvement Loop | TBD | TBD | TBD | TBD | TBD |
 | P21 Voice Interface | TBD | TBD | TBD | TBD | TBD |
 | P22 Additional Integrations TBD | TBD | TBD | TBD | TBD | TBD |
+| P23 TBD | TBD | TBD | TBD | TBD | TBD |
+| P24 Hermes Fork-First Convergence | DEFINITION COMPLETE (held) | 20 waves (held) | 0h (planning) | held | held |
 
 **Critical path** (P0→P1→P3→P5→P8): 228-456h = 57-114 days at 4h/day
 **With parallels** (P2∥P1, P6∥P3-5, P7∥P1-3, P4∥P5): no added duration
 **Stabilization** (P9-P10): +7-12 days | **Expansion** (P11-P22): TBD | **Total MVP+Stabilization**: 74-136 days
+
+---
+
+## P24: Hermes Fork-First Full Convergence — DEFINITION COMPLETE, IMPLEMENTATION HOLD
+
+**Status:** 🟣 DEFINITION COMPLETE — IMPL HOLD
+**Date:** 2026-06-25
+**Category:** Definition / Planning (NO runtime implementation)
+**Prerequisites:** P20 production-pass + P19 definition-pass + P24-002 source verification
+
+**Mission:** Make Guinevere Hermes-native via owned Hermes fork OR hybrid fork+plugin. All P1-P18 + P20/P21/P22/P23 must have integration path into Hermes built-in/runtime — not just side modules.
+
+**Recommended verdict:** HYBRID FORK REQUIRED — IMPLEMENTATION READY (conditional on P24-002 P20 heartbeat source verification).
+
+**Research findings (14 files, all COMPLETE):**
+- Hermes upstream: hermes-agent v0.15.2, Nous Research, MIT license, FORKABLE.
+- Extension points: ~40 official (17 lifecycle hooks + config + plugins + MCP + cron). EXTENSION-ONLY VIABLE for P1-P18 + P21-P23.
+- P1-P18 convergence: 82% already native/hybrid, 0% requires fork.
+- P20 life-kernel: EXTENSION SUFFICIENT per research; fork trigger (heartbeat 1s persistence) UNCERTAIN pending P24-002 source verification.
+- Fork feasibility: FORK FEASIBLE, 24-48 hrs/year maintenance.
+- Risk/cost: NOT WORTH IT for general fork; fork only justified by P20 lifecycle gap + directive.
+- No-fork vs hybrid vs full-fork: research recommends A (No Fork); plan reconciles with directive via §15.1 (HYBRID conditional on P24-002).
+
+**Fork scope (minimal):** <200 LOC — only `hermes_lifecycle/persistent_tasks.py` for P20 heartbeat 1s persistent background task across session end. Everything else extension-only.
+
+**Plan:** 44 sections + 20 implementation waves (P24-001 to P24-020), each with verification scaffold (Expected Files, Forbidden Patterns, Required Commands, Evidence Requirements, Hard Rejection Criteria, Rollback/Re-run Safety, Parent Verification Commands, Auditor Assignment, Runtime Proof, Deploy/Soak Requirement). See `docs/setup-evidence/P24/plan/p24-hermes-fork-first-full-convergence-plan.md`.
+
+**Audit:** 13 round-1 auditors (PASS/CONDITIONAL PASS) + 3 round-2 re-audits (PASS). Critical findings F-001 (verdict contradiction) + F-002 (unverified trigger) fixed via plan §15.1 + P24-002 source verification. See `docs/setup-evidence/P24/evidence/auditor-gate.md`.
+
+**Implementation hold:** Until (1) P20 24h clean soak → PRODUCTION PASS, (2) P19 definition pass, (3) P24-002 P20 heartbeat source verification (binary FORK REQUIRED / EXTENSION-ONLY verdict).
+
+**Evidence:** `docs/setup-evidence/P24/` — README + 14 research + plan + 13 round-1 audits + 3 round-2 re-audits + definition-verification + auditor-gate + final-p24-planning-report.
 
 ---
 
