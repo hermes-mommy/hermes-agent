@@ -5,9 +5,9 @@
 | Date | 2026-06-25 |
 | Deploy method | scp + systemctl restart (policy-gated) |
 | Target | guinevere-vps (Tailscale 100.94.104.22) |
-| Commits deployed | a272587 (impl) + df83f70 + ff1c9fa (audit fixes) + c29a461 (deploy runtime fixes) |
-| Result | ✅ DEPLOYED + LIVE — CLEAN |
-| Soak clock | RESET to 2026-06-25 05:54 WIB → target 2026-06-26 05:54 WIB |
+| Commits deployed | a272587 (impl) + df83f70 + ff1c9fa (audit fixes) + c29a461 (deploy runtime fixes) + **03f84b5 (cleanup: SAF-CONS-01 privacy + test fixes)** |
+| Result | ✅ DEPLOYED + LIVE — CLEAN — PRIVACY-VERIFIED |
+| Soak clock | RESET to **2026-06-25 08:26:43 WIB** (post-privacy-fix restart; earlier 05:54 WIB soak voided) → target 2026-06-26 08:26 WIB |
 
 ## 1. Policy-Gated Deploy Sequence
 
@@ -85,8 +85,44 @@ Redis: `life_kernel:dashboard_message_id = 1519135545501028549` (canonical).
 | AC-LIFE-009 self-improvement candidate from reflection | ✅ | ReflectionEvaluator wired (RUN-01 fixed); candidates display-only |
 | AC-LIFE-010 restart resumes from checkpoint | ✅ | Postgres checkpointer wired |
 
-## 5. Status
+## 5. Cleanup Deploy — SAF-CONS-01 Privacy Fix (2026-06-25 08:26 WIB)
 
-**CONTINUATION IMPLEMENTED — DEPLOYED — SOAK/OBSERVATION IN PROGRESS.**
+A brutal cleanup pass discovered that the round-2 safety-consent audit verdict on disk was **FAIL (hard-rejection)** — contradicting this report's earlier "0 FAIL" claim. Root cause: the SAF-CONS-01 privacy fix (sanitize raw P18 memory content out of `task_description`, brain prompts, and the heartbeat graph-result log) existed **only in the working tree**; it was never committed or deployed. The VPS ran pre-fix code that fed raw memory content to the LLM brain prompts.
 
-PRODUCTION PASS remains HOLD: a full 24h clean soak (brain thinking, no blockers) from 2026-06-25 05:54 WIB is required. Target: 2026-06-26 05:54 WIB.
+**Cleanup commit `03f84b5`** deploys the fix:
+
+| File | Fix |
+|---|---|
+| `src/life_kernel/graph.py` | SAF-CONS-01: `idle_node` task_description uses memory metadata only; brain prompts feed concept names + memory metadata (never raw content); `act_node` goal description truncated to 60 chars in logs |
+| `src/life_kernel/heartbeat.py` | `_heartbeat_60s` graph-result log replaced with sanitized counts-only `_summary` |
+| `tests/life_kernel/test_heartbeat.py` | Removed `@pytest.mark.asyncio` from sync test classes; fixed `mock_graph` fixtures to eliminate `RuntimeWarning: coroutine never awaited` |
+
+**Policy-gated deploy sequence:**
+1. Local tests: `pytest tests/life_kernel/ -q` → 420 passed, 7 skipped, 2242 warnings (down from 2293).
+2. Commit `03f84b5`.
+3. VPS backup: `/tmp/guinevere-cleanup-bak.1782350738/`.
+4. SCP to `/tmp/_cleanup_staging/` → syntax check OK.
+5. Staging verify: SAF-CONS-01 present (count=1), raw-content paths absent (count=0).
+6. Move into `/home/guinevere/code/guinevere/src/life_kernel/`.
+7. Restart guinevere-core ONLY (hermes-gateway + guinevere-mcp untouched).
+8. Smoke: `/health` → 200 OK healthy.
+
+**Live verification (08:27 WIB):**
+```
+SERVICE:  core=active  NRestarts=0  ActiveEnter=2026-06-25 08:26:43 WIB
+HEALTH:   200 OK {"status":"healthy"}
+PRIVACY:  raw recalled_memories content in logs = 0  ✅ (was leaking pre-fix)
+BRAIN:    think_complete=4  fallback_used=0  ✅
+RECALL:   observe_world_model=4 (n_recalled_memories=3)  ✅
+JOURNAL:  journal_entry_written=4  failed=0  ✅
+BLOCKERS: GraphRecursionError=0  Traceback=0  UndefinedTableError=0  ✅
+SERVICES: hermes-gateway=active  guinevere-mcp=active  (undisturbed)  ✅
+```
+
+The earlier 05:54 WIB soak clock is **voided** — pre-fix code ran raw memory content to the LLM during that window. Soak-zero is now 08:26:43 WIB. Full detail in `cleanup-verification-audit.md` and `soak-readiness-report.md`.
+
+## 6. Status
+
+**CONTINUATION DEPLOYED — SOAK READY — PASS HOLD.**
+
+PRODUCTION PASS remains HOLD: a fresh full 24h clean soak (brain thinking, no blockers, zero raw-memory-in-logs) from 2026-06-25 08:26:43 WIB is required. Target: 2026-06-26 08:26 WIB.
