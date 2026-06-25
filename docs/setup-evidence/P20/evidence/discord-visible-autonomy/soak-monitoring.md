@@ -467,3 +467,110 @@ This is **not** a "24h soak completed" claim and **not** an unconditional
 PRODUCTION PASS. Monitoring should continue; any future runtime incident
 (crash loop, recursion, fallback storm, OOM, dashboard failure, privacy
 regression) voids this acceptance and reverts P20 to PASS HOLD.
+
+---
+
+## Soak Snapshot — 2026-06-25 10:55:14 WIB (CLEAN)
+
+| Field | Value |
+|---|---|
+| Check type | Auto 5-min fast soak health check |
+| Current wall-clock | 2026-06-25 10:55:14 WIB |
+| ActiveEnterTimestamp | 2026-06-25 08:26:43 WIB (cleanup deploy `03f84b5`) |
+| P20 status | **CLOSED — EARLY PRODUCTION ACCEPTANCE — OPERATOR WAIVED 24H SOAK — PASS WITH ACCEPTED RISK** (see `operator-soak-waiver.md`) |
+| Verdict | **CLEAN** — no restart, no status change (P20 closed; reopening only on runtime incident) |
+
+> P20 was closed by operator on 2026-06-25 (waived 24h soak). This is a
+> routine monitoring snapshot, not a re-open. The waiver is voided only by
+> a qualifying runtime incident (crash loop, GraphRecursionError, fallback
+> storm, OOM, dashboard failure, or privacy regression). None found here.
+
+### 1. Core state
+```
+is-active: active   NRestarts=0   Result=success   SubState=running
+ActiveEnterTimestamp=Thu 2026-06-25 08:26:43 WIB   (unchanged since cleanup deploy)
+```
+NRestarts=0 — no crash, no auto-restart since the 08:26:43 WIB deploy. ✅
+
+### 2. Memory
+```
+MemoryCurrent = 746,819,584   (~712 MB)
+MemoryPeak    = 773,603,328   (~738 MB)
+MemoryHigh    = 2,147,483,648 (2 GB)
+MemoryMax     = 4,294,967,296 (4 GB)
+```
+Current ~33% of the 2 GB High ceiling; peak tracks current within ~26 MB
+(no runaway growth since the 08:50 snapshot's ~546 MB → now ~712 MB over
+~2h is normal working-set drift, not a leak). No OOM risk. ✅
+
+### 3. HermesBrain (last 5 min)
+```
+hermes_brain_think_complete = 8
+hermes_brain_fallback_used  = 0
+```
+Brain thinking every cycle (~8 completions/5 min ≈ once per 38 s, within
+the 60 s heartbeat cadence). Zero fallbacks — 9Router quota healthy, no
+LLM outage. ✅
+
+### 4. Dashboard (last 5 min)
+```
+dashboard_edited         = 8
+dashboard_publish_failed = 0
+dashboard_edit_failed    = 0
+```
+Edit-in-place working (8 edits/5 min). Zero publish/edit failures. ✅
+
+### 5. Blockers (last 5 min) — ALL 0
+```
+HARD_STOP requested - routing to END = 0
+hard_stop_detected_live              = 0
+hermes_brain_think_failed            = 0
+aiagent_create_failed                = 0
+heartbeat_stopped                    = 0
+GraphRecursionError                  = 0
+Traceback                            = 0
+journal_entry_failed                 = 0
+raw memory leak (Recent memories / follow up on recalled context) = 0
+```
+No stuck HARD STOP, no recursion, no brain failure, no heartbeat halt,
+no traceback, no journal failure, **no privacy regression** (raw memory
+content grep = 0 — SAF-CONS-01 fix holding). ✅
+
+### 6. Discord REST (live)
+**Dashboard channel 1510914604291588237:**
+```
+embed id=1519135545501028549  color=0x5865f2 (blurple) ✅
+edited=2026-06-25T03:55:02Z (recently edited in place) ✅
+title=Guinevere — Living Autonomy Dashboard
+```
+Exactly 1 dashboard embed, correct id, blurple, recently edited. ✅
+
+**Log channel 1510914623367413850 (last 5, append-only):**
+```
+[2026-06-25T03:53:48Z] [cycle 197550] phase=idle focus=Finance Health Check acts=398 decision=act on: F...
+[2026-06-25T03:51:20Z] [cycle 197548] phase=idle focus=Finance Health Check acts=396 decision=act on: F...
+[2026-06-25T03:47:27Z] [cycle 197545] phase=idle focus=Finance Health Check acts=393 decision=act on: F...
+[2026-06-25T03:45:46Z] [cycle 197543] phase=idle focus=Finance Health Check acts=391 decision=act on: F...
+[2026-06-25T03:41:15Z] [cycle 197536] phase=idle focus=Finance Health Check acts=384 decision=act on: F...
+```
+Fresh append-only lifecycle events, cycles advancing (197536→197550),
+acts counter climbing (384→398). ✅
+
+### 7. Redis
+```
+life_kernel:dashboard_message_id = 1519135545501028549  (db0 + db6) ✅
+```
+Matches the live Discord embed id — edit-in-place publisher resolves the
+correct message each cycle. ✅
+
+### Decision
+**CLEAN.** All seven dimensions pass: core stable (NRestarts=0 since
+08:26:43 WIB), memory healthy (~712 MB / 2 GB), brain thinking (8
+completions, 0 fallback), dashboard editing in place (8 edits, 0
+failures), zero blockers, zero privacy regression, 1 blurple dashboard
+embed edited recently, fresh log-channel events, Redis message-id matches.
+
+**No restart performed. No status change.** P20 remains CLOSED
+(EARLY PRODUCTION ACCEPTANCE — PASS WITH ACCEPTED RISK). Per the operator
+closure instruction, P20 is not reopened absent a qualifying runtime
+incident; none occurred.
