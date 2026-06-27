@@ -1,5 +1,6 @@
 """Guinevere Core - Main FastAPI Application."""
 import os
+import uuid
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -94,6 +95,11 @@ async def lifespan(app: FastAPI):
     except Exception as brain_err:
         logger.warning("hermes_brain_init_failed", error=str(brain_err))
 
+    # P20/P24: llm_router=None is intentional. All autonomous LLM calls
+    # route through HermesBrain.think() (``hermes_brain_think_complete``),
+    # not through LLMRouter.chat(). The loop infrastructure's .chat() callers
+    # are dormant until a router is injected and a call gate is designed.
+    # See: p1-live-vps-reconciliation-audit.md §3.1 (GAP-01, GAP-06, GAP-07).
     loop_manager = LoopManager(llm_router=None)
     app.state.loop_manager = loop_manager
 
@@ -271,7 +277,30 @@ async def lifespan(app: FastAPI):
                 # LIFE_KERNEL_SAFE_RECALL=1 if a stricter posture is wanted.
                 _life_safe_recall = os.environ.get("LIFE_KERNEL_SAFE_RECALL", "0") == "1"
 
-                async def _life_recall_fn(*, query_text: str, principal: str = "guinevere_core", exclude_dnr: bool = True):
+                # P19/P3 fix: wire EmbeddingService for vector recall.
+                # Falls back to keyword-only search if 9Router is unreachable
+                # (recall_memories handles embedding_service=None gracefully).
+                _embedding_service = None
+                try:
+                    from src.memory.embeddings import EmbeddingService
+                    _embedding_service = EmbeddingService()
+                    logger.info("life_kernel_embedding_service_wired")
+                except Exception as _emb_err:
+                    logger.warning(
+                        "life_kernel_embedding_service_failed",
+                        error=str(_emb_err),
+                    )
+
+                async def _life_recall_fn(
+                    *,
+                    query_text: str,
+                    principal: str = "guinevere_core",
+                    exclude_dnr: bool = True,
+                    project_id: uuid.UUID | None = None,
+                ):
+                    # P19: accept + forward project_id to recall_memories.
+                    # The pipeline applies project-scoped filtering
+                    # (WHERE project_id = :pid OR project_scope = 'global').
                     async with _lk_session_factory() as _lk_session:
                         return await _recall_memories(
                             _lk_session,
@@ -280,6 +309,8 @@ async def lifespan(app: FastAPI):
                             exclude_dnr=exclude_dnr,
                             principal=principal,
                             safe_mode=_life_safe_recall,
+                            project_id=project_id,
+                            embedding_service=_embedding_service,
                         )
 
                 from src.life_kernel.p18_adapter import MemoryRecallAdapter
@@ -297,8 +328,12 @@ async def lifespan(app: FastAPI):
 
                 _kg_engine_instance = _KGQueryEngine(session_factory=_lk_session_factory)
 
-                async def _life_kg_fn(*, query_text: str):
-                    rows = await _kg_engine_instance.search_entities(query_text)
+                async def _life_kg_fn(*, query_text: str, project_id: uuid.UUID | None = None):
+                    # P19: accept + forward project_id to search_entities (which
+                    # supports project-scoped KG recall via project_id filter).
+                    rows = await _kg_engine_instance.search_entities(
+                        query_text, project_id=project_id
+                    )
                     return [
                         {
                             "name": getattr(r, "display_name", None) or str(getattr(r, "entity_id", "")),
@@ -374,6 +409,11 @@ async def lifespan(app: FastAPI):
         # the token or channel ids are absent, the kernel runs headless.
         _dashboard_channel_id = os.environ.get("LIFE_KERNEL_DASHBOARD_CHANNEL_ID", "")
         _log_channel_id = os.environ.get("LIFE_KERNEL_LOG_CHANNEL_ID", "")
+        # P19 Multi-Project Context: optional project namespace for
+        # heartbeat thread_id scoping.  When set AND the
+        # feature:projects:enabled Redis flag is ON, the heartbeat
+        # thread_id becomes "heartbeat-{project_id}".
+        _project_id: str | None = os.environ.get("LIFE_KERNEL_PROJECT_ID") or None
         discord_rest = DiscordRestClient()
         app.state.discord_rest = discord_rest
         if _dashboard_channel_id and discord_rest.enabled:
@@ -405,10 +445,54 @@ async def lifespan(app: FastAPI):
             discord_publisher=dashboard_writer,
             hermes_brain=hermes_brain,
             log_channel=log_channel,
+            project_id=_project_id,
         )
         await heartbeat.start()
         app.state.heartbeat = heartbeat
         logger.info("heartbeat_service_started")
+
+        # P22 Life Integration Hub: build the production IntegrationRegistry
+        # with real clients (filesystem, vps, discord) and the safety-critical
+        # gate shims (HardStopShim bridges Redis life_kernel:hard_stop +
+        # HardStopHandler.is_safe; ConsentGateShim fail-closes L2+ until a
+        # consent checker is wired). Fail-open for the app: if P22 wiring
+        # raises, guinevere-core continues; P22 simply stays inactive.
+        try:
+            from src.life_integrations.runtime import build_runtime_registry
+
+            _p22_registry, _p22_router = await build_runtime_registry(
+                redis_client=redis_client,
+                hard_stop_handler=app.state.hard_stop_handler,
+                consent_checker=None,  # fail-closed L2+ until consent wired
+                project_registry=None,  # P19 registry wired separately if active
+                audit_writer=None,
+                workspace_root=os.environ.get("GUINEVERE_REPO_ROOT") or "/home/guinevere/code/guinevere",
+                discord_rest_client=discord_rest,
+            )
+            app.state.p22_registry = _p22_registry
+            app.state.p22_router = _p22_router
+            if _p22_registry is not None:
+                logger.info("p22_integration_hub_active", router=type(_p22_router).__name__)
+            else:
+                logger.warning("p22_integration_hub_inactive", reason="build_runtime_registry returned None")
+        except Exception as p22_err:  # noqa: BLE001 — fail-open, never crash core
+            logger.warning("p22.activation_failed", error=str(p22_err))
+            app.state.p22_registry = None
+            app.state.p22_router = None
+
+        # P19 Multi-Project Context: initialize the per-project cognition
+        # registry.  When the ``feature:projects:enabled`` flag is OFF, the
+        # registry holds a single legacy ``BackgroundCognition`` instance and
+        # behaves identically to the pre-P19 runtime (ARCH-02 fix).  When ON,
+        # it manages up to N=3 concurrent project-scoped cognition instances.
+        try:
+            from src.life_kernel.cognition import ProjectAwareCognitionRegistry
+
+            cognition_registry = ProjectAwareCognitionRegistry(max_active=3)
+            app.state.cognition_registry = cognition_registry
+            logger.info("cognition_registry_initialized", max_active=3)
+        except Exception as cr_err:  # noqa: BLE001 — fail-soft startup, logged
+            logger.warning("cognition_registry_init_failed", error=str(cr_err))
     except Exception as kernel_err:
         logger.warning("life_kernel_startup_failed", error=str(kernel_err))
 
@@ -455,6 +539,15 @@ async def lifespan(app: FastAPI):
             logger.info("heartbeat_stopped")
         except Exception as hb_err:
             logger.warning("heartbeat_stop_failed", error=str(hb_err))
+
+    # P19 Multi-Project Context: stop all cognition instances (per-project
+    # or legacy single-instance).
+    if hasattr(app.state, "cognition_registry"):
+        try:
+            await app.state.cognition_registry.stop_all()
+            logger.info("cognition_registry_stopped")
+        except Exception as cr_err:  # noqa: BLE001 — fail-soft shutdown, logged
+            logger.warning("cognition_registry_stop_failed", error=str(cr_err))
 
     # P20: close the shared Discord REST client (connection pool release)
     if hasattr(app.state, "discord_rest"):
@@ -512,7 +605,12 @@ async def lifespan(app: FastAPI):
     surv_task = getattr(app.state, "surveillance_task", None)
     surv_engine = getattr(app.state, "surveillance_engine", None)
     if surv_consumer is not None:
-        surv_consumer.stop()
+        # SurveillanceConsumer.stop() is async — must be awaited, else the
+        # coroutine is never awaited (RuntimeWarning + no graceful shutdown).
+        try:
+            await surv_consumer.stop()
+        except Exception as surv_stop_err:  # noqa: BLE001 — fail-soft shutdown
+            logger.warning("surveillance_consumer_stop_failed", error=str(surv_stop_err))
     if surv_task is not None:
         surv_task.cancel()
         try:
