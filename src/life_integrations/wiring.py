@@ -76,8 +76,9 @@ async def build_default_registry(
         IntegrationRegistry with all 12 adapters registered.
 
     Note:
-        This function is async because adapter registration requires the
-        async SensorRegistry.register() API. Callers must ``await`` it.
+        This function is async because adapter registration holds the
+        asyncio.Lock inside ``IntegrationRegistry.register()`` to be safe
+        under concurrent startup. Callers must ``await`` it.
     """
     registry = IntegrationRegistry()
 
