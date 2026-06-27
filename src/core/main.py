@@ -473,12 +473,25 @@ async def lifespan(app: FastAPI):
             app.state.p22_router = _p22_router
             if _p22_registry is not None:
                 logger.info("p22_integration_hub_active", router=type(_p22_router).__name__)
+                # Start the background IntegrationScheduler for periodic
+                # health polling (audit r1 H1: scheduler was built but never
+                # started). 30s interval, non-blocking asyncio task.
+                try:
+                    from src.life_integrations.wiring import build_scheduler
+                    _p22_scheduler = build_scheduler(_p22_registry, interval_seconds=30)
+                    await _p22_scheduler.start()
+                    app.state.p22_scheduler = _p22_scheduler
+                    logger.info("p22_scheduler_started", interval=30)
+                except Exception as sched_err:  # noqa: BLE001
+                    logger.warning("p22_scheduler_start_failed", error=str(sched_err))
+                    app.state.p22_scheduler = None
             else:
                 logger.warning("p22_integration_hub_inactive", reason="build_runtime_registry returned None")
         except Exception as p22_err:  # noqa: BLE001 — fail-open, never crash core
             logger.warning("p22.activation_failed", error=str(p22_err))
             app.state.p22_registry = None
             app.state.p22_router = None
+            app.state.p22_scheduler = None
 
         # P19 Multi-Project Context: initialize the per-project cognition
         # registry.  When the ``feature:projects:enabled`` flag is OFF, the

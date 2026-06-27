@@ -9,6 +9,7 @@ Uses identifier template: p22:<domain>:<provider>:<resource-id>
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Protocol
 
 import structlog
@@ -146,7 +147,5 @@ class ProjectContext:
             "to_namespace": to_namespace,
             "actor": actor,
             "correlation_id": correlation_id,
-            "timestamp": __import__("datetime").datetime.now(
-                __import__("datetime").timezone.utc
-            ).isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }

@@ -16,6 +16,7 @@ Consent: consent.comms.discord.{read,write,delete}
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 import structlog
@@ -170,9 +171,7 @@ class DiscordIntegrationAdapter(BaseIntegrationAdapter):
             tombstone = {
                 "channel_id": channel_id,
                 "message_id": message_id,
-                "deleted_at": __import__("datetime").datetime.now(
-                    __import__("datetime").timezone.utc
-                ).isoformat(),
+                "deleted_at": datetime.now(timezone.utc).isoformat(),
                 "content_hash": _hash_content(kwargs.get("content", "")),
             }
             await self._rest_client.delete_message(channel_id, message_id)

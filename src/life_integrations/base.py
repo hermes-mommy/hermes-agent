@@ -131,12 +131,18 @@ class BaseIntegrationAdapter(ABC):
         health = await self.health_check()
         self._last_health_check = datetime.now(timezone.utc)
 
-        if health == IntegrationHealth.ERROR:
+        if health == IntegrationHealth.OK:
+            self._status = IntegrationStatus.HEALTHY
+        elif health == IntegrationHealth.ERROR:
             self._status = IntegrationStatus.DEGRADED
-        elif health == IntegrationHealth.OK:
-            self._status = IntegrationStatus.HEALTHY
+        elif health == IntegrationHealth.WARNING:
+            self._status = IntegrationStatus.DEGRADED
+        elif health == IntegrationHealth.UNKNOWN:
+            # UNKNOWN = client not wired / credentials absent. Honest
+            # CONFIG_MISSING — never collapse into HEALTHY (would be fake PASS).
+            self._status = IntegrationStatus.CONFIG_MISSING
         else:
-            self._status = IntegrationStatus.HEALTHY
+            self._status = IntegrationStatus.DISABLED
 
         return self._status
 

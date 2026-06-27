@@ -61,6 +61,20 @@ class HardStopShim:
         self._redis = redis_client
         self._handler = hard_stop_handler
         self._async_redis_warned = False
+        # Safety: if the only HARD STOP source is an async redis client (which
+        # the sync is_hard_stop_active() path CANNOT query), HARD STOP would
+        # silently never fire. Hard-fail at construction so a future wiring
+        # change cannot re-introduce the T3 silent-fallthrough bug.
+        if self._redis is not None and self._handler is None:
+            _module = type(self._redis).__module__ or ""
+            if _module.startswith("redis.asyncio"):
+                raise RuntimeError(
+                    "HardStopShim constructed with an async redis client "
+                    f"({_module}) and no in-process handler — the sync "
+                    "is_hard_stop_active() path cannot query async redis, so "
+                    "HARD STOP would silently never fire. Pass a SYNC "
+                    "redis.Redis client (see runtime.py build_runtime_registry)."
+                )
 
     def is_hard_stop_active(self) -> bool:
         """Return True if ANY HARD STOP source is active.

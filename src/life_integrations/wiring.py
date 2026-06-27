@@ -1,12 +1,14 @@
-"""P22 P20 wiring — registers integration adapters with life_kernel.
+"""P22 integration wiring — builds the IntegrationRegistry + ActionRouter.
 
-This module wires P22 into P20's SensorRegistry and provides an ActionRouter
-for domain minds to call. Does NOT modify P20 closed files — adds new files
-and uses existing SensorRegistry.register() API.
+This module wires P22's own IntegrationRegistry (NOT life_kernel's
+SensorRegistry) and provides an ActionRouter for domain minds to call.
+It does NOT import or modify any P20 closed file — `grep -rn
+"from src.life_kernel" src/life_integrations/` returns 0 hits. The registry
+is purely additive; P20 may optionally consume it via app.state.p22_registry.
 
-V-002 (sensors-not-triggers) preserved: P22 sensors feed observations to
-observe_node via BackgroundCognition.observer(); write actions go through
-the ActionRouter (which domain minds call after decide_node priority).
+V-002 (sensors-not-triggers) preserved: P22 adapters are queried on demand
+for health (IntegrationScheduler) and write actions go through the
+ActionRouter gate pipeline (classification → consent/HARD STOP → execute).
 """
 
 from __future__ import annotations

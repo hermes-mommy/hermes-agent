@@ -10,6 +10,7 @@ Consent: consent.comms.whatsapp.{read,write,delete}
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 import structlog
@@ -115,9 +116,7 @@ class WhatsAppIntegrationAdapter(BaseIntegrationAdapter):
             tombstone = {
                 "jid": jid,
                 "message_key": str(key),
-                "deleted_at": __import__("datetime").datetime.now(
-                    __import__("datetime").timezone.utc
-                ).isoformat(),
+                "deleted_at": datetime.now(timezone.utc).isoformat(),
             }
             await self._adapter.delete_message(jid, key)
             return {"success": True, "action": action, "tombstone": tombstone}
