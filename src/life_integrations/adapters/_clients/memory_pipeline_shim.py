@@ -75,6 +75,85 @@ class MemoryWritePipelineShim:
                 **kwargs,
             )
 
+    async def store_fact(
+        self,
+        *,
+        subject: str,
+        predicate: str,
+        object: str,
+        classification: str = "Restricted",
+        project_id: uuid.UUID | None = None,
+        source: str = "p22-integration",
+        **kwargs: Any,
+    ) -> uuid.UUID:
+        """Store a semantic fact (C9). Forwards to the semantic_facts ORM row."""
+        if self._session_provider is None:
+            raise ConfigurationMissingError(
+                "memory write pipeline: no session provider wired for store_fact"
+            )
+        if not subject or not predicate or not object:
+            raise ConfigurationMissingError(
+                "store_fact requires subject, predicate, and object kwargs"
+            )
+        from sqlalchemy import text as _sa_text
+
+        async with self._session_provider() as session:
+            fact_id = uuid.uuid4()
+            await session.execute(
+                _sa_text(
+                    "INSERT INTO memory.semantic_facts "
+                    "(id, subject, predicate, object, classification, "
+                    "source, project_id) VALUES "
+                    "(:id, :subject, :predicate, :object, :classification, "
+                    ":source, :project_id)"
+                ),
+                {
+                    "id": str(fact_id),
+                    "subject": subject,
+                    "predicate": predicate,
+                    "object": object,
+                    "classification": classification,
+                    "source": source,
+                    "project_id": str(project_id) if project_id else None,
+                },
+            )
+            await session.commit()
+            return fact_id
+
+    async def mark_dnr(
+        self,
+        *,
+        episode_id: uuid.UUID | str,
+        reason: str = "",
+        principal: str = "guinevere_core",
+        **kwargs: Any,
+    ) -> uuid.UUID | None:
+        """Forward to ``src.memory.dnr.mark_memory_dnr`` (A2).
+
+        The real ``mark_memory_dnr`` accepts ``memory_id``; the adapter passes
+        ``episode_id`` which we map to ``memory_id``. ``mark_memory_dnr``
+        enforces an authorization whitelist — the DNR safety boundary is
+        preserved (not bypassed).
+        """
+        if self._session_provider is None:
+            raise ConfigurationMissingError(
+                "memory write pipeline: no session provider wired for mark_dnr"
+            )
+        if not episode_id:
+            raise ConfigurationMissingError(
+                "memory mark_dnr: episode_id is required"
+            )
+        from src.memory.dnr import mark_memory_dnr
+
+        async with self._session_provider() as session:
+            return await mark_memory_dnr(
+                session,
+                memory_id=episode_id,
+                reason=reason,
+                principal=principal,
+                **kwargs,
+            )
+
 
 class MemoryReadPipelineShim:
     """Instance wrapper around ``src.memory.read_pipeline.recall_memories``."""

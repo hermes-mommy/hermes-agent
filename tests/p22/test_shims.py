@@ -85,10 +85,46 @@ class TestHardStopShim:
         )
         assert shim.is_hard_stop_active() is True
 
-    def test_no_source_returns_false_and_logs(self):
-        """No redis + no handler → cannot prove clear; returns False (wiring bug logged)."""
+    def test_no_source_returns_true_and_logs_fail_closed(self):
+        """No redis + no handler → fail-CLOSED: returns True (wiring bug logged).
+
+        Audit F12: a shim with no sources cannot prove clear; the safest
+        interpretation is HARD STOP active (safer than allowing L2+ without
+        any safety surface in place).
+        """
         shim = HardStopShim(redis_client=None, hard_stop_handler=None)
-        assert shim.is_hard_stop_active() is False
+        assert shim.is_hard_stop_active() is True
+
+    def test_handler_raises_fail_closed(self):
+        """Handler raising during is_safe check → fail-CLOSED: True.
+
+        Audit F12: when the safety check itself is broken, treat HARD STOP as
+        active (cannot prove clear; safer to block than to allow).
+        """
+        class _RaisingHandler:
+            @property
+            def is_safe(self):
+                raise RuntimeError("boom")
+
+        shim = HardStopShim(redis_client=None, hard_stop_handler=_RaisingHandler())
+        assert shim.is_hard_stop_active() is True
+
+    @pytest.mark.asyncio
+    async def test_async_no_source_returns_true_fail_closed(self):
+        """Async variant: no source → fail-CLOSED (True)."""
+        shim = HardStopShim(redis_client=None, hard_stop_handler=None)
+        assert await shim.is_hard_stop_active_async() is True
+
+    @pytest.mark.asyncio
+    async def test_async_handler_raises_fail_closed(self):
+        """Async variant: handler raising → fail-CLOSED (True)."""
+        class _RaisingHandler:
+            @property
+            def is_safe(self):
+                raise RuntimeError("boom")
+
+        shim = HardStopShim(redis_client=None, hard_stop_handler=_RaisingHandler())
+        assert await shim.is_hard_stop_active_async() is True
 
 
 class TestConsentGateShim:

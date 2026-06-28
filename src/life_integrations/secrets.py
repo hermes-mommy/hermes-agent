@@ -1,4 +1,13 @@
-"""P22 secrets access — provider pattern.
+"""P22 secrets access — provider pattern (test/future-fork scaffolding).
+
+NOTE (2026-06-28, brutal audit F30): The provider classes defined here
+(`EnvSecretProvider`, `ProjectVaultSecretProvider`, `SecretProvider`) are
+NOT instantiated in P22 production wiring. P22 adapters read configuration
+directly via `os.environ.get(...)` by design (a local deviation from the
+provider abstraction). These classes are retained because they are
+exercised by `tests/p22/test_project_isolation.py` and serve as the
+intended scaffolding for the future Hermes Society (P24) fork, where
+centralized secret management will be wired.
 
 Loads secrets via a provider interface (never directly from env/SOPS in
 adapter code). Supports SOPS backend and P19 ProjectSecretsVault backend.

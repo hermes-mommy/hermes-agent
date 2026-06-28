@@ -94,18 +94,44 @@ class BrowserIntegrationAdapter(BaseIntegrationAdapter):
         action_lower = action.lower()
 
         if action_lower == "search":
+            # L1 search — fail-closed-but-actionable. When no search client
+            # (no BRAVE_API_KEY/EXA_API_KEY provisioned), return an HONEST
+            # structured config_missing result instead of raising. The router
+            # routes this to operator provisioning. Never fake success.
             if self._search is None:
-                raise ConfigurationMissingError("Search client not configured")
+                logger.info(
+                    "browser.config_missing",
+                    action=action,
+                    reason="BRAVE_API_KEY/EXA_API_KEY not provisioned",
+                )
+                return {
+                    "success": False,
+                    "config_missing": True,
+                    "reason": "BRAVE_API_KEY/EXA_API_KEY not provisioned",
+                    "action": action,
+                }
             query = kwargs.get("query", "")
             results = await self._search.search(query)
-            return {"success": True, "action": action, "results": results, "count": len(results)}
+            return {
+                "success": True,
+                "action": action,
+                "results": results,
+                "count": len(results),
+            }
 
         if action_lower == "fetch_url":
             if self._fetch is None:
                 raise ConfigurationMissingError("Fetch client not configured")
             url = kwargs.get("url")
             content = await self._fetch.fetch(url)
-            return {"success": True, "action": action, "content": content[:1000] + "..." if len(content) > 1000 else content}
+            return {
+                "success": True,
+                "action": action,
+                "content": (
+                    content[:1000] + "..."
+                    if len(content) > 1000 else content
+                ),
+            }
 
         if action_lower == "navigate":
             if self._browser is None:
@@ -113,6 +139,38 @@ class BrowserIntegrationAdapter(BaseIntegrationAdapter):
             url = kwargs.get("url")
             await self._browser.navigate(url)
             return {"success": True, "action": action, "url": url}
+
+        if action_lower == "fill_form":
+            # L2 write — must NEVER silently fake success. Raises
+            # ConfigurationMissingError when no browser client is wired.
+            if self._browser is None:
+                raise ConfigurationMissingError("Browser client not configured")
+            url = kwargs.get("url")
+            selector = kwargs.get("selector")
+            value = kwargs.get("value")
+            await self._browser.fill_form(url, selector, value)
+            return {
+                "success": True,
+                "action": action,
+                "reversible": False,
+                "url": url,
+                "selector": selector,
+            }
+
+        if action_lower == "click":
+            # L2 write — must NEVER silently fake success. Raises
+            # ConfigurationMissingError when no browser client is wired.
+            if self._browser is None:
+                raise ConfigurationMissingError("Browser client not configured")
+            url = kwargs.get("url")
+            selector = kwargs.get("selector")
+            await self._browser.click(url, selector)
+            return {
+                "success": True,
+                "action": action,
+                "url": url,
+                "selector": selector,
+            }
 
         raise ActionNotSupportedError(
             f"Browser adapter does not support action: {action}"

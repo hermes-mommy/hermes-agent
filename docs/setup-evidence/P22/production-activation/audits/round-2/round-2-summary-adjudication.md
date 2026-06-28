@@ -83,6 +83,16 @@ All hard-rejection criteria pass:
 - Sub-agent output file-based: YES
 - Only guinevere-core (+lockstep discord/mcp via Requires=) restarted: YES
 
+## Caveats (added 2026-06-28, brutal audit F15)
+
+The PASS/FAIL verdicts above are NOT changed. However, the 2026-06-28 brutal audit (`docs/setup-evidence/P22/audits/brutal-2026-06-28/brutal-audit-report.md`) surfaced two honesty issues with this adjudication that must be noted here:
+
+1. **F2 HIGH (ConsentGate fail-open when `_hard_stop_checker is None`) was NOT actually fixed by commit `4efe4c2`.** Commit `4efe4c2` fixed the `M3` wiring.py docstring (SensorRegistry reference) — it did NOT touch the `ConsentGate.check()` class-level fail-open asymmetry in `consent.py:104-112`. The consent round-2 auditor's "PASS (H3 regression test + M7 hard-fail)" verified the *consent side* fail-closed behavior and the `HardStopShim` construction, but the *HARD STOP side* fail-open (L2/L3 skip HARD STOP when `hard_stop_checker is None`) remained open. This is now tracked as **brutal-audit F03** (CRITICAL) and is being remediated — see `fix-verification/F03.md`. The "7/7 dimensions effectively PASS" tally above did not catch this because the production wiring mitigates it (a `hard_stop_checker` IS wired in production), but the class-level hole is real.
+
+2. **F-10 (`9ROUTER_API_KEY` in journal) IS a real MEDIUM finding, not merely "out of P22 scope".** Dismissing it as "pre-existing, out of P22 scope" understates it: a secret appearing in a systemd journal is a genuine hygiene/security issue regardless of which component introduced it. It is recommended this be tracked as **P20 technical debt** (the secret originates from P20's `.env.core` config, not P22 code) and remediated by quoting the value in `.env.core` or moving it to a secrets manager. P22 did not introduce it, but the brutal audit correctly flags that "out of scope" ≠ "not a finding".
+
+These caveats do not alter the round-2 PASS verdicts — they add the honesty that the round-2 adjudication's reclassifications were, in retrospect, slightly too generous on two items. The brutal audit is the authoritative post-hoc review.
+
 ## Final Status
 
 **P22 PRODUCTION PASS WITH CONFIG_MISSING ADAPTERS — LIFE INTEGRATION HUB RUNTIME ACTIVE**

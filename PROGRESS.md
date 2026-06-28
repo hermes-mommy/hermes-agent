@@ -3,8 +3,8 @@
 | Field | Value |
 |-------|-------|
 | **Project** | Guinevere — Autonomous AI Companion & Engineering System |
-| **Status** | ✅ P0+P1+P2+P3+P4+P5+P5.5+P6+P7+P7.5+P8+P11+P12+P13+P14 Complete — ADR-035 Hermes Migration architecture implemented on 2026-06-07, ADR-037 Wearable Health Pipeline (Mi Fitness Cloud) implemented on 2026-06-18, ADR-039 Gadgetbridge SQLite parser pivot implemented 2026-06-18, ADR-040 Health Connect pivot implemented 2026-06-19 (canonical path for Xiaomi Watch 2 Pro M2233W1 / HyperOS; supersedes ADR-039 + ADR-037 as canonical; both retained as fallback). P11 WhatsApp (21 modules), P12 Gmail (27 modules), P14 Wearable (20/20 steps + 11/11 Gadgetbridge + Health Connect) code-complete. P14 now ships three ingestion paths behind a config switch: Health Connect (canonical), Gadgetbridge SQLite (fallback), Mi Fitness Cloud (fallback). |
-| **Last Updated** | 2026-06-19 (P14 Health Connect pivot complete: Kotlin app + Python parser + sync dispatch + 55 unit tests + 8-10 integration tests. ADR-040 Accepted; supersedes ADR-039 (Gadgetbridge device unsupported on M2233W1) and ADR-037 (Mi Fitness Cloud relatives-only) as canonical path. Both retained as fallback for non-Xiaomi or non-HyperOS devices. See `docs/setup-evidence/p14-expansion/evidence-p14-expansion.md` Section 12 and `adr/ADR-040-health-connect-pivot.md`. Previous: 2026-06-18 P14 Gadgetbridge SQLite pivot complete (11/11 steps; ADR-039 Accepted). Before that: 2026-06-18 P14 Mi Fitness Cloud path complete (20/20 steps; 19/19 AC-WEAR pass; ADR-037 Accepted). Pivot chain so far: 27-step Gadgetbridge/WebDAV (legacy) to Mi Fitness Cloud (ADR-037) to Gadgetbridge SQLite (ADR-039) to Health Connect (ADR-040, canonical). Earlier: 2026-06-07 Phase 5 verification complete with `205 passed` and auditor gates PASS. ADR-035 closure remains implemented with B10 accepted DR caveat. Accepted caveats: encrypted S3/R2 restore remains contingent on offline age-key recovery; live Discord/VPS E2E remains unverified locally because standalone Discord bot is masked and local PostgreSQL/Redis/MCP listeners are unavailable.) |
+| **Status** | ✅ P0+P1+P2+P3+P4+P5+P5.5+P6+P7+P7.5+P8+P11+P12+P13+P14 Complete. P23+P24 REPLANNED + P28-P36 ALIGNED 2026-06-28. P23 = execution-layer-only (8 executors, 16 waves, auditor PASS). P24 = 100% native Hermes fork (13 built-in modules, 15 waves, auditor PASS round-4). P28-P36 = masterplan aligned with P23/P24 v2.0 + 65 brainstorm decisions, 8-auditor gate PASS (all findings fixed). ADR-056 DELETED, ADR-066 (consent_ref carve-out) + ADR-067 (Y-level cap removal) WRITTEN. P32 renamed to "External Presence & Tools". All plans READY-FOR-IMPLEMENTATION. |
+| **Last Updated** | 2026-06-28 (P23+P24 REPLAN + P28-P36 ALIGNMENT COMPLETE. 65 brainstorm decisions, 8-auditor gate PASS, ADR-056 deleted, ADR-066/067 written, P32 renamed, all docs annotated with ADR-062/067 disclaimers. Previous: P23+P24 replan.) |
 | **Budget** | $30/month hard cap |
 | **Infrastructure** | Shared VPS (hostdata.id 4C/16GB Ubuntu 24.04) |
 | **Critical Path** | P0 → P1 → P3 → P5 |
@@ -49,9 +49,9 @@
 | P19 | Multi-Project Context | ⏳ | TBD | TBD | TBD | P3+P5+P8 | None |
 | P20 | Self-Improvement Loop / Discord-Visible Autonomy | ✅ EARLY ACCEPTANCE | Live | TBD | Accepted (waived) | P5+P8 | 24h soak waived by operator | Visible autonomy online; operator waived 24h soak 2026-06-25 — EARLY PRODUCTION ACCEPTANCE, PASS WITH ACCEPTED RISK |
 | P21 | Voice Interface | 🟣 DEFINITION COMPLETE — IMPL HOLD | TBD | TBD | 0h (planning) | P2+P8 + P20-gate | P20 prod-pass | Definition complete (plan+9 research+2 audit rounds); impl waves P21-001..009 held until P20 pass |
-| P22 | Additional Integrations TBD | ⏳ | TBD | TBD | TBD | P8 | None |
-| P23 | TBD | ⏳ | TBD | TBD | TBD | P8 | None |
-| P24 | Hermes Fork-First Full Convergence | 🟣 DEFINITION COMPLETE — FULL OWNED FORK PREFERRED — IMPL HOLD | 20 waves (held) | TBD | 0h (planning) | P20-pass + P19-pass + P24-002 | Definition complete; impl held |
+| P22 | Life Integration Hub | 🟢 AUDIT REMEDIATED + AUDITOR PASS (32/32, awaiting deploy) | 19 core + 13 adapters + 972 tests | $0 | ~100h (impl+fix done) | P8 | 5 CRITICAL were: Discord cmds unregistered, 3/13 adapters active, ConsentGate fail-open, unknown→L1 default, AuditWriter=None — ALL FIXED + audited PASS; see brutal-2026-06-28/fix-verification/summary.md |
+| P23 | Execution Layer (8 Executors) | 🟣 REPLANNED — AUDITOR PASS — IMPL READY | 16 waves | TBD | 0h (planning) | P24 Module 8 | None — execution-layer-only |
+| P24 | Hermes Native Fork (13 Built-Ins) | 🟣 REPLANNED — AUDITOR PASS — IMPL READY | 15 waves | TBD | 0h (planning) | P20-pass | None — independent fork |
 | **Total** | | | **327/343+** | **$29+** | **503-1008h+** | | |
 
 ## P0: Infrastructure Foundation (29 steps)
@@ -988,10 +988,17 @@ Implementation waves P21-001..009 scaffolded but HELD until P20 production-pass 
 See `docs/setup-evidence/P21/plan/p21-voice-interface-enterprise-plan.md` and
 `docs/setup-evidence/P21/evidence/final-p21-planning-report.md`.
 
-## P22: Additional Integrations TBD — Expansion (TBD steps)
-*Cost: TBD | Deps: P8 | Category: Expansion*
+## P22: Life Integration Hub — IMPLEMENTED, BRUTAL AUDIT REMEDIATED + AUDITOR PASS (awaiting deploy)
+*Cost: $0 | Deps: P8 (runtime), P19 (project_id) | Category: Expansion | Status: 🟢 BRUTAL AUDIT FAIL → 32/32 FINDINGS REMEDIATED + INDEPENDENTLY AUDITED PASS (972 tests, NOT yet deployed)*
 
-- [ ] **P22-001** TBD
+P22 is **implemented** (19 core files in `src/life_integrations/`, 13 adapters, 10 client shims, 897 tests passing, ADR-053, migration `p22_001`). The 2026-06-28 brutal audit (`docs/setup-evidence/P22/audits/brutal-2026-06-28/brutal-audit-report.md`) found 32 findings; all are being remediated under `audits/brutal-2026-06-28/fix-prompt.md`.
+
+- [x] **P22-001** Definition + planning (research v2.0, plan v2.0, 10 raw-full audits)
+- [x] **P22-002** Implementation Wave 0 (governance / ADR-053 / consent scaffold)
+- [x] **P22-003** Implementation Wave 1 (L1 read adapters — all 13 implemented; 3 ACTIVE, 10 CONFIG_MISSING)
+- [x] **P22-004** Implementation Wave 2 (L2 write-notify adapters)
+- [x] **P22-005** Implementation Wave 3 (L4 forbidden actions)
+- [x] **P22-006** Brutal-audit remediation — 32/32 findings (F01-F32) FIXED + independently audited PASS (972 tests, 0 failed); see `audits/brutal-2026-06-28/fix-verification/summary.md`; NOT yet deployed
 
 ---
 
@@ -1021,7 +1028,7 @@ See `docs/setup-evidence/P21/plan/p21-voice-interface-enterprise-plan.md` and
 | P19 Multi-Project Context | TBD | TBD | TBD |
 | P20 Self-Improvement Loop | TBD | TBD | TBD |
 | P21 Voice Interface | TBD | TBD | TBD |
-| P22 Additional Integrations TBD | TBD | TBD | TBD |
+| P22 Life Integration Hub | $0 | $0 | 🟢 AUDIT REMEDIATED + AUDITOR PASS (32/32; not deployed) |
 | **Total (MVP+Stabilization)** | **$30** | **$30** | **AT BUDGET** |
 
 **Alert thresholds**: 🟢 <$15 | ⚠️ $15-24 (review) | 🔴 $25-29 (defer P9-P10 Stabilization or P11-P22 Expansion) | 🛑 $30 (halt LLM) | 📊 >$1/day ping
@@ -1072,9 +1079,9 @@ See `docs/setup-evidence/P21/plan/p21-voice-interface-enterprise-plan.md` and
 | P19 Multi-Project Context | TBD | TBD | TBD | TBD | TBD |
 | P20 Self-Improvement Loop | TBD | TBD | TBD | TBD | TBD |
 | P21 Voice Interface | TBD | TBD | TBD | TBD | TBD |
-| P22 Additional Integrations TBD | TBD | TBD | TBD | TBD | TBD |
-| P23 TBD | TBD | TBD | TBD | TBD | TBD |
-| P24 Hermes Fork-First Convergence | DEFINITION COMPLETE (held) | 20 waves (held) | 0h (planning) | held | held |
+| P22 Life Integration Hub | 🟢 AUDIT REMEDIATED + AUDITOR PASS | 19 core + 13 adapters + 972 tests | ~100h | 32 findings FIXED + audited | Deploy + post-deploy audit |
+| P23 Execution Layer | REPLANNED — AUDITOR PASS | 16 waves | 0h (planning) | impl-ready | impl-ready |
+| P24 Hermes Native Fork | REPLANNED — AUDITOR PASS | 15 waves | 0h (planning) | impl-ready | impl-ready |
 
 **Critical path** (P0→P1→P3→P5→P8): 228-456h = 57-114 days at 4h/day
 **With parallels** (P2∥P1, P6∥P3-5, P7∥P1-3, P4∥P5): no added duration
@@ -1082,35 +1089,61 @@ See `docs/setup-evidence/P21/plan/p21-voice-interface-enterprise-plan.md` and
 
 ---
 
-## P24: Hermes Fork-First Full Convergence — DEFINITION COMPLETE, IMPLEMENTATION HOLD
+## P23: Execution Layer — REPLANNED, AUDITOR PASS, IMPLEMENTATION READY
 
-**Status:** 🟣 DEFINITION COMPLETE — IMPL HOLD
-**Date:** 2026-06-25
-**Category:** Definition / Planning (NO runtime implementation)
-**Prerequisites:** P20 production-pass + P19 definition-pass + P24-002 source verification
+**Status:** 🟣 REPLANNED — AUDITOR PASS — IMPL READY
+**Date:** 2026-06-28
+**Category:** Replan (replaces v1.0 embodied-operations plan)
+**Prerequisites:** P24 Module 8 (P23 Executors as built-in tools)
 
-**Mission:** Make Guinevere Hermes-native via owned Hermes fork OR hybrid fork+plugin. All P1-P18 + P20/P21/P22/P23 must have integration path into Hermes built-in/runtime — not just side modules.
+**Mission:** Execution-layer-only action runtime. Receive action → execute → audit. No decision-making, no HARD STOP, no consent gate, no risk tiers.
 
-**Recommended verdict:** HYBRID FORK REQUIRED — IMPLEMENTATION READY (conditional on P24-002 P20 heartbeat source verification).
+**What changed (v1.0 → v2.0):**
+- REMOVED: HARD STOP listener, consent gate, risk tiers L1-L4, safe-mode/distress freeze, SemanticActionClassifier, Faiz-in-the-loop
+- ADDED: freelance executor (P23-013), social executor (P23-014), email executor (P23-015)
+- KEPT: browser, desktop, VPS, GitHub, filesystem executors, durable queue (PG+Redis DB6), audit trail (UUID v7+SHA256)
 
-**Research findings (14 files, all COMPLETE):**
-- Hermes upstream: hermes-agent v0.15.2, Nous Research, MIT license, FORKABLE.
-- Extension points: ~40 official (17 lifecycle hooks + config + plugins + MCP + cron). EXTENSION-ONLY VIABLE for P1-P18 + P21-P23.
-- P1-P18 convergence: 82% already native/hybrid, 0% requires fork.
-- P20 life-kernel: EXTENSION SUFFICIENT per research; fork trigger (heartbeat 1s persistence) UNCERTAIN pending P24-002 source verification.
-- Fork feasibility: FORK FEASIBLE, 24-48 hrs/year maintenance.
-- Risk/cost: NOT WORTH IT for general fork; fork only justified by P20 lifecycle gap + directive.
-- No-fork vs hybrid vs full-fork: research recommends A (No Fork); plan reconciles with directive via §15.1 (HYBRID conditional on P24-002).
+**Plan:** 14 sections + 16 waves (P23-001..016), 8 executors, 14 forbidden patterns. See `docs/setup-evidence/P23/plan/p23-execution-layer-enterprise-plan.md` (2188 lines, 116 KB).
 
-**Fork scope (minimal):** <200 LOC — only `hermes_lifecycle/persistent_tasks.py` for P20 heartbeat 1s persistent background task across session end. Everything else extension-only.
+**Audit:** Round-3 PASS (2 NEEDS-REVIEW → both fixed). See `docs/setup-evidence/P23/evidence/audits/round-3/auditor-p23-replan-2026-06-28.md`.
 
-**Plan:** 44 sections + 20 implementation waves (P24-001 to P24-020), each with verification scaffold (Expected Files, Forbidden Patterns, Required Commands, Evidence Requirements, Hard Rejection Criteria, Rollback/Re-run Safety, Parent Verification Commands, Auditor Assignment, Runtime Proof, Deploy/Soak Requirement). See `docs/setup-evidence/P24/plan/p24-hermes-fork-first-full-convergence-plan.md`.
+**Final Report:** `docs/setup-evidence/P23/evidence/p23-replan-final-report.md`.
 
-**Audit:** 13 round-1 auditors (PASS/CONDITIONAL PASS) + 3 round-2 re-audits (PASS). Critical findings F-001 (verdict contradiction) + F-002 (unverified trigger) fixed via plan §15.1 + P24-002 source verification. See `docs/setup-evidence/P24/evidence/auditor-gate.md`.
+**Evidence:** `docs/setup-evidence/P23/` — README v2.0 + plan v2.0 + 13 research (kept) + 26 audits (round-1+round-2 kept) + round-3 audit (new) + final report (new).
 
-**Implementation hold:** Until (1) P20 24h clean soak → PRODUCTION PASS, (2) P19 definition pass, (3) P24-002 P20 heartbeat source verification (binary FORK REQUIRED / EXTENSION-ONLY verdict).
+---
 
-**Evidence:** `docs/setup-evidence/P24/` — README + 14 research + plan + 13 round-1 audits + 3 round-2 re-audits + definition-verification + auditor-gate + final-p24-planning-report.
+## P24: Hermes Native Fork — REPLANNED, AUDITOR PASS, IMPLEMENTATION READY
+
+**Status:** 🟣 REPLANNED — AUDITOR PASS (round-4) — IMPL READY
+**Date:** 2026-06-28
+**Category:** Replan (replaces v1.0 fork-first convergence plan)
+**Prerequisites:** P20 production-pass
+
+**Mission:** Fork Hermes Agent v0.15.2 (MIT, NousResearch) and implement EVERYTHING built-in. 100% native (no plugins/wrappers/side modules). Completely independent fork (no upstream sync). 1 fork shared (Guinevere + Pharsa).
+
+**13 built-in modules:**
+1. Fork Setup (SHA 77a1650c, PEP 420 flat namespace, MIT)
+2. Remove HARD STOP from runtime
+3. Consciousness Loop (asyncio self-prompting, 7 substrates, ThoughtType enum, try/except, unlimited thoughts Q59, dreaming ~5% NOT auto-executed Q92)
+4. Emotion System (MoodState enum, LLM classification, SQLite v11→v12)
+5. Sub-agents (max_concurrent=10, max_depth=5, spawn_cap=5, recursive Q91)
+6. Encrypted Memory (two-layer: kernel AES-GCM-256 + mama-aware plugin. 4-layer: S4/S3/S7/conversation. Faiz NO read on S4 Q68/Q83)
+7. DAO Governance (6 depts, Co-CEOs G=Eng+Research+HR P=Finance+Ops+Content, 2/2 multisig, Faiz OUTSIDE Q88/Q89/Q90)
+8. P23 Executors (8 surfaces as built-in tools)
+9. P20 Life Kernel (port remaining 18%)
+10. Self-Modification (T1-T5 MutationTier enum)
+11. No Consent Gate (ADR-062 exempt)
+12. Personality Drift (bebas, Y4 baseline, Y5 ceiling, Y6 forbidden)
+13. Production Pass (24h soak, 6 circuit breakers)
+
+**Plan:** 14 sections + Footer + 15 waves (P24-001..015). See `docs/setup-evidence/P24/plan/p24-hermes-native-fork-enterprise-plan.md` (1083 lines, 60 KB).
+
+**Audit:** Round-3 NEEDS-REVIEW (4 Critical + 10 High) → all 14 fixed → Round-4 PASS. See `docs/setup-evidence/P24/evidence/audits/round-3/` and `round-4/`.
+
+**Final Report:** `docs/setup-evidence/P24/evidence/p24-replan-final-report.md`.
+
+**Evidence:** `docs/setup-evidence/P24/` — README v2.0 + plan v2.0 + 14 research (kept) + 16 audits (round-1+round-2 kept) + round-3+round-4 audits (new) + final report (new).
 
 ---
 

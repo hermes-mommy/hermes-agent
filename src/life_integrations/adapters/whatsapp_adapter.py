@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+import hashlib
 from typing import Any
 
 import structlog
@@ -103,23 +104,59 @@ class WhatsAppIntegrationAdapter(BaseIntegrationAdapter):
 
         if action_lower == "send_text":
             jid = kwargs.get("jid")
+            if not jid:
+                raise ActionNotSupportedError(
+                    "send_text requires 'jid' kwarg — no fake-success on empty jid"
+                )
             text = kwargs.get("text", "")
-            message_id = await self._adapter.send_message(jid, text)
-            return {"success": True, "action": action, "message_id": message_id}
+            send_result = await self._adapter.send_message(jid, text)
+            if isinstance(send_result, dict):
+                inner = send_result.get("result", send_result)
+                message_id = inner.get("message_id") if isinstance(inner, dict) else None
+            else:
+                message_id = send_result
+            target_hash = hashlib.sha256(str(jid).encode()).hexdigest()[:12]
+            return {
+                "success": True,
+                "sent": True,
+                "action": action,
+                "message_id": message_id,
+                "target_hash": target_hash,
+                "reversible": False,
+            }
 
         if action_lower == "delete_for_everyone":
             if tier < PermissionTier.L3_DESTRUCTIVE:
                 return {"success": False, "action": action, "error": "requires L3 tier"}
             jid = kwargs.get("jid")
             key = kwargs.get("key")
-            # Pre-delete tombstone (incoming messages NOT deletable — tombstone only)
-            tombstone = {
-                "jid": jid,
-                "message_key": str(key),
-                "deleted_at": datetime.now(timezone.utc).isoformat(),
+            target_hash = hashlib.sha256(str(jid).encode()).hexdigest()[:12]
+            # HONEST DEFERRED: bridge service bus has no delete HTTP endpoint
+            # (whatsapp_bridge_shim.delete_message raises ConfigurationMissingError).
+            try:
+                await self._adapter.delete_message(jid, key)
+            except ConfigurationMissingError:
+                return {
+                    "success": False,
+                    "action": action,
+                    "deferred": True,
+                    "reason": "whatsapp delete path not exposed by service bus — L3 DEFERRED",
+                    "restore_possible": False,
+                    "reversible": False,
+                    "target_hash": target_hash,
+                    "tombstone": {
+                        "target_hash": target_hash,
+                        "message_key": str(key),
+                        "deleted_at": datetime.now(timezone.utc).isoformat(),
+                        "outcome": "deferred",
+                    },
+                }
+            return {
+                "success": True,
+                "action": action,
+                "target_hash": target_hash,
+                "reversible": False,
             }
-            await self._adapter.delete_message(jid, key)
-            return {"success": True, "action": action, "tombstone": tombstone}
 
         if action_lower in ("promote_admin",):
             raise ActionNotSupportedError(

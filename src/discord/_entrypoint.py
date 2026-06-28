@@ -206,6 +206,16 @@ class GuinevereBot(_BotBase):
         from .cmd_new_session import new_session_callback
         from .cmd_history import history_callback
 
+        # ── P22 Phase B: Life Integration Hub Commands ─────────────────────
+        from .cmd_integrations import (
+            status_callback,
+            capabilities_callback,
+            test_callback,
+            missing_callback,
+            integration_consent_callback,
+            dry_run_callback,
+        )
+
         # Lazy import command specs from non-deprecated registry
         from ._command_registry import COMMAND_SPECS
 
@@ -402,6 +412,38 @@ class GuinevereBot(_BotBase):
             guild=discord.Object(id=GUILD_ID),
         )(history_callback)
 
+        # ── P22 Phase B: Life Integration Hub Commands ────────────────
+        self.tree.command(
+            name="integration-status",
+            description="Show per-adapter lifecycle status and tier for P22 integrations.",
+            guild=discord.Object(id=GUILD_ID),
+        )(status_callback)
+        self.tree.command(
+            name="integration-capabilities",
+            description="Show the 13×L1-L4 capability matrix for P22 integrations.",
+            guild=discord.Object(id=GUILD_ID),
+        )(capabilities_callback)
+        self.tree.command(
+            name="integration-test",
+            description="Run a standards-based health check on a single P22 integration.",
+            guild=discord.Object(id=GUILD_ID),
+        )(test_callback)
+        self.tree.command(
+            name="integration-missing",
+            description="List P22 integrations that are missing required credentials.",
+            guild=discord.Object(id=GUILD_ID),
+        )(missing_callback)
+        self.tree.command(
+            name="integration-consent",
+            description="Show or update consent scopes for P22 integrations.",
+            guild=discord.Object(id=GUILD_ID),
+        )(integration_consent_callback)
+        self.tree.command(
+            name="integration-dry-run",
+            description="Dry-run a P22 integration action without real side effects.",
+            guild=discord.Object(id=GUILD_ID),
+        )(dry_run_callback)
+
         # ── Stubs (none remaining — all wired) ────────────────────────────
         core_names: tuple[str, ...] = (
             # Original 13
@@ -423,6 +465,13 @@ class GuinevereBot(_BotBase):
             "loop-pause", "loop-resume", "loops", "evidence", "loop-priority",
             # Hermes Phase 1: Conversation session
             "new", "history",
+            # P22 Phase B: Life Integration Hub
+            "integration-status",
+            "integration-capabilities",
+            "integration-test",
+            "integration-missing",
+            "integration-consent",
+            "integration-dry-run",
         )
         for spec in COMMAND_SPECS:
             if spec.name in core_names:

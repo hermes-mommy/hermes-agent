@@ -114,12 +114,75 @@ class MemoryIntegrationAdapter(BaseIntegrationAdapter):
             )
             return {"success": True, "action": action, "episode_id": str(episode_id)}
 
+        if action_lower == "store_fact":
+            if self._write is None:
+                raise ConfigurationMissingError(
+                    "Write pipeline not configured for store_fact"
+                )
+            subject = kwargs.get("subject", "")
+            predicate = kwargs.get("predicate", "")
+            object_ = kwargs.get("object", "")
+            if not subject or not predicate or not object_:
+                raise ConfigurationMissingError(
+                    "store_fact requires subject, predicate, and object kwargs"
+                )
+            classification = kwargs.get("classification", "Restricted")
+            fact_id = await self._write.store_fact(
+                subject=subject,
+                predicate=predicate,
+                object=object_,
+                classification=classification,
+                project_id=project_id,
+            )
+            return {
+                "success": True,
+                "action": action,
+                "fact_id": str(fact_id),
+            }
+
         if action_lower == "search_kg":
             if self._kg is None:
                 raise ConfigurationMissingError("KG engine not configured")
             query = kwargs.get("query", "")
             results = await self._kg.query(query, project_id=project_id)
             return {"success": True, "action": action, "results": results}
+
+        if action_lower == "mark_dnr":
+            if self._write is None:
+                raise ConfigurationMissingError(
+                    "Write pipeline not configured for mark_dnr"
+                )
+            episode_id = kwargs.get("episode_id")
+            if not episode_id:
+                raise ConfigurationMissingError(
+                    "mark_dnr requires 'episode_id' kwarg"
+                )
+            reason = kwargs.get("reason", "")
+            principal = kwargs.get("principal", "guinevere_core")
+            # Pre-fact content hash: fingerprint of episode_id+reason+principal
+            # captured BEFORE mark_dnr so the tombstone is forensically
+            # reconstructable. DNR is fully reversible (UPDATE ... do_not_recall=false).
+            import hashlib
+            content_hash = hashlib.sha256(
+                f"{episode_id}|{reason}|{principal}".encode("utf-8")
+            ).hexdigest()[:16]
+            marked_id = await self._write.mark_dnr(
+                episode_id=episode_id, reason=reason, principal=principal,
+            )
+            return {
+                "success": True,
+                "action": action,
+                "episode_id": str(episode_id),
+                "marked_id": str(marked_id) if marked_id else str(episode_id),
+                "content_hash": content_hash,
+                "restore_possible": True,
+                "restore_method": "UPDATE memory SET do_not_recall=false",
+                "irreversible_warning": False,
+                "pre_delete_snapshot": {
+                    "episode_id": str(episode_id),
+                    "reason": reason,
+                },
+            }
 
         if action_lower in ("delete_memory",):
             raise ActionNotSupportedError(

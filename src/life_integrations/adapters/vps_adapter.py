@@ -5,10 +5,21 @@ service status, and container management with L1-L4 tiers.
 
 Secrets: sec-postgres-core, sec-redis-auth (existing)
 Consent: consent.ops.vps.{read,write,delete}
+
+P22.3 adds:
+  * ``restart_container`` (L2) — delegates to docker_client.restart_container.
+  * ``remove_container`` (L3) — pre-delete ``docker commit`` snapshot
+    before invoking docker_client.remove_container. The snapshot is
+    the ONLY recovery path because ``docker rm`` is irreversible on
+    running state. A failed commit still triggers the delete, but the
+    snapshot dict is recorded and ``reversible`` is honest (False).
+  * ``system_prune`` / ``docker_rm_all`` remain L4 FORBIDDEN.
 """
 
 from __future__ import annotations
 
+import datetime as _dt
+import hashlib
 import uuid
 from typing import Any
 
@@ -39,6 +50,11 @@ _ALLOWED_SERVICES = frozenset({
     "caddy", "tailscaled", "cloudflared",
 })
 
+# Container-name alphabet for restart/remove. Matches docker_tool's
+# _CONTAINER_NAME_RE but enforced here too so the adapter rejects hostile
+# input even if the shim is mocked out.
+_CONTAINER_NAME_RE_STR = r"^[a-zA-Z0-9][a-zA-Z0-9_.\-]*$"
+
 
 def _validate_service_name(service: str) -> str:
     """Validate a systemd service name against the allowlist.
@@ -64,6 +80,60 @@ def _validate_service_name(service: str) -> str:
             f"service '{service}' not in allowlist — restart denied"
         )
     return service
+
+
+def _validate_container_id(container_id: str) -> str:
+    """Validate a container identifier (name or short ID).
+
+    Args:
+        container_id: Container id/name to validate.
+
+    Returns:
+        The validated container id.
+
+    Raises:
+        PermissionDeniedError: If container_id does not match the safe name
+            alphabet (defence in depth — primary guard is the docker_tool).
+    """
+    import re
+
+    from src.life_integrations.errors import PermissionDeniedError
+
+    if not container_id or not re.match(_CONTAINER_NAME_RE_STR, container_id):
+        raise PermissionDeniedError(
+            f"invalid container_id (shell injection risk): {container_id!r}"
+        )
+    return container_id
+
+
+def _snapshot_content_hash(
+    container_id: str,
+    image_id: str,
+    snapshot_image: str | None,
+    captured_at: _dt.datetime,
+) -> str:
+    """Compute a SHA-256 hex digest for the pre-delete snapshot.
+
+    The hash is deterministic given the inputs (container_id, image_id,
+    snapshot image ID if committed, and the ISO-8601 timestamp the adapter
+    recorded at snapshot time). 64-hex character digest.
+
+    Args:
+        container_id: Container ID the snapshot belongs to.
+        image_id: Image id from ``docker inspect`` (``Config.Image``).
+        snapshot_image: Snapshot image id (``None`` if commit failed).
+        captured_at: Adapter-recorded snapshot timestamp.
+
+    Returns:
+        64-character lowercase hex SHA-256 digest.
+    """
+    payload = "|".join([
+        str(container_id),
+        str(image_id or ""),
+        str(snapshot_image or ""),
+        captured_at.isoformat(),
+    ])
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 class VPSIntegrationAdapter(BaseIntegrationAdapter):
@@ -163,6 +233,115 @@ class VPSIntegrationAdapter(BaseIntegrationAdapter):
                 }
             await self._shell.run(f"systemctl restart {service}")
             return {"success": True, "action": action, "service": service}
+
+        if action_lower == "restart_container":
+            # L2 (and higher) allowed. L1 must NOT silently restart.
+            container_id = kwargs.get("container_id", "")
+            if not container_id:
+                raise ConfigurationMissingError(
+                    "container_id is required for restart_container"
+                )
+            if self._docker is None:
+                raise ConfigurationMissingError(
+                    "Docker client not configured for restart_container"
+                )
+            _validate_container_id(container_id)
+            await self._docker.restart_container(container_id)
+            return {
+                "success": True,
+                "action": action,
+                "container_id": container_id,
+                "restarted": True,
+                "reversible": True,
+            }
+
+        if action_lower == "remove_container":
+            # L3 minimum (destructive). Pre-delete docker commit snapshot is
+            # the ONLY recovery path because docker rm is irreversible on
+            # running state. A failed commit still triggers the delete,
+            # but the snapshot dict is recorded and ``reversible`` is False.
+            container_id = kwargs.get("container_id", "")
+            if not container_id:
+                raise ConfigurationMissingError(
+                    "container_id is required for remove_container"
+                )
+            if self._docker is None:
+                raise ConfigurationMissingError(
+                    "Docker client not configured for remove_container"
+                )
+            _validate_container_id(container_id)
+
+            # Snapshot step (load-bearing order): get_container FIRST to
+            # capture the source image_id, THEN commit to capture the
+            # filesystem state of the running container, THEN remove.
+            inspect = await self._docker.get_container(container_id)
+            image_id = ""
+            try:
+                image_id = str(inspect.get("Config", {}).get("Image", "") or "")
+            except (AttributeError, TypeError):
+                image_id = ""
+
+            captured_at = _dt.datetime.now(_dt.timezone.utc)
+            commit_result = await self._docker.commit(container_id)
+            committed = bool(commit_result.get("committed", False))
+            snapshot_image = (
+                str(commit_result.get("image_id", "") or "")
+                if committed
+                else None
+            )
+
+            content_hash = _snapshot_content_hash(
+                container_id=container_id,
+                image_id=image_id,
+                snapshot_image=snapshot_image,
+                captured_at=captured_at,
+            )
+
+            snapshot: dict[str, Any] = {
+                "method": "docker commit",
+                "committed": committed,
+                "snapshot_image": snapshot_image,
+                "image_id": image_id,
+                "content_hash": content_hash,
+                "captured_at": captured_at.isoformat(),
+                "stderr": str(commit_result.get("stderr", "") or ""),
+            }
+
+            # Now (and only now) remove the container.
+            await self._docker.remove_container(container_id)
+
+            if committed:
+                return {
+                    "success": True,
+                    "action": action,
+                    "container_id": container_id,
+                    "image_id": image_id,
+                    "snapshot_image": snapshot_image,
+                    "content_hash": content_hash,
+                    "reversible": True,
+                    "restore_method": "docker pull + docker run from image",
+                    "restore_possible": True,
+                    "irreversible_warning": False,
+                    "pre_delete_snapshot": snapshot,
+                }
+            # Commit failed — delete still happened, but restore is
+            # impossible. Adapter must NOT lie about reversibility.
+            return {
+                "success": True,
+                "action": action,
+                "container_id": container_id,
+                "image_id": image_id,
+                "snapshot_image": None,
+                "content_hash": content_hash,
+                "reversible": False,
+                "restore_method": (
+                    "commit failed — restore not possible via docker pull + "
+                    "docker run from image"
+                ),
+                "restore_possible": False,
+                "irreversible_warning": True,
+                "pre_delete_snapshot": snapshot,
+            }
 
         if action_lower in ("system_prune", "docker_rm_all"):
             raise ActionNotSupportedError(

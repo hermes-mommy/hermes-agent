@@ -20,6 +20,8 @@ from typing import Any
 
 import structlog
 
+from src.life_integrations.errors import ChainVerificationError
+
 logger = structlog.get_logger(__name__)
 
 
@@ -44,6 +46,13 @@ class AuditEvent:
         event_hash: SHA256 of this event's canonical payload.
     """
     event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    # NOTE: UUID v4 is intentional — sufficient for uniqueness; DB-side
+    # DEFAULT gen_random_uuid() is a fallback. UUID v7 (time-sortable) is
+    # NOT needed for correctness — the chain is sequenced by the ``sequence``
+    # column in audit.integration_api_log (BIGSERIAL), not by event_id
+    # timestamp. v7 would only help time-based queries, which use
+    # ``occurred_at`` (TIMESTAMPTZ) instead. Keeping v4 avoids the migration
+    # overhead for zero operational gain.
     occurred_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
@@ -65,6 +74,14 @@ class AuditEvent:
 
         Returns:
             Hex digest of SHA256(canonical_payload + previous_hash).
+
+        NOTE: Audit chain uses intra-chain SHA256 only. No external signature
+        (no Ed25519 / RSA / Merkle root / timestamping authority).
+        Chain integrity relies on DB-level WORM enforcement
+        (REVOKE UPDATE, DELETE, TRUNCATE on audit.integration_api_log). For
+        high-integrity use cases (regulatory, adversarial) consider adding
+        external notarization — requires an ADR (architecture decision),
+        not a code change. See brutal-2026-06-28 finding F32.
         """
         payload = {
             "event_id": self.event_id,
@@ -121,7 +138,10 @@ _VALUE_SECRET_PATTERNS = _re.compile(
     r"(ghp_[a-zA-Z0-9]{20,}|sk-[a-zA-Z0-9]{20,}|ya29\.[a-zA-Z0-9]+|"
     r"xox[baprs]-[a-zA-Z0-9-]+|AIza[a-zA-Z0-9_-]{30,}|"
     r"-----BEGIN [A-Z ]*PRIVATE KEY-----|"
-    r"Bearer\s+[a-zA-Z0-9._-]{20,})",
+    r"Bearer\s+[a-zA-Z0-9._-]{20,}|"
+    r"ntn_[A-Za-z0-9]{20,}|"
+    r"secret_[A-Za-z0-9]{20,}|"
+    r"\d{8,}:[A-Za-z0-9_-]{30,})",
     _re.IGNORECASE,
 )
 
@@ -174,15 +194,47 @@ class AuditLogger:
         )
     """
 
-    def __init__(self, writer: Any | None = None) -> None:
+    def __init__(
+        self,
+        writer: Any | None = None,
+        initial_hash: str | None = "",
+    ) -> None:
         """Initialize the audit logger.
 
         Args:
             writer: Callback/protocol with async write_event(event_dict) method.
                      If None, events are logged but not persisted (dev mode).
+            initial_hash: Seed value for the hash chain (P22.1).
+                ``""`` (default) starts a fresh chain.
+                ``None`` from ``IntegrationAuditWriter.seed_last_hash()`` means
+                the DB was unreachable — caller / runtime MUST treat this as
+                DEGRADED (audit logger flips into degraded mode, logs a single
+                warning, and refuses to extend the chain with synthetic writes).
         """
         self._writer = writer
-        self._last_hash: str = ""
+        # DEGRADED mode is set when seed failed (initial_hash=None). In that
+        # case we keep ``self._last_hash = ""`` (don't write to a non-existent
+        # chain with a fake hash) and flag ``self._degraded = True`` so callers
+        # can surface the audit gap to operators. ``self._last_hash`` is
+        # otherwise the seed value.
+        if initial_hash is None:
+            self._last_hash: str = ""
+            self._degraded: bool = True
+            logger.warning(
+                "audit.degraded_mode_activated",
+                reason="seed_last_hash_returned_None",
+            )
+        else:
+            self._last_hash = initial_hash
+            self._degraded = False
+
+    @property
+    def degraded(self) -> bool:
+        """True when audit seeded in DEGRADED mode (DB unreachable at init).
+
+        Health/dashboard endpoints can read this to surface audit gaps.
+        """
+        return getattr(self, "_degraded", False)
 
     async def log_action(
         self,
@@ -261,14 +313,29 @@ class AuditLogger:
         """Return the hash of the last logged event."""
         return self._last_hash
 
-    def verify_chain(self, events: list[AuditEvent]) -> bool:
+    def verify_chain(self, events: list[AuditEvent]) -> None:
         """Verify the integrity of an event chain.
 
         Args:
-            events: List of AuditEvents to verify.
+            events: List of AuditEvents to verify (assumed in chain order).
+
+        Raises:
+            ChainVerificationError: if the chain is broken (a previous_hash
+                does not link to the prior event) or if any event has been
+                tampered with (computed hash mismatches stored event_hash).
+                The exception carries the failing event_id and an excerpt of
+                expected vs. got values so operators can diagnose the gap.
 
         Returns:
-            True if all hashes are valid and chain is unbroken.
+            ``None`` on success (use a positive-assertion in tests:
+            ``verify_chain(events)  # does not raise → valid``).
+
+        Why raise (not bool return):
+            A silent bool-returning verifier enabled DOWNSTREAM code to
+            accidentally treat "verify failed" as "verify passed" by
+            forgetting the return check. Raising makes the failure
+            un-ignorable and forces explicit handling at the audit-of-the-
+            audit site.
         """
         prev_hash = ""
         for event in events:
@@ -279,7 +346,11 @@ class AuditLogger:
                     expected=prev_hash[:16],
                     got=event.previous_hash[:16],
                 )
-                return False
+                raise ChainVerificationError(
+                    f"chain broken at event {event.event_id}: "
+                    f"expected previous_hash={prev_hash[:16]}... "
+                    f"got={event.previous_hash[:16]}..."
+                )
             computed = event.compute_hash()
             if computed != event.event_hash:
                 logger.error(
@@ -288,6 +359,11 @@ class AuditLogger:
                     expected=event.event_hash[:16],
                     got=computed[:16],
                 )
-                return False
+                raise ChainVerificationError(
+                    f"hash mismatch at event {event.event_id}: "
+                    f"stored event_hash={event.event_hash[:16]}... "
+                    f"recomputed={computed[:16]}..."
+                )
             prev_hash = event.event_hash
-        return True
+        # Success: no return value, no exception.
+        return None

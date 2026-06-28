@@ -105,10 +105,64 @@ class CalendarIntegrationAdapter(BaseIntegrationAdapter):
             events = await self._client.list_events(calendar_id, max_results)
             return {"success": True, "action": action, "events": events, "count": len(events)}
 
+        if action_lower == "get_event":
+            calendar_id = kwargs.get("calendar_id", "primary")
+            event_id = kwargs.get("event_id")
+            if not event_id:
+                raise ConfigurationMissingError(
+                    "Calendar get_event requires event_id"
+                )
+            event = await self._client.get_event(calendar_id, event_id)
+            return {"success": True, "action": action, "event": event}
+
         if action_lower == "create_event":
             event_data = kwargs.get("event", {})
             event = await self._client.create_event(event_data)
             return {"success": True, "action": action, "event": event}
+
+        if action_lower == "update_event":
+            calendar_id = kwargs.get("calendar_id", "primary")
+            event_id = kwargs.get("event_id")
+            if not event_id:
+                raise ConfigurationMissingError(
+                    "Calendar update_event requires event_id"
+                )
+            event_data = kwargs.get("event", {})
+            event = await self._client.update_event(
+                calendar_id, event_id, event_data
+            )
+            return {"success": True, "action": action, "event": event}
+
+        if action_lower == "delete_event":
+            calendar_id = kwargs.get("calendar_id", "primary")
+            event_id = kwargs.get("event_id")
+            if not event_id:
+                raise ConfigurationMissingError(
+                    "Calendar delete_event requires event_id"
+                )
+            # CRITICAL ORDER — pre-delete snapshot BEFORE delete
+            snapshot = await self._client.get_event(calendar_id, event_id)
+            import datetime as _dt
+            import hashlib as _hl
+            import json as _json
+            snapshot_json = _json.dumps(
+                snapshot, sort_keys=True, default=str
+            ).encode("utf-8")
+            content_hash = _hl.sha256(snapshot_json).hexdigest()
+            deleted_at = _dt.datetime.now(_dt.timezone.utc).isoformat()
+            await self._client.delete_event(calendar_id, event_id)
+            return {
+                "success": True,
+                "action": action,
+                "event_id": event_id,
+                "calendar_id": calendar_id,
+                "content_hash": content_hash,
+                "reversible": True,
+                "restore_method": "events.insert with preserved iCalUID",
+                "restore_possible": True,
+                "deleted_at": deleted_at,
+                "pre_delete_snapshot": snapshot,
+            }
 
         if action_lower in ("delete_calendar", "clear_calendar"):
             raise ActionNotSupportedError(

@@ -76,7 +76,10 @@ class ConsentGate:
 
         Args:
             consent_checker: Consent ledger checker (optional, fail-closed if None).
-            hard_stop_checker: HARD STOP handler (optional, assumes clear if None).
+            hard_stop_checker: HARD STOP handler (optional, fail-closed for L2+
+                if None — a missing HARD STOP checker cannot be safely treated
+                as "clear"; we close the fail-open asymmetry that previously
+                let a missing checker silently skip HARD STOP for L2/L3).
         """
         self._consent_checker = consent_checker
         self._hard_stop_checker = hard_stop_checker
@@ -101,7 +104,32 @@ class ConsentGate:
         if tier == PermissionTier.L1_READ:
             return True, "L1 read — no consent required"
 
-        # HARD STOP check (blocks all L2+)
+        # L4 is always forbidden — unconditionally, regardless of whether a
+        # HARD STOP checker is configured. Checked BEFORE the fail-closed
+        # branch so L4 reports its dedicated "never autonomous" reason rather
+        # than the generic "no hard_stop_checker" reason (both deny; L4's
+        # reason is more specific and informative).
+        if tier == PermissionTier.L4_FORBIDDEN:
+            logger.warning(
+                "consent_gate.forbidden",
+                tier=tier.name,
+                scope=consent_scope,
+            )
+            return False, "L4_FORBIDDEN — never autonomous"
+
+        # Fail-closed: if no HARD STOP checker is configured, L2/L3 actions are
+        # denied. L1 passed above; L4 was handled above (always forbidden).
+        # This closes the fail-open asymmetry where a missing checker silently
+        # skipped HARD STOP checks for L2/L3 (audit finding F03 — CRITICAL).
+        if self._hard_stop_checker is None and tier >= PermissionTier.L2_WRITE:
+            logger.warning(
+                "consent_gate.no_hard_stop_checker_fail_closed",
+                tier=tier.name,
+                scope=consent_scope,
+            )
+            return False, "hard_stop_checker not configured — fail-closed"
+
+        # HARD STOP check (blocks all L2+ when checker is present)
         if self._hard_stop_checker is not None:
             if self._hard_stop_checker.is_hard_stop_active():
                 logger.warning(
@@ -110,15 +138,6 @@ class ConsentGate:
                     scope=consent_scope,
                 )
                 return False, "HARD STOP active — action blocked"
-
-        # L4 is always forbidden
-        if tier == PermissionTier.L4_FORBIDDEN:
-            logger.warning(
-                "consent_gate.forbidden",
-                tier=tier.name,
-                scope=consent_scope,
-            )
-            return False, "L4_FORBIDDEN — never autonomous"
 
         # L2+ requires consent check (fail-closed if no checker)
         if tier >= PermissionTier.L2_WRITE:

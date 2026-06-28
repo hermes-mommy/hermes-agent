@@ -42,11 +42,12 @@ class TelegramIntegrationAdapter(BaseIntegrationAdapter):
         promote_member (L4): FORBIDDEN — admin delegation
     """
 
-    def __init__(self, telegram_client: Any | None = None) -> None:
+    def __init__(self, telegram_client: Any | None = None, archive_chat_id: Any = None) -> None:
         """Initialize with optional Telegram bot client.
 
         Args:
             telegram_client: Telegram Bot API client (None = CONFIG_MISSING).
+            archive_chat_id: Chat ID to copy messages to before delete (None=no archive).
         """
         config = IntegrationConfig(
             integration_id="telegram",
@@ -69,6 +70,7 @@ class TelegramIntegrationAdapter(BaseIntegrationAdapter):
         )
         super().__init__(config)
         self._client = telegram_client
+        self._archive_chat_id = archive_chat_id
 
     async def health_check(self) -> IntegrationHealth:
         """Check Telegram connectivity (CONFIG_MISSING if no client)."""
@@ -108,6 +110,98 @@ class TelegramIntegrationAdapter(BaseIntegrationAdapter):
             text = kwargs.get("text", "")
             message_id = await self._client.send_message(chat_id, text)
             return {"success": True, "action": action, "message_id": message_id}
+
+        if action_lower == "edit_message":
+            chat_id = kwargs.get("chat_id")
+            message_id = kwargs.get("message_id")
+            text = kwargs.get("text", "")
+            await self._client.edit_message(chat_id, message_id, text)
+            return {
+                "success": True,
+                "action": action,
+                "chat_id": chat_id,
+                "message_id": message_id,
+            }
+
+        if action_lower == "send_photo":
+            chat_id = kwargs.get("chat_id")
+            photo = kwargs.get("photo")
+            caption = kwargs.get("caption", "")
+            if photo is None:
+                raise ConfigurationMissingError(
+                    "Telegram send_photo requires photo"
+                )
+            message_id = await self._client.send_photo(
+                chat_id, photo, caption=caption
+            )
+            return {
+                "success": True,
+                "action": action,
+                "chat_id": chat_id,
+                "message_id": message_id,
+            }
+
+        if action_lower == "send_document":
+            chat_id = kwargs.get("chat_id")
+            document = kwargs.get("document")
+            caption = kwargs.get("caption", "")
+            if document is None:
+                raise ConfigurationMissingError(
+                    "Telegram send_document requires document"
+                )
+            message_id = await self._client.send_document(
+                chat_id, document, caption=caption
+            )
+            return {
+                "success": True,
+                "action": action,
+                "chat_id": chat_id,
+                "message_id": message_id,
+            }
+
+        if action_lower == "delete_message":
+            chat_id = kwargs.get("chat_id")
+            message_id = kwargs.get("message_id")
+            if not chat_id or not message_id:
+                raise ConfigurationMissingError(
+                    "Telegram delete_message requires chat_id and message_id"
+                )
+            import datetime as _dt
+            import hashlib as _hl
+            content = kwargs.get("content", "")
+            content_hash = _hl.sha256(
+                str(content).encode("utf-8")
+            ).hexdigest()
+            deleted_at = _dt.datetime.now(_dt.timezone.utc).isoformat()
+            # Pre-delete snapshot via copyMessage (only if archive_chat_id set)
+            snapshot: dict[str, Any]
+            if self._archive_chat_id and hasattr(self._client, "copy_message"):
+                snapshot_message_id = await self._client.copy_message(
+                    chat_id, message_id, self._archive_chat_id
+                )
+                snapshot = {
+                    "method": "copyMessage to archive chat",
+                    "archive_chat_id": self._archive_chat_id,
+                    "snapshot_message_id": snapshot_message_id,
+                    "content_hash": content_hash,
+                }
+                restore_possible = True
+            else:
+                snapshot = {"content_hash": content_hash}
+                restore_possible = False
+            await self._client.delete_message(chat_id, message_id)
+            return {
+                "success": True,
+                "action": action,
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "content_hash": content_hash,
+                "deleted_at": deleted_at,
+                "reversible": restore_possible,
+                "restore_possible": restore_possible,
+                "irreversible_warning": True,
+                "pre_delete_snapshot": snapshot,
+            }
 
         if action_lower in ("promote_member",):
             raise ActionNotSupportedError(

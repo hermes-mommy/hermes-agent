@@ -15,6 +15,8 @@
 
 ## P20 Regression Checks (5-min window post-P22-restart 23:16:36 WIB)
 
+> **⚠️ Soak caveat (added 2026-06-28, brutal audit F31):** The observation window below is **~5 minutes post-restart (23:16:36 WIB)**, NOT a 6-hour soak. The metrics count events backwards from "now" within this window — they do not represent a continuous, undisturbed multi-hour run. `NRestarts=0` is valid and verified, but it measures **post-restart stability only** (the systemd counter resets on every restart, and two restarts occurred on 2026-06-27: 23:16:36 WIB for P22 deployment, and a lockstep auto-restart at 23:50:19 WIB). A proper 6-hour soak should be conducted post-fix to verify long-term stability. This caveat does not invalidate the NRestarts=0 or memory findings — it bounds what they prove.
+
 | Check | Expected | Actual | ✓ |
 |---|---|---|---|
 | `guinevere-core` active | active | active | ✓ |

@@ -29,28 +29,58 @@ P22's protocol (no shim needed).
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
+import time
+import uuid
 from typing import Any
 
 import structlog
 
 from src.life_integrations._shims import ConsentGateShim, HardStopShim
-from src.life_integrations.secrets import EnvSecretProvider
 from src.life_integrations.wiring import build_action_router, build_default_registry
 
 logger = structlog.get_logger(__name__)
 
 
+# Per-adapter CONFIG_MISSING hints — map integration_id → (canonical env-var
+# name from onboarding_manifest, operator remediation note). Logged alongside
+# the generic config_missing signal so operators can wire credentials without
+# scanning the manifest. NEVER log secret VALUES — only env-var NAMES.
+_ADAPTER_MISSING_HINTS: dict[str, tuple[str, str]] = {
+    "gmail": ("GMAIL_OAUTH_TOKEN_PATH", "operator-gated OAuth token path"),
+    "calendar": ("CALENDAR_OAUTH_TOKEN_PATH", "operator-gated OAuth token path"),
+    "drive": ("DRIVE_OAUTH_TOKEN_PATH", "operator-gated OAuth token path"),
+    "notion": ("NOTION_TOKEN", "operator-gated integration token"),
+    "telegram": ("TELEGRAM_BOT_TOKEN", "operator-gated bot token"),
+    "github": ("GITHUB_PAT", "operator-gated PAT"),
+    "browser": ("BRAVE_API_KEY/EXA_API_KEY/OBSCURA_CDP_URL",
+                "3 MCP instance shims needed (search/fetch/CDP)"),
+    "memory": ("DATABASE_URL", "memory pipeline shim needs p22_session_factory"),
+    "finance": ("DATABASE_URL", "finance read shim needs p22_session_factory"),
+    "whatsapp": ("WHATSAPP_BRIDGE_URL", "whatsapp bridge shim needs testing"),
+}
+
+
 class DockerClientShim:
     """Bridge src.mcp.tools.docker_tool module functions to instance protocol.
 
-    The vps_adapter calls ``self._docker.list_containers()``. The in-tree
+    The vps_adapter calls ``self._docker.<method>()``. The in-tree
     docker_tool exposes module-level functions. This shim forwards.
+
+    Protocol surface (post-P22.3):
+        list_containers       — docker ps
+        restart_container     — docker restart <id>
+        get_container         — docker inspect <id>
+        commit                — docker commit <id>
+        remove_container      — docker rm <id>
+
+    Each method returns a dict shaped for the vps_adapter contracts (see
+    tests/p22/test_vps_dispatch.py for the canonical contract).
     """
 
     async def list_containers(self) -> list[dict[str, Any]]:
-        import json
-
         from src.mcp.tools.docker_tool import _run_docker
 
         result = await _run_docker(["ps", "--format", "{{json .}}"])
@@ -65,6 +95,70 @@ class DockerClientShim:
             except json.JSONDecodeError:
                 continue
         return containers
+
+    async def restart_container(self, container_id: str) -> dict[str, Any]:
+        from src.mcp.tools.docker_tool import _run_docker
+
+        result = await _run_docker(["restart", container_id])
+        exit_code = int(result.get("exit_code", -1))
+        ok = exit_code == 0
+        return {
+            "status": "ok" if ok else "error",
+            "container": container_id,
+            "exit_code": exit_code,
+            "stderr": result.get("stderr", ""),
+        }
+
+    async def get_container(self, container_id: str) -> dict[str, Any]:
+        from src.mcp.tools.docker_tool import _run_docker
+
+        result = await _run_docker(["inspect", container_id])
+        stdout = result.get("stdout", "") if isinstance(result, dict) else ""
+        if not stdout:
+            return {"Id": "", "Config": {"Image": ""}, "Image": ""}
+        try:
+            data = json.loads(stdout)
+        except json.JSONDecodeError:
+            return {"Id": "", "Config": {"Image": ""}, "Image": ""}
+        if isinstance(data, list) and data:
+            first = data[0]
+            if isinstance(first, dict):
+                return first
+            return {"Id": "", "Config": {"Image": ""}, "Image": ""}
+        if isinstance(data, dict):
+            return data
+        return {"Id": "", "Config": {"Image": ""}, "Image": ""}
+
+    async def commit(self, container_id: str) -> dict[str, Any]:
+        from src.mcp.tools.docker_tool import _run_docker
+
+        snapshot_tag = f"guinevere-snap-{int(time.time())}-{uuid.uuid4().hex[:8]}"
+        result = await _run_docker(["commit", container_id, snapshot_tag])
+        exit_code = int(result.get("exit_code", -1))
+        committed = exit_code == 0
+        image_id = (
+            f"sha256:{snapshot_tag}" if committed else None
+        )
+        stderr = str(result.get("stderr", "") or "")
+        return {
+            "committed": committed,
+            "image_id": image_id,
+            "snapshot_tag": snapshot_tag,
+            "stderr": stderr,
+        }
+
+    async def remove_container(self, container_id: str) -> dict[str, Any]:
+        from src.mcp.tools.docker_tool import _run_docker
+
+        result = await _run_docker(["rm", container_id])
+        exit_code = int(result.get("exit_code", -1))
+        ok = exit_code == 0
+        return {
+            "status": "ok" if ok else "error",
+            "container": container_id,
+            "exit_code": exit_code,
+            "stderr": result.get("stderr", ""),
+        }
 
 
 class ShellClientShim:
@@ -186,7 +280,15 @@ async def build_runtime_registry(
         #   testing before activation — left None (CONFIG_MISSING) honestly.
         for missing in ("gmail", "calendar", "drive", "notion", "telegram",
                         "github", "browser", "memory", "finance", "whatsapp"):
-            logger.info("p22.adapter.config_missing", adapter=missing)
+            env_var, hint = _ADAPTER_MISSING_HINTS.get(
+                missing, ("<unknown>", "no hint available")
+            )
+            logger.info(
+                "p22.adapter.config_missing",
+                adapter=missing,
+                missing_env=env_var,
+                hint=hint,
+            )
 
         registry = await build_default_registry(
             discord_rest_client=discord_client,
@@ -207,14 +309,14 @@ async def build_runtime_registry(
             import redis as sync_redis_lib
             import urllib.parse as _urlparse
             _rurl = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
-            _rpw = os.environ.get("REDIS_PASSWORD", "")
             _parsed = _urlparse.urlparse(_rurl)
             _host = _parsed.hostname or "localhost"
             _port = _parsed.port or 6379
             _db = int(_parsed.path.lstrip("/") or "0")
             sync_redis = sync_redis_lib.Redis(
                 host=_host, port=_port, db=_db,
-                password=_rpw or None, socket_timeout=2, socket_connect_timeout=2,
+                password=(os.environ.get("REDIS_PASSWORD", "") or None),
+                socket_timeout=2, socket_connect_timeout=2,
             )
             sync_redis.ping()  # verify connectivity
             logger.info("p22.hard_stop_shim.sync_redis_ready")

@@ -79,10 +79,13 @@ class HardStopShim:
     def is_hard_stop_active(self) -> bool:
         """Return True if ANY HARD STOP source is active.
 
-        Conservative: if we cannot determine state (no sources wired), we
-        return False (P22 ConsentGate treats None checker as "assumes clear"
-        per consent.py:79), but the parent factory MUST wire at least one
-        source — a bare shim with no sources is a wiring bug logged loudly.
+        Fail-closed: if NO source is wired (neither Redis nor handler), we
+        return True (HARD STOP active) — a shim with no sources cannot prove
+        clear and the safest interpretation is "blocked". Similarly, if the
+        handler check itself raises we treat HARD STOP as active rather than
+        assuming clear (the checker being broken is itself a safety event).
+        When a healthy Redis OR handler is wired and reports not-active, we
+        still return False (legitimate "HARD STOP not active" = allow).
         """
         # Source 1: Redis global key (P20 authority) — SYNC only
         redis_active = False
@@ -120,17 +123,21 @@ class HardStopShim:
             try:
                 handler_active = bool(self._handler.is_safe)
             except Exception as e:  # noqa: BLE001
-                logger.warning(
-                    "hard_stop_shim.handler_check_failed",
+                logger.error(
+                    "hard_stop_shim.handler_check_failed_fail_closed",
                     error=str(e),
                 )
+                # Fail-closed: when the checker itself is broken, treat HARD
+                # STOP as active rather than assuming clear. Safety > uptime.
+                handler_active = True
 
         if self._redis is None and self._handler is None:
-            logger.error("hard_stop_shim.no_source_wired")
-            # No source => cannot prove clear => fail-closed for L2+ would be
-            # safer, but ConsentGate.py:79 documents None checker as "assumes
-            # clear". We surface the wiring bug loudly instead of silently.
-            return False
+            logger.error(
+                "hard_stop_shim.no_source_fail_closed",
+                reason="neither redis nor handler wired — failing closed",
+            )
+            # No source wired => cannot prove clear => fail-closed.
+            return True
 
         return redis_active or handler_active
 
@@ -138,6 +145,8 @@ class HardStopShim:
         """Async variant for async Redis clients.
 
         Checks the Redis global key with await, then the in-process handler.
+        Fail-closed (parallel to the sync path): no source wired or handler
+        check raising => HARD STOP treated as active.
         """
         redis_active = False
         if self._redis is not None:
@@ -161,11 +170,19 @@ class HardStopShim:
             try:
                 handler_active = bool(self._handler.is_safe)
             except Exception as e:  # noqa: BLE001
-                logger.warning("hard_stop_shim.handler_check_failed", error=str(e))
+                logger.error(
+                    "hard_stop_shim.handler_check_failed_fail_closed",
+                    error=str(e),
+                )
+                # Fail-closed: broken checker => treat HARD STOP as active.
+                handler_active = True
 
         if self._redis is None and self._handler is None:
-            logger.error("hard_stop_shim.no_source_wired")
-            return False
+            logger.error(
+                "hard_stop_shim.no_source_fail_closed",
+                reason="neither redis nor handler wired — failing closed",
+            )
+            return True
 
         return redis_active or handler_active
 

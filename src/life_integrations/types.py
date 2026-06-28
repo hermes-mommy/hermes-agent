@@ -43,6 +43,12 @@ class IntegrationStatus(str, Enum):
     CONSENT_REVOKED = "consent_revoked"
     HARD_STOP = "hard_stop"
     DISABLED = "disabled"
+    # P22.3 — additive per-capability status (do not break existing dashboard JSON)
+    CONSENT_MISSING = "consent_missing"
+    CLIENT_MISSING = "client_missing"
+    CONFIG_INVALID = "config_invalid"
+    DEFERRED_FOR_SAFETY = "deferred_for_safety"
+    UNSUPPORTED_BY_PROVIDER = "unsupported_by_provider"
 
 
 class IntegrationHealth(str, Enum):

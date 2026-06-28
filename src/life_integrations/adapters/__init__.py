@@ -33,6 +33,13 @@ from src.life_integrations.adapters.filesystem_adapter import (
     FilesystemIntegrationAdapter,
 )
 
+# P22.3 onboarding manifest (B5) — re-exported for /integrations/missing.
+from src.life_integrations.adapters.onboarding_manifest import (  # noqa: E402
+    ONBOARDING_MANIFEST,
+    AdapterOnboarding,
+    EnvVarHint,
+)
+
 __all__ = [
     "BrowserIntegrationAdapter",
     "CalendarIntegrationAdapter",
@@ -47,4 +54,8 @@ __all__ = [
     "TelegramIntegrationAdapter",
     "VPSIntegrationAdapter",
     "WhatsAppIntegrationAdapter",
+    # P22.3 onboarding manifest (B5)
+    "ONBOARDING_MANIFEST",
+    "AdapterOnboarding",
+    "EnvVarHint",
 ]

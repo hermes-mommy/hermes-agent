@@ -13,7 +13,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import structlog
+
 from src.life_integrations.types import PermissionTier
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -45,7 +49,7 @@ class SemanticActionClassifier:
 
     # Static mapping for known provider operations
     _PROVIDER_TIER_MAP: dict[str, dict[str, PermissionTier]] = {
-        "google_calendar": {
+        "calendar": {
             "list_events": PermissionTier.L1_READ,
             "get_event": PermissionTier.L1_READ,
             "create_event": PermissionTier.L2_WRITE,
@@ -54,7 +58,7 @@ class SemanticActionClassifier:
             "delete_calendar": PermissionTier.L4_FORBIDDEN,
             "clear_calendar": PermissionTier.L4_FORBIDDEN,
         },
-        "google_drive": {
+        "drive": {
             "list_files": PermissionTier.L1_READ,
             "get_file": PermissionTier.L1_READ,
             "create_file": PermissionTier.L2_WRITE,
@@ -133,6 +137,7 @@ class SemanticActionClassifier:
         },
         "filesystem": {
             "read": PermissionTier.L1_READ,
+            "list_dir": PermissionTier.L1_READ,
             "write": PermissionTier.L2_WRITE,
             "delete": PermissionTier.L3_DESTRUCTIVE,
         },
@@ -151,6 +156,7 @@ class SemanticActionClassifier:
     _WRITE_KEYWORDS = (
         "create", "send", "write", "update", "edit", "modify", "append",
         "insert", "add", "set", "move", "archive", "trash", "record",
+        "store", "store_fact",
     )
 
     def classify(
@@ -158,14 +164,18 @@ class SemanticActionClassifier:
         provider: str,
         action: str,
         auth_level: str | None = None,
+        integration_id: str | None = None,
         **context: Any,
     ) -> ActionClassification:
         """Classify an action's permission tier semantically.
 
         Args:
-            provider: Integration provider (e.g., "github", "gmail").
+            provider: Integration provider display name (e.g., "Google", "GitHub", "Local").
             action: Action name (e.g., "delete_message").
             auth_level: MCP AuthLevel (informational only, not the gate).
+            integration_id: Integration ID (e.g., "filesystem", "calendar").
+                The static tier map is keyed by integration_id, so this is
+                preferred for lookup when available. Falls back to provider.
             **context: Additional context (side_effects, reversibility).
 
         Returns:
@@ -177,8 +187,21 @@ class SemanticActionClassifier:
         """
         action_lower = action.lower()
 
-        # 1. Check static provider map first (most reliable)
-        provider_map = self._PROVIDER_TIER_MAP.get(provider.lower(), {})
+        # 1. Check static provider map first (most reliable). The map is keyed
+        # by integration_id (e.g. "filesystem", "calendar"), so prefer
+        # integration_id for lookup; fall back to provider for callers that
+        # only pass the display-name provider.
+        lookup_keys: tuple[str, ...] = ()
+        if integration_id:
+            lookup_keys = (integration_id.lower(), provider.lower())
+        else:
+            lookup_keys = (provider.lower(),)
+        provider_map: dict[str, PermissionTier] = {}
+        for _key in lookup_keys:
+            _mapped = self._PROVIDER_TIER_MAP.get(_key)
+            if _mapped:
+                provider_map = _mapped
+                break
         if action_lower in provider_map:
             tier = provider_map[action_lower]
             return ActionClassification(
@@ -209,10 +232,21 @@ class SemanticActionClassifier:
                 method="semantic",
             )
 
-        # 3. Default to L1 (read) for unknown actions
+        # 3. Default to L2_WRITE for unknown actions (F04 brutal-audit fix)
+        # Rationale: an unknown action must NOT silently bypass consent by
+        # landing in L1_READ. L2_WRITE forces the consent gate (write-notify)
+        # so any new/unmapped action is at least surfaced to the operator.
+        # L4 would be too restrictive (blocks legitimate unknown reads).
+        logger.warning(
+            "classifier.unknown_action",
+            action=action,
+            provider=provider,
+            tier="L2_WRITE",
+            reason="unknown action — defaulting to L2_WRITE (consent required)",
+        )
         return ActionClassification(
-            tier=PermissionTier.L1_READ,
-            reason=f"semantic: default L1 for unknown action '{action_lower}'",
+            tier=PermissionTier.L2_WRITE,
+            reason=f"semantic: default L2_WRITE for unknown action '{action_lower}'",
             method="semantic_default",
         )
 

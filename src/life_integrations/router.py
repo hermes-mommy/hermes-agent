@@ -131,10 +131,12 @@ class ActionRouter:
 
         provider = adapter.config.provider
 
-        # Classify action semantically (NOT AuthLevel-only)
+        # Classify action semantically (NOT AuthLevel-only). Pass integration_id
+        # so the static tier map (keyed by integration_id) is consulted.
         classification = self._classifier.classify(
             provider=provider,
             action=action,
+            integration_id=integration_id,
         )
         tier = classification.tier
 
@@ -219,6 +221,61 @@ class ActionRouter:
         result["integration_id"] = integration_id
         return result
 
+    async def dry_run(
+        self,
+        integration_id: str,
+        action: str,
+        project_id: uuid.UUID | None = None,
+        consent_scope: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Run the gate pipeline WITHOUT executing the adapter (A6).
+
+        Performs classify -> derive_scope -> consent_gate.check but stops
+        short of calling the adapter. No audit row is written. Returns
+        {tier, consent_scope, allowed, reason, would_execute:False, ...}.
+        """
+        resolved_project = await self._project_context.resolve_or_default(
+            project_id
+        )
+        try:
+            adapter = self._registry.get(integration_id)
+        except KeyError as e:
+            return {
+                "tier": "UNKNOWN",
+                "consent_scope": consent_scope or "",
+                "allowed": False,
+                "reason": f"integration not registered: {e}",
+                "error": f"integration not registered: {e}",
+                "would_execute": False,
+                "integration_id": integration_id,
+                "action": action,
+            }
+        provider = adapter.config.provider
+        classification = self._classifier.classify(
+            provider=provider, action=action,
+            integration_id=integration_id,
+        )
+        tier = classification.tier
+        if consent_scope is None:
+            consent_scope = self._derive_consent_scope(
+                integration_id, action, tier
+            )
+        allowed, reason = await self._consent_gate.check(
+            tier=tier,
+            consent_scope=consent_scope,
+            project_id=resolved_project,
+        )
+        return {
+            "tier": tier.name,
+            "consent_scope": consent_scope,
+            "allowed": allowed,
+            "reason": reason,
+            "would_execute": False,
+            "integration_id": integration_id,
+            "action": action,
+        }
+
     def _derive_consent_scope(
         self,
         integration_id: str,
@@ -266,4 +323,11 @@ class ActionRouter:
             )
         domain = domain_map.get(integration_id, integration_id)
 
+        # A1 fix: canonical scope collapses to 3-segment when domain ==
+        # integration_id (memory/finance/filesystem), matching the adapter
+        # declarations; 4-segment otherwise. Without this collapse the derived
+        # scope (e.g. consent.memory.memory.write) mismatches the adapter-declared
+        # scope (consent.memory.write) and the exact-match consent SQL denies.
+        if domain == integration_id:
+            return f"consent.{domain}.{tier_suffix}"
         return f"consent.{domain}.{integration_id}.{tier_suffix}"

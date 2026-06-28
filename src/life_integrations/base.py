@@ -117,6 +117,75 @@ class BaseIntegrationAdapter(ABC):
         """
         ...
 
+    # ── A5: capability-matrix helpers (P22.3) ──────────────────────────────
+
+    def _known_actions(self) -> tuple[str, ...]:
+        """Return the action names this adapter supports (A5)."""
+        from src.life_integrations.permissions import SemanticActionClassifier
+
+        provider_map = SemanticActionClassifier._PROVIDER_TIER_MAP.get(
+            self.integration_id, {}
+        )
+        return tuple(provider_map.keys())
+
+    async def _resolve_runtime_status(
+        self,
+        action: str,
+        tier: "PermissionTier",
+        *,
+        consent_checker: Any = None,
+        hard_stop_checker: Any = None,
+        project_id: uuid.UUID | None = None,
+    ) -> "IntegrationStatus":
+        """Per-action runtime status for the capability matrix (A5).
+
+        Priority (fail-closed; never fake HEALTHY for CONFIG_MISSING):
+        (a) HARD STOP active -> DEFERRED_FOR_SAFETY
+        (b) client/secret unavailable (health_check == UNKNOWN) -> CLIENT_MISSING
+        (c) action not in _known_actions -> UNSUPPORTED_BY_PROVIDER
+        (d) tier >= L2 and consent not granted (or no checker) -> CONSENT_MISSING
+        (e) else HEALTHY. CHEAP: no live provider API calls.
+        """
+        # (a) HARD STOP
+        if hard_stop_checker is not None:
+            try:
+                hs = hard_stop_checker()
+                if hasattr(hs, "__await__"):
+                    hs = await hs
+                if hs:
+                    return IntegrationStatus.DEFERRED_FOR_SAFETY
+            except Exception:  # noqa: BLE001 — fail-closed on checker error
+                return IntegrationStatus.DEFERRED_FOR_SAFETY
+        # (b) client/secret unavailable
+        try:
+            health = await self.health_check()
+        except Exception:  # noqa: BLE001
+            health = IntegrationHealth.UNKNOWN
+        if health == IntegrationHealth.UNKNOWN:
+            return IntegrationStatus.CLIENT_MISSING
+        # (c) action not supported by this provider
+        if action not in self._known_actions():
+            return IntegrationStatus.UNSUPPORTED_BY_PROVIDER
+        # (d) L2+ requires consent (fail-closed if no checker / not granted)
+        if tier >= PermissionTier.L2_WRITE:
+            if consent_checker is None:
+                return IntegrationStatus.CONSENT_MISSING
+            try:
+                from src.life_integrations.router import ActionRouter
+                scope = ActionRouter._derive_consent_scope(
+                    ActionRouter.__new__(ActionRouter),
+                    self.integration_id, action, tier,
+                )
+                granted = consent_checker(scope=scope, project_id=project_id)
+                if hasattr(granted, "__await__"):
+                    granted = await granted
+                if not granted:
+                    return IntegrationStatus.CONSENT_MISSING
+            except Exception:  # noqa: BLE001 — fail-closed
+                return IntegrationStatus.CONSENT_MISSING
+        # (e) healthy
+        return IntegrationStatus.HEALTHY
+
     async def check_status(self) -> IntegrationStatus:
         """Update and return the current runtime status.
 

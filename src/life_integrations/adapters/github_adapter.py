@@ -9,7 +9,10 @@ Consent: consent.sourcecode.github.{read,write,delete}
 
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 import structlog
@@ -126,6 +129,152 @@ class GitHubIntegrationAdapter(BaseIntegrationAdapter):
         if action_lower == "list_issues":
             issues = await self._client.list_issues(owner, repo)
             return {"success": True, "action": action, "issues": issues, "count": len(issues)}
+
+        if action_lower == "list_prs":
+            prs = await self._client.list_prs(owner, repo)
+            return {"success": True, "action": action, "prs": prs, "count": len(prs)}
+
+        if action_lower == "get_repo":
+            repo_meta = await self._client.get_repo(owner, repo)
+            payload = dict(repo_meta) if isinstance(repo_meta, dict) else {}
+            payload["success"] = True
+            payload["action"] = action
+            return payload
+
+        if action_lower == "merge_pr":
+            pr_number = kwargs.get("pr_number")
+            if not isinstance(pr_number, int):
+                raise ConfigurationMissingError(
+                    "merge_pr requires integer pr_number"
+                )
+            merge_method = kwargs.get("merge_method", "merge")
+
+            # Pre-merge snapshot: capture head_sha + base_sha BEFORE merging,
+            # so ``git revert -m 1 <merge_commit_sha>`` can re-create the
+            # state of main immediately prior to the merge.
+            pr_meta = await self._client.get_pr(owner, repo, pr_number)
+            head = (pr_meta.get("head") or {}) if isinstance(pr_meta, dict) else {}
+            base = (pr_meta.get("base") or {}) if isinstance(pr_meta, dict) else {}
+            head_sha = head.get("sha")
+            base_sha = base.get("sha")
+            head_ref = head.get("ref")
+            base_ref = base.get("ref")
+            snapshot_payload = {
+                "pr_number": pr_number,
+                "head_sha": head_sha,
+                "base_sha": base_sha,
+                "head_ref": head_ref,
+                "base_ref": base_ref,
+            }
+            content_hash = hashlib.sha256(
+                json.dumps(snapshot_payload, sort_keys=True).encode("utf-8")
+            ).hexdigest()
+            snapshot = dict(snapshot_payload)
+            snapshot["content_hash"] = content_hash
+            snapshot["captured_at"] = datetime.now(timezone.utc).isoformat()
+
+            merge_response = await self._client.merge_pr(
+                owner, repo, pr_number, merge_method=merge_method
+            )
+            merged = bool(merge_response.get("merged")) if isinstance(
+                merge_response, dict
+            ) else False
+            merge_commit_sha = (
+                merge_response.get("sha") if isinstance(merge_response, dict) else None
+            )
+            if merged and merge_commit_sha:
+                restore_method = f"git revert -m 1 {merge_commit_sha}"
+                reversible = True
+                restore_possible = True
+                irreversible_warning = False
+            else:
+                restore_method = (
+                    "merge did not confirm (no merge_commit_sha returned); "
+                    "manual intervention required"
+                )
+                reversible = False
+                restore_possible = False
+                irreversible_warning = True
+
+            return {
+                "success": True,
+                "action": action,
+                "pr_number": pr_number,
+                "merged": merged,
+                "merge_commit_sha": merge_commit_sha,
+                "reversible": reversible,
+                "restore_method": restore_method,
+                "restore_possible": restore_possible,
+                "irreversible_warning": irreversible_warning,
+                "pre_delete_snapshot": snapshot,
+            }
+
+        if action_lower == "delete_branch":
+            branch = kwargs.get("branch")
+            if not branch:
+                raise ConfigurationMissingError(
+                    "delete_branch requires non-empty 'branch' kwarg"
+                )
+
+            # Pre-delete snapshot: capture head_sha + commit_url BEFORE
+            # deleting so ``git push origin <head_sha>:<branch>`` can
+            # recover the ref via the captured SHA.
+            branch_meta = await self._client.get_branch(owner, repo, branch)
+            commit = (
+                (branch_meta.get("commit") or {})
+                if isinstance(branch_meta, dict)
+                else {}
+            )
+            head_sha = commit.get("sha")
+            commit_url = commit.get("url")
+            snapshot_payload = {
+                "branch": branch,
+                "head_sha": head_sha,
+                "commit_sha": head_sha,
+                "commit_url": commit_url,
+            }
+            content_hash = hashlib.sha256(
+                json.dumps(snapshot_payload, sort_keys=True).encode("utf-8")
+            ).hexdigest()
+            snapshot = dict(snapshot_payload)
+            snapshot["content_hash"] = content_hash
+            snapshot["captured_at"] = datetime.now(timezone.utc).isoformat()
+
+            delete_response = await self._client.delete_branch(owner, repo, branch)
+            deleted = bool(delete_response.get("deleted")) if isinstance(
+                delete_response, dict
+            ) else False
+            if deleted and head_sha:
+                restore_method = (
+                    f"git push origin {head_sha}:{branch}"
+                )
+                reversible = True
+                restore_possible = True
+                reflog_available = True
+                irreversible_warning = False
+            else:
+                restore_method = (
+                    "branch delete did not confirm (deleted=False or no head_sha); "
+                    "manual intervention required"
+                )
+                reversible = False
+                restore_possible = False
+                reflog_available = False
+                irreversible_warning = True
+
+            return {
+                "success": True,
+                "action": action,
+                "branch": branch,
+                "deleted": deleted,
+                "head_sha": head_sha,
+                "reversible": reversible,
+                "restore_method": restore_method,
+                "restore_possible": restore_possible,
+                "reflog_available": reflog_available,
+                "irreversible_warning": irreversible_warning,
+                "pre_delete_snapshot": snapshot,
+            }
 
         if action_lower == "create_issue":
             title = kwargs.get("title")

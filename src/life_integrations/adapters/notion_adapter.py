@@ -125,6 +125,46 @@ class NotionIntegrationAdapter(BaseIntegrationAdapter):
                 "content_hash": content_hash,
             }
 
+        if action_lower == "create_page":
+            parent = kwargs.get("parent", {})
+            properties = kwargs.get("properties", {})
+            children = kwargs.get("children", [])
+            page = await self._client.create_page(parent, properties, children)
+            page_id = (
+                page.get("id") if isinstance(page, dict) else str(page)
+            )
+            return {
+                "success": True,
+                "action": action,
+                "page": page,
+                "page_id": page_id,
+                "reversible": True,
+                "restore_method": "archive via in_trash:true",
+            }
+
+        if action_lower == "update_page":
+            page_id = kwargs.get("page_id")
+            properties = kwargs.get("properties", {})
+            await self._client.update_page(page_id, properties)
+            return {
+                "success": True,
+                "action": action,
+                "page_id": page_id,
+                "reversible": True,
+                "restore_method": "archive via in_trash:true",
+            }
+
+        if action_lower == "append_blocks":
+            block_id = kwargs.get("block_id") or kwargs.get("page_id")
+            children = kwargs.get("children", [])
+            await self._client.append_blocks(block_id, children)
+            return {
+                "success": True,
+                "action": action,
+                "block_id": block_id,
+                "count": len(children),
+            }
+
         if action_lower in ("delete_view",):
             raise ActionNotSupportedError(
                 f"{action} is L4_FORBIDDEN — permanent, no restore"

@@ -39,7 +39,6 @@ from src.life_integrations.project_context import ProjectContext
 from src.life_integrations.registry import IntegrationRegistry
 from src.life_integrations.router import ActionRouter
 from src.life_integrations.scheduler import IntegrationScheduler
-from src.life_integrations.secrets import EnvSecretProvider
 
 logger = structlog.get_logger(__name__)
 

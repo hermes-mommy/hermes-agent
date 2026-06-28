@@ -148,6 +148,57 @@ class GmailIntegrationAdapter(BaseIntegrationAdapter):
                 "content_hash": content_hash,
             }
 
+        if action_lower == "modify_labels":
+            message_id = kwargs.get("message_id")
+            if not message_id:
+                raise ConfigurationMissingError(
+                    "Gmail modify_labels requires message_id"
+                )
+            add_labels = list(kwargs.get("add_labels") or [])
+            remove_labels = list(kwargs.get("remove_labels") or [])
+            await self._gmail_service.modify_labels(
+                message_id,
+                add_labels=add_labels,
+                remove_labels=remove_labels,
+            )
+            return {
+                "success": True,
+                "action": action,
+                "message_id": message_id,
+                "labels_added": add_labels,
+                "labels_removed": remove_labels,
+                "reversible": True,
+                "restore_method": "gmail.users.messages.modify (inverse)",
+            }
+
+        if action_lower == "watch":
+            topic_name = kwargs.get("topic_name")
+            if not topic_name:
+                raise ConfigurationMissingError(
+                    "Gmail watch requires topic_name"
+                )
+            label_ids = kwargs.get("label_ids")
+            watch_result = await self._gmail_service.watch(
+                topic_name, label_ids=label_ids
+            )
+            return {
+                "success": True,
+                "action": action,
+                "topic_name": topic_name,
+                "expiration": (
+                    watch_result.get("expiration")
+                    if isinstance(watch_result, dict)
+                    else None
+                ),
+                "history_id": (
+                    watch_result.get("historyId")
+                    if isinstance(watch_result, dict)
+                    else None
+                ),
+                "renewal_required": True,
+                "renewal_window_days": 7,
+            }
+
         if action_lower in ("permanent_delete", "stop_watch"):
             raise ActionNotSupportedError(
                 f"{action} is L4/L3 gated — requires explicit approval"

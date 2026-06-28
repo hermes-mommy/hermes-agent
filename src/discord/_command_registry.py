@@ -250,6 +250,55 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
     # Hermes Phase 1: Conversation session commands
     CommandSpec("core", "new", "Reset conversation history and start fresh."),
     CommandSpec("core", "history", "Show recent conversation turns with Mommy."),
+    # P22 Phase B: Life Integration Hub commands
+    CommandSpec(
+        "integration",
+        "integration-status",
+        "Show per-adapter lifecycle status and tier for P22 integrations.",
+    ),
+    CommandSpec(
+        "integration",
+        "integration-capabilities",
+        "Show the 13×L1-L4 capability matrix for P22 integrations.",
+    ),
+    CommandSpec(
+        "integration",
+        "integration-test",
+        "Run a standards-based health check on a single P22 integration.",
+        (CommandOption("adapter", "Integration ID to test (e.g. fs, vps, discord).", required=True),),
+    ),
+    CommandSpec(
+        "integration",
+        "integration-missing",
+        "List P22 integrations that are missing required credentials.",
+    ),
+    CommandSpec(
+        "integration",
+        "integration-consent",
+        "Show or update consent scopes for P22 integrations.",
+        (
+            CommandOption(
+                "consent_action",
+                "Consent action: list, grant, or revoke.",
+                required=False,
+                choices=CONSENT_ACTION_CHOICES,
+            ),
+            CommandOption(
+                "scope",
+                "Consent scope (required for grant and revoke).",
+                required=False,
+            ),
+        ),
+    ),
+    CommandSpec(
+        "integration",
+        "integration-dry-run",
+        "Dry-run a P22 integration action without real side effects.",
+        (
+            CommandOption("adapter", "Integration ID (e.g. finance, gmail).", required=True),
+            CommandOption("action", "Action name to dry-run (e.g. delete_invoice).", required=True),
+        ),
+    ),
 )
 
 EXPECTED_COMMAND_NAMES = tuple(spec.name for spec in COMMAND_SPECS)
@@ -293,8 +342,8 @@ def require_canonical_registry() -> None:
     """Validate local command invariants before any Discord sync."""
 
     names = [spec.name for spec in COMMAND_SPECS]
-    if len(names) != 35:
-        raise RuntimeError(f"expected 35 commands, found {len(names)}")
+    if len(names) != 41:
+        raise RuntimeError(f"expected 41 commands, found {len(names)}")
     if len(set(names)) != len(names):
         raise RuntimeError("duplicate command names in P2-010 registry")
     payloads = build_application_commands()

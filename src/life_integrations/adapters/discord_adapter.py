@@ -167,12 +167,18 @@ class DiscordIntegrationAdapter(BaseIntegrationAdapter):
                 }
             channel_id = kwargs.get("channel_id")
             message_id = kwargs.get("message_id")
-            # Pre-delete tombstone: capture content hash before delete
+            # Pre-delete tombstone: capture content hash before delete.
+            # Discord deletes are irreversible via API (no un-delete endpoint),
+            # so the tombstone MUST flag irreversible_warning=True and document
+            # the only available recovery path: re-post via send_message.
             tombstone = {
                 "channel_id": channel_id,
                 "message_id": message_id,
                 "deleted_at": datetime.now(timezone.utc).isoformat(),
                 "content_hash": _hash_content(kwargs.get("content", "")),
+                "restore_possible": False,
+                "irreversible_warning": True,
+                "restore_method": "none — re-post via send_message",
             }
             await self._rest_client.delete_message(channel_id, message_id)
             return {

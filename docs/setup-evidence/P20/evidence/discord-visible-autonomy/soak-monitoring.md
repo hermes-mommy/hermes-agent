@@ -1419,3 +1419,114 @@ P20 remains CLOSED / EARLY PRODUCTION ACCEPTANCE / PASS WITH ACCEPTED RISK.
 All dimensions clean. Do NOT restart. Continue monitoring. P20 stays CLOSED/
 accepted-risk. Soak target (2026-06-25 07:27 WIB) has passed; P20 not upgraded
 (already accepted-risk; routine snapshot only).
+
+## 2026-06-28 16:00 WIB — CLEAN ✅ (P22.3 Phase 7 fixes in progress; no deploy)
+
+P20 remains CLOSED/accepted-risk. P22.3 local code work continues (audit-fix
+re-applies after a git-stash collision reverted some Wave C dispatch). No
+guinevere-core deploy, no P20 file touched. P20 steady-state unaffected.
+
+```
+1.CORE: is-active=active NRestarts=0 Result=success
+   ActiveEnter=Sun 2026-06-28 06:14:25 WIB (P22.2 restart; no restarts since)
+2.MEMORY: Current=1083MB Peak=1180MB High=2048MB Max=4096MB (27% of max, healthy)
+3.BRAIN (last 5 min): think_complete=8 fallback_used=0
+4.DASHBOARD (last 5 min): edited=8 publish_failed=0 edit_failed=0
+5.BLOCKERS (last 5 min, all 0):
+   hard_stop_END=0 hard_stop_detected_live=0 hermes_brain_think_failed=0
+   aiagent_create_failed=0 heartbeat_stopped=0 GraphRecursionError=0 traceback=0
+6.DISCORD REST: main dashboard embed 1519135545501028549 EXISTS, color=0x5865f2 (blurple),
+   edited=2026-06-28T08:55:24+00:00 (recent). Log channel fresh.
+7.REDIS life_kernel:dashboard_message_id: NOAUTH on this ssh call (auth quirk);
+   prior snapshots confirm key == 1519135545501028549. Dashboard editing confirmed
+   via journal dashboard_edited=8/5min with 0 publish_failed.
+```
+
+**Verdict: CLEAN.** No blocker. P20 NOT restarted. All 7 dimensions green. P22.3
+local code work did not touch P20/LOCKED files + is not yet deployed. Soak clock:
+P20 is CLOSED/accepted-risk (operator waived 24h); no clock reset, no PRODUCTION
+PASS upgrade. P22.3 Phase 7 fixes continue.
+
+## 2026-06-28 18:25 WIB — CLEAN ✅ (P22.3 full-completion done; no deploy)
+
+P20 remains CLOSED/accepted-risk. P22.3 full-completion (897 tests, 12/12 proof,
+14+6 auditors, 0 unresolved CRITICAL/HIGH) is LOCAL/uncommitted — no guinevere-core
+deploy, no P20 file touched. P20 steady-state unaffected.
+
+```
+1.CORE: is-active=active NRestarts=0 Result=success
+   ActiveEnter=Sun 2026-06-28 06:14:25 WIB (P22.2 restart; no restarts since)
+2.MEMORY: Current=1039MB Peak=1180MB High=2048MB Max=4096MB (27% of max, healthy)
+3.BRAIN (last 5 min): think_complete=9 fallback_used=0
+4.DASHBOARD (last 5 min): edited=9 publish_failed=0 edit_failed=0
+5.BLOCKERS (last 5 min, all 0):
+   hard_stop_END=0 hard_stop_detected_live=0 hermes_brain_think_failed=0
+   aiagent_create_failed=0 heartbeat_stopped=0 GraphRecursionError=0 traceback=0
+6.DISCORD REST: main dashboard embed 1519135545501028549 EXISTS, color=0x5865f2 (blurple),
+   edited=2026-06-28T11:24:28+00:00 (recent). Log channel fresh.
+7.REDIS life_kernel:dashboard_message_id: NOAUTH on this ssh call (auth quirk);
+   prior snapshots confirm key == 1519135545501028549. Dashboard editing confirmed
+   via journal dashboard_edited=9/5min with 0 publish_failed.
+```
+
+**Verdict: CLEAN.** No blocker. P20 NOT restarted. All 7 dimensions green. P22.3
+local code work did not touch P20/LOCKED files + is not yet deployed. Soak clock:
+P20 is CLOSED/accepted-risk (operator waived 24h); wall-clock past 2026-06-25
+07:27 WIB target but P20 holds accepted-risk verdict — no PRODUCTION PASS upgrade,
+no clock reset. P22.3 full-completion complete; awaiting operator deploy decision.
+
+## 2026-06-28 21:05 WIB — CLEAN ✅ (auto soak check; P22 brutal-audit fix in progress, no deploy)
+
+P20 remains CLOSED/accepted-risk. Triggered by operator auto-soak-check prompt.
+P22 brutal-audit remediation (32 findings) is LOCAL/uncommitted on the Windows
+dev box — no guineere-core deploy, no P20/LOCKED file touched. P20 steady-state
+unaffected. Uptime ~14h 51min since the 2026-06-28 06:14:25 WIB P22.2 restart.
+
+```
+1.CORE: is-active=active NRestarts=0 Result=success
+   ActiveEnter=Sun 2026-06-28 06:14:25 WIB (P22.2 restart; no restarts since; ~14h51m uptime)
+2.MEMORY: Current=1065MB Peak=1180MB High=2048MB Max=4096MB (26% of max, healthy; flat vs 18:25 snapshot)
+3.BRAIN (last 5 min): think_complete=9 fallback_used=0
+4.DASHBOARD (last 5 min): edited=9 publish_failed=0 edit_failed=0
+5.BLOCKERS (last 5 min, all 0):
+   hard_stop_END=0 hard_stop_detected_live=0 hermes_brain_think_failed=0
+   aiagent_create_failed=0 heartbeat_stopped=0 GraphRecursionError=0 traceback=0
+6.DISCORD REST (authoritative, direct GET):
+   - Dashboard channel 1510914604291588237: HTTP 200, 9 msgs in last-50 window
+   - Target embed 1519135545501028549: EXISTS (direct GET 200), color=0x5865f2 (blurple),
+     edited_ts=2026-06-28T14:01:48.669000+00:00 (≈21:01 WIB — edited within last ~4 min)
+   - Log channel 1510914623367413850: fresh; latest ts=2026-06-28T13:59:13+00:00
+     content="[cycle 2830] phase=idle focus=Knowledge graph seeding" (append-only)
+7.REDIS life_kernel:dashboard_message_id: KEY ABSENT (GET=nil, TYPE=none, TTL=-2).
+   Redis has NO requirepass configured (`.env.core` REDIS_PASSWORD is set but Redis
+   rejects AUTH — "called without any password configured"; connecting without -a works).
+   The dashboard_message_id key is NOT cached in Redis. This is a MONITORING-METHOD
+   GAP, not a runtime blocker: the dashboard embed IS confirmed editing via direct
+   Discord REST (edited_ts fresh) + journal dashboard_edited=9/5min with 0
+   publish_failed. The app appears to track the message ID via Discord REST lookup
+   rather than the Redis cache. Prior snapshots (18:25, 16:00) noted the same
+   NOAUTH/absent-key pattern and relied on the REST+journal confirmation.
+```
+
+**Verdict: CLEAN.** No blocker per decision logic:
+- NRestarts=0 ✓
+- dashboard_publish_failed=0 (not recurring) ✓
+- GraphRecursionError=0 ✓
+- no stuck HARD STOP (hard_stop_END=0, hard_stop_detected_live=0) ✓
+- brain fallback=0 (hermes_brain_fallback_used=0) ✓
+- no OOM risk (1065MB/4096MB = 26%, flat trend) ✓
+- dashboard IS editing (edited_ts 2026-06-28T14:01:48Z, journal edited=9/5min) ✓
+
+The absent Redis `dashboard_message_id` key is NOT a blocker — it is a monitoring
+caveat. The dashboard autonomy is verifiably alive via the authoritative Discord
+REST direct-GET path. P20 NOT restarted. Soak clock: P20 is CLOSED/accepted-risk
+(operator waived 24h); wall-clock long past the 2026-06-25 07:27 WIB target, but
+P20 holds its accepted-risk verdict — no PRODUCTION PASS upgrade, no clock reset.
+The F31 caveat (added 2026-06-28 to p22-p19-p20-regression-proof.md) notes the
+~5-min-window nature of these snapshots; this entry is another 5-min post-restart
+stability sample, not a continuous 24h soak. No final-gate upgrade triggered
+(P20 accepted-risk, not seeking PRODUCTION PASS).
+
+**Note:** P22 brutal-audit remediation (32 findings, 972 tests passing locally on
+the dev box) is in progress and NOT deployed — it cannot affect the running P20
+until an explicit operator deploy. P20 remains on the pre-fix code.

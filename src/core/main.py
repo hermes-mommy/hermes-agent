@@ -5,9 +5,83 @@ import structlog
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
+from typing import Any
 from src.observability import init_sentry
 
 logger = structlog.get_logger()
+
+
+# ---------------------------------------------------------------------------
+# F05: Audit-writer factory — DB-first with file fallback. Pulled out of the
+# lifespan so the wiring is unit-testable in isolation (see tests/p22/
+# test_audit_writer_production.py). The file fallback MUST engage cleanly so
+# the core app cannot crash on startup when DATABASE_URL is unset / DB is
+# unreachable. Writer is non-blocking audit must not block the action path.
+# ---------------------------------------------------------------------------
+
+
+def build_audit_writer(
+    *,
+    database_url: str | None = None,
+    fallback_path: str = "logs/audit-integration.log",
+) -> tuple[Any, str]:
+    """Build the production audit writer.
+
+    Ordering:
+    1. If ``database_url`` is set → try to construct an async SQLAlchemy
+       session factory and wrap it in ``IntegrationAuditWriter``. On any
+       construction failure, fall back to file writer.
+    2. If ``database_url`` is unset OR DB construction failed → return
+       :class:`FileAuditWriter` writing JSON lines to ``fallback_path``.
+
+    Returns:
+        ``(writer, target)`` where ``target`` is ``"db"`` or ``"file"``
+        (for the startup log line — the operator needs to know which leg
+        engaged).
+
+    Non-blocking: the returned writer's ``write_event`` NEVER raises; both
+    DB-writer errors and file-writer errors are logged but swallowed, so
+    audit failures cannot block the action path.
+    """
+    from src.life_integrations.audit_db_writer import (
+        FileAuditWriter,
+        IntegrationAuditWriter,
+    )
+
+    if database_url:
+        try:
+            from sqlalchemy.ext.asyncio import (
+                AsyncSession as _AsyncSession,
+                async_sessionmaker as _async_sessionmaker,
+                create_async_engine as _create_async_engine,
+            )
+            _engine = _create_async_engine(
+                database_url, pool_size=2, pool_pre_ping=True
+            )
+            _session_factory = _async_sessionmaker(
+                _engine, class_=_AsyncSession, expire_on_commit=False,
+            )
+            writer: Any = IntegrationAuditWriter(_session_factory)
+            logger.info("p22.audit_writer_wired", target="db")
+            return writer, "db"
+        except Exception as exc:
+            logger.info(
+                "p22.audit_writer_db_unavailable_fallback",
+                target="file",
+                path=fallback_path,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            return FileAuditWriter(fallback_path), "file"
+    file_writer = FileAuditWriter(fallback_path)
+    logger.info(
+        "p22.audit_writer_db_unavailable_fallback",
+        target="file",
+        path=fallback_path,
+        error="DATABASE_URL not set",
+    )
+    return file_writer, "file"
+
 
 # ---------------------------------------------------------------------------
 # P20: Alias the 9Router API key for the HermesBrain AIAgent.
@@ -460,12 +534,19 @@ async def lifespan(app: FastAPI):
         try:
             from src.life_integrations.runtime import build_runtime_registry
 
+            # F05: Build the production audit writer (DB-first, file fallback).
+            # Non-blocking — write_event never raises into the action path.
+            _p22_audit_writer, _p22_audit_target = build_audit_writer(
+                database_url=os.environ.get("DATABASE_URL"),
+            )
+            app.state.p22_audit_writer = _p22_audit_writer
+
             _p22_registry, _p22_router = await build_runtime_registry(
                 redis_client=redis_client,
                 hard_stop_handler=app.state.hard_stop_handler,
                 consent_checker=None,  # fail-closed L2+ until consent wired
                 project_registry=None,  # P19 registry wired separately if active
-                audit_writer=None,
+                audit_writer=_p22_audit_writer,
                 workspace_root=os.environ.get("GUINEVERE_REPO_ROOT") or "/home/guinevere/code/guinevere",
                 discord_rest_client=discord_rest,
             )
@@ -695,6 +776,16 @@ class _PrometheusMiddleware(BaseHTTPMiddleware):
 app.add_middleware(_PrometheusMiddleware)
 
 
+# ---------------------------------------------------------------------------
+# F07: Rate-limit middleware — lives in src/core/api/rate_limit.py to be
+# independently testable without importing the full main.py (which triggers
+# prometheus counter re-registration on reload).
+# ---------------------------------------------------------------------------
+from src.core.api.rate_limit import RateLimitMiddleware  # noqa: E402
+
+app.add_middleware(RateLimitMiddleware)
+
+
 @app.get("/metrics")
 async def metrics():
     """Prometheus scrape endpoint."""
@@ -828,10 +919,9 @@ async def root():
 # ---------------------------------------------------------------------------
 # P5-001: Internal API router — loop management
 # ---------------------------------------------------------------------------
-from src.core.api.routes import router, internal_router
+from src.core.api.routes import router
 
 app.include_router(router)
-app.include_router(internal_router)
 
 # ---------------------------------------------------------------------------
 # P7-001: Surveillance webhook receiver
