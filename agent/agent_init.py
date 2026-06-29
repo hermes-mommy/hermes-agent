@@ -1708,6 +1708,24 @@ def init_agent(
         agent._mutation_engine = None
     # ── end Group D wire ───────────────────────────────────────────────────
 
+    # ── Group E consolidated wire (P24 fork, W15+W16) ──────────────────────
+    # Discord gateway (M13) + external channels (M14). Each fail-soft.
+    # Discord registers its platform adapter + 41 slash commands; channels
+    # register the 4 built-in channel senders (autonomous sending via M3
+    # consciousness bridge). Both are CONFIG_MISSING-gated under D2 (no live
+    # tokens/creds) — they wire the *structure*, not a live connection.
+    try:
+        from guinevere.discord.gateway_patch import wire as _wire_discord
+        _wire_discord(agent)
+    except Exception:
+        agent._guinevere_discord = None
+    try:
+        from guinevere.channels._bridge import wire as _wire_channels
+        _wire_channels(agent)
+    except Exception:
+        agent._guinevere_channels = None
+    # ── end Group E wire ───────────────────────────────────────────────────
+
 
 
 __all__ = ["init_agent"]
