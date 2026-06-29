@@ -38,6 +38,14 @@ from toolsets import TOOLSETS
 _RUNTIME_PROVIDER_CUSTOM = "custom"
 from tools import file_state
 from tools.terminal_tool import set_approval_callback as _set_subagent_approval_cb
+from guinevere.iteration_budget import (
+    MaxDepthReached,
+    SubagentSlot,
+    acquire_subagent_slot,
+    check_spawn_rate,
+    record_spawn,
+    release_subagent_slot,
+)
 from utils import base_url_hostname, is_truthy_value
 
 
@@ -129,12 +137,12 @@ _SUBAGENT_TOOLSETS = sorted(
 )
 _TOOLSET_LIST_STR = ", ".join(f"'{n}'" for n in _SUBAGENT_TOOLSETS)
 
-_DEFAULT_MAX_CONCURRENT_CHILDREN = 3
-MAX_DEPTH = 1  # flat by default: parent (0) -> child (1); grandchild rejected unless max_spawn_depth raised.
+_DEFAULT_MAX_CONCURRENT_CHILDREN = 10
+MAX_DEPTH = 5  # flat by default: parent (0) -> child (1); grandchild rejected unless max_spawn_depth raised.
 # Configurable depth cap consulted by _get_max_spawn_depth; MAX_DEPTH
 # stays as the default fallback and is still the symbol tests import.
 _MIN_SPAWN_DEPTH = 1
-_MAX_SPAWN_DEPTH_CAP = 3
+_MAX_SPAWN_DEPTH_CAP = 5
 
 
 # ---------------------------------------------------------------------------
@@ -392,7 +400,7 @@ def _get_child_timeout() -> float:
 
 
 def _get_max_spawn_depth() -> int:
-    """Read delegation.max_spawn_depth from config, clamped to [1, 3].
+    """Read delegation.max_spawn_depth from config, clamped to [1, 5].
 
     depth 0 = parent agent.  max_spawn_depth = N means agents at depths
     0..N-1 can spawn; depth N is the leaf floor.  Default 1 is flat:
@@ -1331,6 +1339,25 @@ def _run_single_child(
     """
     child_start = time.monotonic()
 
+    # Global sub-agent concurrency cap (ADR-065): acquire a slot before
+    # the child actually runs.  Released in the outermost finally block.
+    _slot_acquired = acquire_subagent_slot(timeout=30.0)
+    if not _slot_acquired:
+        return {
+            "task_index": task_index,
+            "status": "error",
+            "summary": None,
+            "error": (
+                "Global sub-agent concurrency cap reached — "
+                "could not acquire a slot within 30s."
+            ),
+            "api_calls": 0,
+            "duration_seconds": round(time.monotonic() - child_start, 2),
+        }
+
+    # Record spawn for rate limiting (ADR-065: 30/hour).
+    record_spawn()
+
     # Get the progress callback from the child agent
     child_progress_cb = getattr(child, "tool_progress_callback", None)
 
@@ -1447,6 +1474,22 @@ def _run_single_child(
         _raw_depth = getattr(child, "_delegate_depth", 1)
         _tui_depth = max(0, _raw_depth - 1) if isinstance(_raw_depth, int) else 0
         _parent_sid = getattr(child, "_parent_subagent_id", None)
+
+        # ADR-065 hash chain: SHA-256 of parent's last audit row.
+        import hashlib as _hashlib
+        _parent_record = None
+        if isinstance(_parent_sid, str):
+            with _active_subagents_lock:
+                _parent_record = _active_subagents.get(_parent_sid)
+        _chain_input = (
+            str(_parent_record.get("signature_chain_hash", ""))
+            if isinstance(_parent_record, dict)
+            else "genesis"
+        )
+        _signature_chain_hash = _hashlib.sha256(
+            _chain_input.encode("utf-8")
+        ).hexdigest()
+
         _register_subagent(
             {
                 "subagent_id": _subagent_id,
@@ -1462,6 +1505,7 @@ def _run_single_child(
                 "status": "running",
                 "tool_count": 0,
                 "agent": child,
+                "signature_chain_hash": _signature_chain_hash,
             }
         )
 
@@ -1840,6 +1884,10 @@ def _run_single_child(
         }
 
     finally:
+        # Release the global concurrency slot (ADR-065).
+        if _slot_acquired:
+            release_subagent_slot()
+
         # Stop the heartbeat thread so it doesn't keep touching parent activity
         # after the child has finished (or failed).  Guard the join: .start()
         # now lives inside the try block, so if it raised (OS thread
@@ -1960,15 +2008,13 @@ def delegate_task(
     depth = getattr(parent_agent, "_delegate_depth", 0)
     max_spawn = _get_max_spawn_depth()
     if depth >= max_spawn:
-        return json.dumps(
-            {
-                "error": (
-                    f"Delegation depth limit reached (depth={depth}, "
-                    f"max_spawn_depth={max_spawn}). Raise "
-                    f"delegation.max_spawn_depth in config.yaml if deeper "
-                    f"nesting is required (cap: {_MAX_SPAWN_DEPTH_CAP})."
-                )
-            }
+        raise MaxDepthReached(depth, max_spawn, _MAX_SPAWN_DEPTH_CAP)
+
+    # Spawn rate limit (ADR-065): 30 spawns per rolling hour.
+    if not check_spawn_rate():
+        return tool_error(
+            "Spawn rate limit reached (30/hour). "
+            "Wait before spawning more sub-agents."
         )
 
     # Load config

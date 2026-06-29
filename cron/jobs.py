@@ -1235,3 +1235,47 @@ def rewrite_skill_refs(
             "jobs_updated": len(rewrites),
             "jobs_scanned": len(jobs),
         }
+
+
+# =============================================================================
+# DAO Auto-Tally Job (P24 M7 — W10)
+# =============================================================================
+
+def dao_auto_tally_job() -> Dict[str, Any]:
+    """DAO auto-tally cron job — advances proposal lifecycle states.
+
+    Called on schedule to:
+    - Move PENDING -> ACTIVE (review delay elapsed)
+    - Move ACTIVE -> EXPIRED (deadline passed without quorum)
+    - Move PASSED -> EXECUTE (timelock elapsed)
+
+    Returns a report dict with tallied proposals.
+    """
+    try:
+        from guinevere.governance.dao import get_engine
+    except ImportError:
+        logger.warning("dao_auto_tally_job: guinevere.governance not available")
+        return {"status": "skipped", "reason": "governance module not installed"}
+
+    engine = get_engine()
+    changed = engine.auto_tally()
+
+    report: Dict[str, Any] = {
+        "status": "ok",
+        "proposals_tallied": len(changed),
+        "changes": [
+            {
+                "id": p.id,
+                "title": p.title,
+                "state": p.state.value,
+            }
+            for p in changed
+        ],
+    }
+
+    if changed:
+        logger.info("dao_auto_tally_job: %d proposal(s) state changed", len(changed))
+    else:
+        logger.debug("dao_auto_tally_job: no proposals to advance")
+
+    return report
