@@ -1,41 +1,62 @@
 [project]
 name = "guinevere"
-version = "0.1.0"
-description = "Guinevere AI Companion - Autonomous Agent System"
+version = "0.2.0"
+description = "Guinevere AI Companion - Autonomous Agent System (Hermes v0.15.2 Fork)"
 requires-python = ">=3.12"
 dependencies = [
+    # === Core framework ===
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
     "pydantic>=2",
+    "pydantic-settings>=2",
+    # === Database ===
     "sqlalchemy[asyncio]>=2",
     "pgvector>=0.2",
     "asyncpg>=0.30",
     "alembic>=1",
     "redis>=5",
-    "httpx>=0.28",
-    "python-dotenv>=1",
+    # === HTTP/Networking ===
+    "httpx[socks]>=0.28",
+    "aiohttp>=3",
+    "websockets>=13",
+    # === Hermes v0.15.2 transitive deps (now vendored at repo root, not pip-installed) ===
+    "openai>=2.24",
+    "python-dotenv>=1.2.2",
+    "fire>=0.7.1",
+    "tenacity>=9",
+    "pyyaml>=6.0.3",
+    "ruamel.yaml>=0.18.17",
+    "requests>=2.33.0",
+    "jinja2>=3.1.6",
+    "prompt_toolkit>=3.0.52",
+    "croniter>=6.0.0",
+    "PyJWT[crypto]>=2.12.1",
+    "psutil>=7.2.2",
+    # === Existing guinevere deps ===
     "apscheduler>=3",
     "sentry-sdk[fastapi]>=2",
     "prometheus-client>=0.21",
     "structlog>=24",
-    "aiohttp>=3",
     "cryptography>=44",
+    "argon2-cffi>=23.1.0",
     "discord.py>=2.4",
-    "tenacity>=9",
-    "websockets>=13",
     "typer>=0.15",
     "rich>=14",
-    "pydantic-settings>=2",
     "passlib[bcrypt]>=1.7",
     "setuptools>=75",
-    "hermes-agent>=0.15",
     "markdownify>=0.14",
     "mcp>=1.0",
     "playwright>=1.56",
     "sentence-transformers>=5.5",
     "scipy>=1.17",
     "neonize>=0.3.18,<0.4.0",
+    # NOTE: hermes-agent REMOVED — now vendored at repo root (P24 fork, SHA 77a1650c)
 ]
+
+[project.scripts]
+hermes = "hermes_cli.main:main"
+hermes-acp = "acp_adapter.entry:main"
+hermes-agent = "run_agent:main"
 
 [project.optional-dependencies]
 test = ["pytest-cov>=7", "pytest-asyncio>=0.23"]
@@ -45,7 +66,36 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
+packages = [
+    # Hermes v0.15.2 packages (vendored)
+    "agent",
+    "tools",
+    "gateway",
+    "hermes_cli",
+    "cron",
+    "plugins",
+    "providers",
+    "acp_adapter",
+    "tui_gateway",
+    # Guinevere packages
+    "guinevere",
+]
+
+[tool.hatch.build.targets.wheel.force-include]
+# Hermes standalone modules (not packages — loose .py at repo root)
+"run_agent.py" = "run_agent.py"
+"cli.py" = "cli.py"
+"batch_runner.py" = "batch_runner.py"
+"hermes_bootstrap.py" = "hermes_bootstrap.py"
+"hermes_constants.py" = "hermes_constants.py"
+"hermes_logging.py" = "hermes_logging.py"
+"hermes_state.py" = "hermes_state.py"
+"hermes_time.py" = "hermes_time.py"
+"model_tools.py" = "model_tools.py"
+"toolset_distributions.py" = "toolset_distributions.py"
+"toolsets.py" = "toolsets.py"
+"trajectory_compressor.py" = "trajectory_compressor.py"
+"utils.py" = "utils.py"
 
 [tool.ruff]
 target-version = "py312"
@@ -57,11 +107,11 @@ strict = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["."]
 asyncio_mode = "auto"
 
 [tool.coverage.run]
-source = ["src"]
+source = ["agent", "tools", "gateway", "hermes_cli", "cron", "guinevere"]
 omit = ["tests/*", "src/_deprecated/*"]
 branch = true
 

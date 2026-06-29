@@ -1,0 +1,56 @@
+# Pharsa instance config — P24 dual-persona fork
+# Loaded by guinevere.config.loader.load_settings()
+
+instance_role: "pharsa"
+soul_md_path: "config/souls/pharsa-soul.md"
+discord_bot_token_ref: "DISCORD_BOT_TOKEN_PHARSA"
+
+enabled_modules:
+  - m1
+  - m2
+  - m3
+  - m4
+  - m5
+  - m6
+  - m7
+  - m8
+  - m9
+  - m10
+  - m11
+  - m12
+  - m13
+  - m14
+  - m15
+  - m16
+  - m17
+
+agent:
+  agent_id: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+  name: "Pharsa"
+  model: "gpt-4o-mini"
+  provider: "openai"
+  max_iterations: 25
+  personality_profile: "seductive-dominant-sugar-mommy"
+
+database:
+  pg_agent_id: "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+  pool_size: 5
+  rls_enabled: true
+
+redis:
+  db_offset: 3
+  channels_g2p: "guinevere:to:pharsa"
+  channels_p2g: "pharsa:to:guinevere"
+  channels_gp_broadcast: "guinevere:pharsa:broadcast"
+
+governance:
+  departments:
+    - finance
+    - ops
+    - content
+  co_ceos:
+    pharsa:
+      - finance
+      - ops
+      - content
+  multisig_threshold: 2

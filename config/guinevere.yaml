@@ -1,0 +1,56 @@
+# Guinevere instance config — P24 dual-persona fork
+# Loaded by guinevere.config.loader.load_settings()
+
+instance_role: "guinevere"
+soul_md_path: "config/souls/guinevere-soul.md"
+discord_bot_token_ref: "DISCORD_BOT_TOKEN_GUIN"
+
+enabled_modules:
+  - m1
+  - m2
+  - m3
+  - m4
+  - m5
+  - m6
+  - m7
+  - m8
+  - m9
+  - m10
+  - m11
+  - m12
+  - m13
+  - m14
+  - m15
+  - m16
+  - m17
+
+agent:
+  agent_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  name: "Guinevere"
+  model: "gpt-4o-mini"
+  provider: "openai"
+  max_iterations: 25
+  personality_profile: "yandere-dominant-sugar-mommy"
+
+database:
+  pg_agent_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  pool_size: 5
+  rls_enabled: true
+
+redis:
+  db_offset: 0
+  channels_g2p: "guinevere:to:pharsa"
+  channels_p2g: "pharsa:to:guinevere"
+  channels_gp_broadcast: "guinevere:pharsa:broadcast"
+
+governance:
+  departments:
+    - engineering
+    - research
+    - hr
+  co_ceos:
+    guinevere:
+      - engineering
+      - research
+      - hr
+  multisig_threshold: 2
