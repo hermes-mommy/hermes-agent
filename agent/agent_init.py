@@ -1726,6 +1726,18 @@ def init_agent(
         agent._guinevere_channels = None
     # ── end Group E wire ───────────────────────────────────────────────────
 
+    # ── Group F wire (P24 fork, W17 — production pass, final module) ──────
+    # 6 circuit breakers (cost/loop/hallucination/emotion/dream/subagent) +
+    # auto-recovery. Fail-soft. The breaker set is attached for M3 consciousness
+    # and the HTTP lifespan to consult before expensive operations.
+    try:
+        from guinevere.production.recovery import wire as _wire_production
+        _wire_production(agent)
+    except Exception:
+        agent._circuit_breaker_set = None
+        agent._auto_recovery = None
+    # ── end Group F wire ───────────────────────────────────────────────────
+
 
 
 __all__ = ["init_agent"]
