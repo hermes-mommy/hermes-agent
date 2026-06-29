@@ -145,7 +145,31 @@ async def build_action_router(
         consent_checker=consent_checker,
         hard_stop_checker=hard_stop_checker,
     )
-    audit_logger = AuditLogger(writer=audit_writer)
+    # A3 fix (2026-06-29): seed the hash chain from the DB's last row so the
+    # chain CONTINUES across process restarts instead of restarting from "".
+    # Previously AuditLogger(writer=audit_writer) used the default
+    # initial_hash="" → every restart started a fresh chain → the first
+    # post-restart write's previous_hash="" broke the chain (tamper-evidence
+    # compromised for the restart boundary). Now:
+    # - If the writer has seed_last_hash() (IntegrationAuditWriter), call it
+    #   and pass the returned hash as initial_hash (None → degraded mode per
+    #   audit.py:220-226, refuses synthetic writes; "" → fresh chain OK).
+    # - If the writer has no seed_last_hash (FileAuditWriter), skip seeding —
+    #   a fresh "" chain is correct for a fresh file writer.
+    # - If no writer (dev mode), AuditLogger defaults to "" (events logged,
+    #   not persisted).
+    _initial_hash: str | None = ""
+    if audit_writer is not None and hasattr(audit_writer, "seed_last_hash"):
+        try:
+            _initial_hash = await audit_writer.seed_last_hash()
+        except Exception as exc:  # noqa: BLE001 — fail-closed, never crash wiring
+            logger.warning(
+                "p22.audit_seed_failed_wiring_fail_closed",
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            _initial_hash = None  # degraded mode — refuse to extend a broken chain
+    audit_logger = AuditLogger(writer=audit_writer, initial_hash=_initial_hash)
     project_context = ProjectContext(registry=project_registry)
 
     return ActionRouter(

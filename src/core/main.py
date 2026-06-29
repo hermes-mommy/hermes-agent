@@ -24,15 +24,29 @@ def build_audit_writer(
     *,
     database_url: str | None = None,
     fallback_path: str = "logs/audit-integration.log",
+    session_factory: Any | None = None,
 ) -> tuple[Any, str]:
     """Build the production audit writer.
 
     Ordering:
-    1. If ``database_url`` is set → try to construct an async SQLAlchemy
-       session factory and wrap it in ``IntegrationAuditWriter``. On any
-       construction failure, fall back to file writer.
+    0. If a pre-built ``session_factory`` is passed → wrap it directly in
+       :class:`IntegrationAuditWriter` WITHOUT creating a new engine. This
+       lets the lifespan build ONE shared factory (via
+       :func:`build_consent_session_factory`) and feed it to both the audit
+       writer and the consent checker, so P22 does NOT open a duplicate
+       engine against the same Postgres. On failure, fall back to file.
+    1. If ``database_url`` is set (and no shared factory) → try to construct
+       an async SQLAlchemy session factory and wrap it in
+       ``IntegrationAuditWriter``. On any construction failure, fall back to
+       file writer.
     2. If ``database_url`` is unset OR DB construction failed → return
        :class:`FileAuditWriter` writing JSON lines to ``fallback_path``.
+
+    Args:
+        session_factory: Optional pre-built ``async_sessionmaker`` shared
+            with the consent checker. Default ``None`` preserves the
+            original "build my own engine internally" behavior (backward-
+            compatible — existing callers/tests pass no ``session_factory``).
 
     Returns:
         ``(writer, target)`` where ``target`` is ``"db"`` or ``"file"``
@@ -48,6 +62,24 @@ def build_audit_writer(
         IntegrationAuditWriter,
     )
 
+    # 0. Shared-factory path: reuse the caller's session factory directly.
+    if session_factory is not None:
+        try:
+            writer: Any = IntegrationAuditWriter(session_factory)
+            logger.info(
+                "p22.audit_writer_wired", target="db", via="shared_factory",
+            )
+            return writer, "db"
+        except Exception as exc:
+            logger.info(
+                "p22.audit_writer_shared_factory_failed_fallback",
+                target="file",
+                path=fallback_path,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            return FileAuditWriter(fallback_path), "file"
+
     if database_url:
         try:
             from sqlalchemy.ext.asyncio import (
@@ -61,7 +93,7 @@ def build_audit_writer(
             _session_factory = _async_sessionmaker(
                 _engine, class_=_AsyncSession, expire_on_commit=False,
             )
-            writer: Any = IntegrationAuditWriter(_session_factory)
+            writer = IntegrationAuditWriter(_session_factory)
             logger.info("p22.audit_writer_wired", target="db")
             return writer, "db"
         except Exception as exc:
@@ -81,6 +113,78 @@ def build_audit_writer(
         error="DATABASE_URL not set",
     )
     return file_writer, "file"
+
+
+def build_consent_session_factory(database_url: str | None = None) -> Any | None:
+    """Build an async session factory for P22ConsentChecker (shared with audit).
+
+    Returns an ``async_sessionmaker`` bound to the Guinevere database, or
+    ``None`` on any failure (fail-closed → consent_checker=None → L2+ stays
+    blocked). One engine, ``pool_size=2``, ``pool_pre_ping=True`` — same
+    pattern as :func:`build_audit_writer`. The returned factory is shared
+    with the audit writer (via ``build_audit_writer(session_factory=...)``)
+    so P22 does NOT open a duplicate engine against the same Postgres
+    instance (port 5433).
+
+    Args:
+        database_url: SQLAlchemy async URL (e.g.
+            ``postgresql+asyncpg://...``). ``None``/empty → returns ``None``.
+            ``create_async_engine`` is lazy (does not connect at construction),
+            so a valid-but-unreachable URL still yields a factory object.
+
+    Returns:
+        ``async_sessionmaker`` instance, or ``None`` (fail-closed — never
+        raises).
+    """
+    if not database_url:
+        logger.info(
+            "p22.consent_checker_skipped", reason="DATABASE_URL not set",
+        )
+        return None
+    try:
+        from sqlalchemy.ext.asyncio import (
+            AsyncSession as _AsyncSession,
+            async_sessionmaker as _async_sessionmaker,
+            create_async_engine as _create_async_engine,
+        )
+        _engine = _create_async_engine(
+            database_url, pool_size=2, pool_pre_ping=True
+        )
+        _factory = _async_sessionmaker(
+            _engine, class_=_AsyncSession, expire_on_commit=False,
+        )
+        logger.info("p22.consent_checker_factory_ready")
+        return _factory
+    except Exception as exc:
+        logger.warning(
+            "p22.consent_checker_factory_unavailable",
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+        return None
+
+
+def build_consent_checker(session_factory: Any | None) -> Any | None:
+    """Wrap a session factory in a P22ConsentChecker (or None if no factory).
+
+    Logs ``p22.consent_checker_wired target=db`` when the checker is built,
+    so the operator can confirm from journalctl that the consent DB path is
+    active (vs fail-closed None). ``None`` factory → ``None`` checker (L2+
+    stays fail-closed via ConsentGateShim's ``no_checker_fail_closed`` log).
+
+    Args:
+        session_factory: ``async_sessionmaker`` from
+            :func:`build_consent_session_factory`, or ``None``.
+
+    Returns:
+        :class:`P22ConsentChecker` instance, or ``None``.
+    """
+    if session_factory is None:
+        return None
+    from src.life_integrations.consent_checker import P22ConsentChecker
+    checker = P22ConsentChecker(session_factory)
+    logger.info("p22.consent_checker_wired", target="db")
+    return checker
 
 
 # ---------------------------------------------------------------------------
@@ -534,17 +638,34 @@ async def lifespan(app: FastAPI):
         try:
             from src.life_integrations.runtime import build_runtime_registry
 
-            # F05: Build the production audit writer (DB-first, file fallback).
-            # Non-blocking — write_event never raises into the action path.
-            _p22_audit_writer, _p22_audit_target = build_audit_writer(
+            # P22 wire-activate: build ONE shared async session factory and
+            # feed it to BOTH the audit writer and the consent checker, so P22
+            # does NOT open a duplicate engine against the same Postgres
+            # (port 5433). Fail-safe chain: DB down → factory None → checker
+            # None → ConsentGateShim logs no_checker_fail_closed → L2+ stays
+            # blocked (current safe state). The app never crashes on P22
+            # wiring failure; P22 just stays fail-closed.
+            _p22_session_factory = build_consent_session_factory(
                 database_url=os.environ.get("DATABASE_URL"),
             )
+            # F05: Build the production audit writer (DB-first, file fallback).
+            # Non-blocking — write_event never raises into the action path.
+            # Shared factory → no duplicate engine.
+            _p22_audit_writer, _p22_audit_target = build_audit_writer(
+                database_url=os.environ.get("DATABASE_URL"),
+                session_factory=_p22_session_factory,
+            )
             app.state.p22_audit_writer = _p22_audit_writer
+
+            _p22_consent_checker = build_consent_checker(
+                session_factory=_p22_session_factory,
+            )
+            app.state.p22_consent_checker = _p22_consent_checker
 
             _p22_registry, _p22_router = await build_runtime_registry(
                 redis_client=redis_client,
                 hard_stop_handler=app.state.hard_stop_handler,
-                consent_checker=None,  # fail-closed L2+ until consent wired
+                consent_checker=_p22_consent_checker,  # was: None (fail-closed L2+ until consent wired)
                 project_registry=None,  # P19 registry wired separately if active
                 audit_writer=_p22_audit_writer,
                 workspace_root=os.environ.get("GUINEVERE_REPO_ROOT") or "/home/guinevere/code/guinevere",

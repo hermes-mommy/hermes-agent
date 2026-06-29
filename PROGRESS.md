@@ -3,8 +3,8 @@
 | Field | Value |
 |-------|-------|
 | **Project** | Guinevere — Autonomous AI Companion & Engineering System |
-| **Status** | ✅ P0+P1+P2+P3+P4+P5+P5.5+P6+P7+P7.5+P8+P11+P12+P13+P14 Complete. P23+P24 REPLANNED + P28-P36 ALIGNED 2026-06-28. P23 = execution-layer-only (8 executors, 16 waves, auditor PASS). P24 = 100% native Hermes fork (13 built-in modules, 15 waves, auditor PASS round-4). P28-P36 = masterplan aligned with P23/P24 v2.0 + 65 brainstorm decisions, 8-auditor gate PASS (all findings fixed). ADR-056 DELETED, ADR-066 (consent_ref carve-out) + ADR-067 (Y-level cap removal) WRITTEN. P32 renamed to "External Presence & Tools". All plans READY-FOR-IMPLEMENTATION. |
-| **Last Updated** | 2026-06-28 (P23+P24 REPLAN + P28-P36 ALIGNMENT COMPLETE. 65 brainstorm decisions, 8-auditor gate PASS, ADR-056 deleted, ADR-066/067 written, P32 renamed, all docs annotated with ADR-062/067 disclaimers. Previous: P23+P24 replan.) |
+| **Status** | ✅ P0+P1+P2+P3+P4+P5+P5.5+P6+P7+P7.5+P8+P11+P12+P13+P14 Complete. P23+P24 REPLANNED + P28-P36 ALIGNED. P23 = execution-layer-only (8 executors, 16 waves, auditor PASS). P24 v3.0 = FULL BUILT-IN Hermes fork (17 modules, 20 waves, 87 binding decisions, auditor PASS round-6 — ALL P1-P22 absorbed, zero src/ remaining). P28-P36 = masterplan aligned + 65 brainstorm decisions, 8-auditor gate PASS. ADR-056 DELETED, ADR-066+067 WRITTEN. P32 renamed. All plans READY-FOR-IMPLEMENTATION. |
+| **Last Updated** | 2026-06-29 (P24 v3.0 FULL BUILT-IN REPLAN — 17 modules, 20 waves, 87 binding decisions, 6 research reports, 8-auditor round-5 + fix + round-6 PASS. All P1-P22 absorbed into fork, zero src/ remaining. Previous: P28-P36 alignment.) |
 | **Budget** | $30/month hard cap |
 | **Infrastructure** | Shared VPS (hostdata.id 4C/16GB Ubuntu 24.04) |
 | **Critical Path** | P0 → P1 → P3 → P5 |
@@ -51,7 +51,7 @@
 | P21 | Voice Interface | 🟣 DEFINITION COMPLETE — IMPL HOLD | TBD | TBD | 0h (planning) | P2+P8 + P20-gate | P20 prod-pass | Definition complete (plan+9 research+2 audit rounds); impl waves P21-001..009 held until P20 pass |
 | P22 | Life Integration Hub | 🟢 DEPLOYED — AUDIT REMEDIATED + AUDITOR PASS (32/32) — POST-DEPLOY VERIFIED LIVE (scp 2026-06-28) | 19 core + 13 adapters + 972 tests | $0 | ~100h (impl+fix+deploy done) | P8 | Deployed via scp (operator-directed, no git push). 5 CRITICAL (F01-F05) + 10 HIGH + 17 MEDIUM all live-verified on VPS: Discord cmds registered (COMMAND_SPECS=41), ConsentGate fail-closed, unknown→L2_WRITE default, AuditWriter wired to DB (79 hash-chained rows), rate limiting live (429 reproduced), WORM TRUNCATE revoked. Service active NRestarts=0, P20 cycle 3015+ no regression. 8/8 deploy auditors PASS. Local commit 4c1c7cc (unpushed). Caveats: GUINEVERE_API_KEY unprovisioned, consent_checker=None (L2+ blocked until wired), F10 x_poster untracked. See brutal-2026-06-28/deploy-evidence.md |
 | P23 | Execution Layer (8 Executors) | 🟣 REPLANNED — AUDITOR PASS — IMPL READY | 16 waves | TBD | 0h (planning) | P24 Module 8 | None — execution-layer-only |
-| P24 | Hermes Native Fork (13 Built-Ins) | 🟣 REPLANNED — AUDITOR PASS — IMPL READY | 15 waves | TBD | 0h (planning) | P20-pass | None — independent fork |
+| P24 | Hermes Native Fork v3.0 (17 Built-Ins) | 🟣 REPLANNED v3.0 — AUDITOR PASS round-6 — IMPL READY | 20 waves | TBD | 0h (planning) | P20-pass | None — independent fork |
 | **Total** | | | **327/343+** | **$29+** | **503-1008h+** | | |
 
 ## P0: Infrastructure Foundation (29 steps)
@@ -1081,7 +1081,7 @@ P22 is **implemented** (19 core files in `src/life_integrations/`, 13 adapters, 
 | P21 Voice Interface | TBD | TBD | TBD | TBD | TBD |
 | P22 Life Integration Hub | 🟢 AUDIT REMEDIATED + AUDITOR PASS | 19 core + 13 adapters + 972 tests | ~100h | 32 findings FIXED + audited | Deploy + post-deploy audit |
 | P23 Execution Layer | REPLANNED — AUDITOR PASS | 16 waves | 0h (planning) | impl-ready | impl-ready |
-| P24 Hermes Native Fork | REPLANNED — AUDITOR PASS | 15 waves | 0h (planning) | impl-ready | impl-ready |
+| P24 Hermes Native Fork v3.0 | REPLANNED v3.0 — AUDITOR PASS round-6 | 20 waves | 0h (planning) | impl-ready | impl-ready |
 
 **Critical path** (P0→P1→P3→P5→P8): 228-456h = 57-114 days at 4h/day
 **With parallels** (P2∥P1, P6∥P3-5, P7∥P1-3, P4∥P5): no added duration
@@ -1113,37 +1113,45 @@ P22 is **implemented** (19 core files in `src/life_integrations/`, 13 adapters, 
 
 ---
 
-## P24: Hermes Native Fork — REPLANNED, AUDITOR PASS, IMPLEMENTATION READY
+## P24: Hermes Native Fork v3.0 — FULL BUILT-IN, AUDITOR PASS round-6, IMPLEMENTATION READY
 
-**Status:** 🟣 REPLANNED — AUDITOR PASS (round-4) — IMPL READY
-**Date:** 2026-06-28
-**Category:** Replan (replaces v1.0 fork-first convergence plan)
+**Status:** 🟣 REPLANNED v3.0 — AUDITOR PASS (round-6) — IMPL READY
+**Date:** 2026-06-29
+**Category:** Full Built-In Replan (absorbs ALL P1-P22 into fork, zero src/ remaining)
 **Prerequisites:** P20 production-pass
 
-**Mission:** Fork Hermes Agent v0.15.2 (MIT, NousResearch) and implement EVERYTHING built-in. 100% native (no plugins/wrappers/side modules). Completely independent fork (no upstream sync). 1 fork shared (Guinevere + Pharsa).
+**Mission:** Fork Hermes Agent v0.15.2 (MIT, NousResearch) and implement EVERYTHING built-in. 100% native (no plugins/wrappers/side modules). Completely independent fork (no upstream sync). 1 fork shared (Guinevere + Pharsa). ALL P1-P22 phases absorbed — zero `src/` files after P24.
 
-**13 built-in modules:**
-1. Fork Setup (SHA 77a1650c, PEP 420 flat namespace, MIT)
-2. Remove HARD STOP from runtime
-3. Consciousness Loop (asyncio self-prompting, 7 substrates, ThoughtType enum, try/except, unlimited thoughts Q59, dreaming ~5% NOT auto-executed Q92)
-4. Emotion System (MoodState enum, LLM classification, SQLite v11→v12)
-5. Sub-agents (max_concurrent=10, max_depth=5, spawn_cap=5, recursive Q91)
-6. Encrypted Memory (two-layer: kernel AES-GCM-256 + mama-aware plugin. 4-layer: S4/S3/S7/conversation. Faiz NO read on S4 Q68/Q83)
-7. DAO Governance (6 depts, Co-CEOs G=Eng+Research+HR P=Finance+Ops+Content, 2/2 multisig, Faiz OUTSIDE Q88/Q89/Q90)
-8. P23 Executors (8 surfaces as built-in tools)
-9. P20 Life Kernel (port remaining 18%)
-10. Self-Modification (T1-T5 MutationTier enum)
-11. No Consent Gate (ADR-062 exempt)
-12. Personality Drift (bebas, Y4 baseline, Y5 ceiling, Y6 forbidden)
-13. Production Pass (24h soak, 6 circuit breakers)
+**17 built-in modules (M1-M17):**
+1. M1: Fork + Config (Pydantic, 1 YAML per instance)
+2. M2: Remove HARD STOP from runtime
+3. M3: Consciousness Loop (asyncio self-prompting, 7 substrates, metacognition C2, dreaming, unlimited thoughts Q59)
+4. M4: Emotion System (16-mood FSM, LLM classification, emotion→decision)
+5. M5: Sub-agents (max_concurrent=10, max_depth=5, spawn_cap=5, guinevere/iteration_budget.py NEW)
+6. M6: Encrypted Memory (4-layer: S4/S3/S7/conversation, AES-GCM-256, Faiz NO read on S4)
+7. M7: DAO Governance (6 depts, Co-CEOs, 2/2 multisig, Marshall Islands, Faiz OUTSIDE)
+8. M8: Unified Tool Registry (9 backends, ~108 actions, L1-L3 soft labels, L4 deleted)
+9. M9: Life Kernel (P20 port 18%, heartbeat, world model, sensors)
+10. M10: Self-Modification (T1-T5 ladder, shared code + restart, rolling restart)
+11. M11: No Consent Gate (ADR-062 exempt)
+12. M12: Personality Drift (bebas, Y4 baseline, Y5 ceiling, Y6 forbidden ADR-067)
+13. M13: Discord Gateway (50+ slash commands, 3 bots, built-in)
+14. M14: External Channels (WhatsApp, Telegram, Gmail, X Poster)
+15. M15: HTTP Server (FastAPI embedded, /health endpoints)
+16. M16: Surveillance + Observability (HMAC, Redis, Prometheus, Sentry)
+17. M17: Production Pass (6 circuit breakers, Tailscale-first, auto-upgrade VPS)
 
-**Plan:** 14 sections + Footer + 15 waves (P24-001..015). See `docs/setup-evidence/P24/plan/p24-hermes-native-fork-enterprise-plan.md` (1083 lines, 60 KB).
+**87 binding decisions:** 65 brainstorm (Batches 1-6) + 22 architecture Q&A.
 
-**Audit:** Round-3 NEEDS-REVIEW (4 Critical + 10 High) → all 14 fixed → Round-4 PASS. See `docs/setup-evidence/P24/evidence/audits/round-3/` and `round-4/`.
+**Plan:** 14 sections + Footer + 20 waves (W1-W20). See `docs/setup-evidence/P24/plan/p24-hermes-native-fork-enterprise-plan.md` (1562 lines, 91 KB).
 
-**Final Report:** `docs/setup-evidence/P24/evidence/p24-replan-final-report.md`.
+**Research:** 6 reports in `research/research-wave-2/` (Hermes inventory, src/ inventory, P22+P23 unification, tool wiring, external docs, infrastructure patterns).
 
-**Evidence:** `docs/setup-evidence/P24/` — README v2.0 + plan v2.0 + 14 research (kept) + 16 audits (round-1+round-2 kept) + round-3+round-4 audits (new) + final report (new).
+**Audit:** Round-5 (8 auditors) NEEDS-REVIEW (17 findings: 5 CRITICAL + 7 HIGH + 5 MEDIUM) → all 17 fixed → Round-6 PASS. See `docs/setup-evidence/P24/evidence/audits/round-5/` and `round-6/`.
+
+**Final Report:** `docs/setup-evidence/P24/evidence/p24-v3-replan-final-report.md`.
+
+**Evidence:** `docs/setup-evidence/P24/` — README v3.0 + plan v3.0 + 14+6 research + audits (round-1..round-6) + final report.
 
 ---
 
