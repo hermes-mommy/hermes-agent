@@ -1657,6 +1657,34 @@ def init_agent(
         agent._guinevere_settings = None  # non-fatal: downstream modules guard
     # ── end M1 wire ────────────────────────────────────────────────────────
 
+    # ── Group C consolidated wire (P24 fork, W7+W10+W11) ──────────────────
+    # Each guinevere module exposes a fail-soft ``wire(agent)`` that attaches
+    # its runtime state to the agent. Wired here in dependency order so the
+    # downstream volatile-tier blocks in ``system_prompt.py`` find the engines
+    # they read. W8 (sub-agents) patched ``tools/delegate_tool.py`` directly
+    # (no init wire); W9 (encrypted memory) is registered via the plugin
+    # system (``plugins/memory/guinevere_encrypted``) + MemoryManager, not a
+    # direct init wire. Every wire is independently fail-soft: a missing or
+    # broken module never aborts ``init_agent``.
+    try:
+        from guinevere.emotions.engine import wire as _wire_emotion
+        _wire_emotion(agent)
+    except Exception:
+        agent._emotion_engine = None
+        agent._emotion_state = None
+    try:
+        from guinevere.governance.dao import wire as _wire_dao
+        _wire_dao(agent)
+    except Exception:
+        agent._dao_engine = None
+    try:
+        from guinevere.personality.drift import wire as _wire_drift
+        _wire_drift(agent)
+    except Exception:
+        agent._drift_detector = None
+        agent._peer_monitor = None
+    # ── end Group C wire ───────────────────────────────────────────────────
+
 
 
 __all__ = ["init_agent"]

@@ -294,6 +294,32 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
         except Exception:
             pass
 
+    # ── M4 emotion volatile block (P24 fork, W7) ─────────────────────
+    # Affect state refreshed per-turn; appended fail-soft so a missing
+    # engine (pre-W7 wiring or sub-agent without emotion) never breaks
+    # system-prompt assembly.
+    _emotion_engine = getattr(agent, "_emotion_engine", None)
+    if _emotion_engine is not None:
+        try:
+            _emotion_block = _emotion_engine.format_for_system_prompt()
+            if _emotion_block:
+                volatile_parts.append(_emotion_block)
+        except Exception:
+            pass
+
+    # ── M12 personality-drift volatile block (P24 fork, W11) ──────────
+    # Drift signature summary (cosine sim vs baseline, peer-monitor result,
+    # anomaly status). Monitoring-only — informs persona expression without
+    # enforcing a cap (ADR-067: drift bebas tanpa batas).
+    _drift_detector = getattr(agent, "_drift_detector", None)
+    if _drift_detector is not None:
+        try:
+            _drift_block = _drift_detector.format_for_system_prompt()
+            if _drift_block:
+                volatile_parts.append(_drift_block)
+        except Exception:
+            pass
+
     from hermes_time import now as _hermes_now
     now = _hermes_now()
     # Date-only (not minute-precision) so the system prompt is byte-stable
