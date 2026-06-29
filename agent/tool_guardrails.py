@@ -70,7 +70,7 @@ class ToolCallGuardrailConfig:
     """
 
     warnings_enabled: bool = True
-    hard_stop_enabled: bool = False
+    tool_loop_halt_enabled: bool = False
     exact_failure_warn_after: int = 2
     exact_failure_block_after: int = 5
     same_tool_failure_warn_after: int = 3
@@ -89,14 +89,14 @@ class ToolCallGuardrailConfig:
         warn_after = data.get("warn_after")
         if not isinstance(warn_after, Mapping):
             warn_after = {}
-        hard_stop_after = data.get("hard_stop_after")
-        if not isinstance(hard_stop_after, Mapping):
-            hard_stop_after = {}
+        tool_loop_halt_after = data.get("tool_loop_halt_after")
+        if not isinstance(tool_loop_halt_after, Mapping):
+            tool_loop_halt_after = {}
 
         defaults = cls()
         return cls(
             warnings_enabled=_as_bool(data.get("warnings_enabled"), defaults.warnings_enabled),
-            hard_stop_enabled=_as_bool(data.get("hard_stop_enabled"), defaults.hard_stop_enabled),
+            tool_loop_halt_enabled=_as_bool(data.get("tool_loop_halt_enabled"), defaults.tool_loop_halt_enabled),
             exact_failure_warn_after=_positive_int(
                 warn_after.get("exact_failure", data.get("exact_failure_warn_after")),
                 defaults.exact_failure_warn_after,
@@ -110,15 +110,15 @@ class ToolCallGuardrailConfig:
                 defaults.no_progress_warn_after,
             ),
             exact_failure_block_after=_positive_int(
-                hard_stop_after.get("exact_failure", data.get("exact_failure_block_after")),
+                tool_loop_halt_after.get("exact_failure", data.get("exact_failure_block_after")),
                 defaults.exact_failure_block_after,
             ),
             same_tool_failure_halt_after=_positive_int(
-                hard_stop_after.get("same_tool_failure", data.get("same_tool_failure_halt_after")),
+                tool_loop_halt_after.get("same_tool_failure", data.get("same_tool_failure_halt_after")),
                 defaults.same_tool_failure_halt_after,
             ),
             no_progress_block_after=_positive_int(
-                hard_stop_after.get("idempotent_no_progress", data.get("no_progress_block_after")),
+                tool_loop_halt_after.get("idempotent_no_progress", data.get("no_progress_block_after")),
                 defaults.no_progress_block_after,
             ),
         )
@@ -240,7 +240,7 @@ class ToolCallGuardrailController:
 
     def before_call(self, tool_name: str, args: Mapping[str, Any] | None) -> ToolGuardrailDecision:
         signature = ToolCallSignature.from_call(tool_name, _coerce_args(args))
-        if not self.config.hard_stop_enabled:
+        if not self.config.tool_loop_halt_enabled:
             return ToolGuardrailDecision(tool_name=tool_name, signature=signature)
 
         exact_count = self._exact_failure_counts.get(signature, 0)
@@ -303,7 +303,7 @@ class ToolCallGuardrailController:
             same_count = self._same_tool_failure_counts.get(tool_name, 0) + 1
             self._same_tool_failure_counts[tool_name] = same_count
 
-            if self.config.hard_stop_enabled and same_count >= self.config.same_tool_failure_halt_after:
+            if self.config.tool_loop_halt_enabled and same_count >= self.config.same_tool_failure_halt_after:
                 decision = ToolGuardrailDecision(
                     action="halt",
                     code="same_tool_failure_halt",
