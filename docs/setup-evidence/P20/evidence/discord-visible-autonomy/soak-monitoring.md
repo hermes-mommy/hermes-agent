@@ -1816,3 +1816,64 @@ Note: this auto-check ran concurrently with P24 v3.0 build (Group E W15/W16 in f
 **Verdict**: CLEAN. All 7 dimensions green. NRestarts=0 (PID 226800 stable across ALL auto-checks this session — confirms local P24 build work has zero impact on VPS P20 runtime), 0 fallback, 0 blockers, brain thinking (8 think_complete/5m), dashboard editing correct blurple embed every ~1s (8 edits, 0 failures), log channel fresh + append-only, mem stable ~25% of 4G. No restart needed. Continue monitoring toward 2026-06-30 06:39 WIB target.
 
 Note: P24 v3.0 build is COMPLETE on local repo (20 waves, 17 modules, 541 tests, src/→0). VPS P20 runtime independent — NRestarts=0 across all soak checks confirms no impact.
+
+---
+
+## Snapshot — 2026-06-29 21:25 WIB (auto-check)
+
+**1. Core state**: `active`/`running`, `NRestarts=0`, `Result=success`, `ActiveEnterTimestamp=Mon 2026-06-29 06:39:05 WIB`. (Clock unchanged since prior snapshot — no restart this interval.)
+
+**2. Memory**: `MemoryCurrent=1111326720` (~1.06 GB), `MemoryPeak=1121214464` (~1.04 GB), `MemoryHigh=2G`, `MemoryMax=4G`. Stable at ~25% of 4G ceiling. No OOM risk. (MemoryPeak barely above Current = flat trend, no growth this interval.)
+
+**3. HermesBrain (5-min window)**: `hermes_brain_think_complete=9`, `hermes_brain_fallback_used=0`. Brain actively thinking, zero fallback.
+
+**4. Dashboard (5-min window)**: `dashboard_edited=8`, `dashboard_publish_failed=0`, `dashboard_edit_failed=0`. Editing every ~37s, zero failures.
+
+**5. Blockers (5-min window)** — ALL 0:
+- `HARD_STOP requested - routing to END`: 0
+- `hard_stop_detected_live`: 0
+- `hermes_brain_think_failed`: 0
+- `aiagent_create_failed`: 0
+- `heartbeat_stopped`: 0
+- `traceback`: 0
+- `GraphRecursionError`: 0
+- 30-min extended scan (recursion/guardian_error/OOM/oom-killer): 0
+
+**6. Discord REST (live API call, token from `.env.discord` `DISCORD_BOT_TOKEN`)**:
+- Dashboard channel `1510914604291588237` GET limit 50 → HTTP 200, 12 messages returned.
+- **Canonical dashboard embed `1519135545501028549` PRESENT**, `edited_timestamp=2026-06-29T14:18:11Z` (21:18 WIB today — actively edited), `color=0x5865f2` (blurple ✓), embed title `"Guinevere — Living Autonomy Dashboard"`.
+- The other 11 embeds in the channel are a **separate persona morning-greeting feature** ("👑 Mommy sudah bangun, Darling", color `0x6b21a8` purple, footer "Guinevere de Baroque", 2026-06-27→06-28 timestamps) — NOT dashboard duplicates. The canonical living-autonomy dashboard is **single** (1 of the 12).
+- Log channel `1510914623367413850` GET limit 5 → HTTP 200, fresh append-only events (most recent `2026-06-29T14:16:16Z` = 21:16 WIB, `[cycle 4862] phase=idle focus=Knowledge graph seeding`). Log appending live.
+
+**7. Redis `life_kernel:dashboard_message_id`** — **SOFT DEVIATION (not a blocker)**:
+- Key `life_kernel:dashboard_message_id` is **absent** in core Redis (localhost:6380 DB 5, auth from `.env.core` REDIS_URL — 101 keys total, 0 `life_kernel:*`). Verified across DBs 0-5 and via value-search for `1519135545501028549` (0 hits).
+- **Not a failure**: `DashboardWriter._recover_message_id()` (src/life_kernel/dashboard_writer.py:128) is the designed fallback — when the Redis key is missing, it REST-scans the channel for the embed titled `"Guinevere — Living Autonomy Dashboard"` and recovers id `1519135545501028549` each publish cycle. Logs confirm `dashboard_edited message_id=1519135545501028549` succeeding (8/5min, 49/30min), with **0 `dashboard_message_id_read_failed`** and **0 `dashboard_message_id_write_failed`**.
+- Intent of check #7 (dashboard message-id correctly tracked → dashboard editing) IS satisfied via the recovery path. The literal Redis-key equality is not, but the dashboard is functioning correctly. **Recommend follow-up**: investigate why the legacy key isn't persisting (likely the `_set_message_id` write is silently no-op'ing against a redis client wired to a different DB than the one holding `life_kernel:*`, OR the key was never seeded post the 06:39 restart and the write-back path has a subtle issue). Non-blocking — the recovery fallback makes the dashboard self-healing. Logged for awareness, NOT a soak blocker.
+
+**Soak clock**: `ActiveEnterTimestamp 2026-06-29 06:39:05 WIB` → **24h target = 2026-06-30 06:39 WIB**. Snapshot at 21:25 WIB = ~14h46m into the 24h window. **Window NOT complete → NOT upgrading to PRODUCTION PASS.** Continue monitoring.
+
+**Verdict**: **CLEAN**. All hard blocker dimensions green (NRestarts=0, 0 fallback, 0 recursion/OOM/traceback/HARD_STOP, brain thinking 9/5min, dashboard editing blurple embed 8/5min 0-fail, log channel fresh append-only, mem stable ~25% of 4G). The one soft deviation (Redis dashboard_message_id key absent → recovery-fallback path active) is non-blocking and self-healing. No restart needed. Do NOT restart guinevere-core. Continue monitoring toward 2026-06-30 06:39 WIB target.
+
+Note: Local P24 v3.1 work (wire 3 modules + forbidden-patterns sweep, 17/17 wired, 0/0/0 patterns, 556 tests) is UNCOMMITTED on local repo — independent of VPS P20 runtime (NRestarts=0 confirms zero impact).
+
+---
+
+### Snapshot — 2026-06-29 23:26 WIB (auto-check, P24 mandate context)
+
+**1. Core state**: `guinevere-core.service` **active**, NRestarts=**0**, Result=**success**, ActiveEnterTimestamp=**Mon 2026-06-29 06:39:05 WIB**.
+
+**2. Memory**: MemoryCurrent=**1,087,401,984** (~1.01 GB) vs MemoryHigh 2G / MemoryMax 4G (~25% of max). MemoryPeak=**1,155,723,264** (~1.08 GB). Stable, no OOM risk.
+
+**3. HermesBrain (last 5 min)**: `hermes_brain_think_complete` = **9**, `hermes_brain_fallback_used` = **0**.
+
+**4. Dashboard (last 5 min)**: `dashboard_edited` = **9**, `dashboard_publish_failed` = **0**, `dashboard_edit_failed` = **0**.
+
+**5. Blockers (last 5 min)**: HARD_STOP requested=0, hard_stop_detected_live=0, hermes_brain_think_failed=0, aiagent_create_failed=0, heartbeat_stopped=0, traceback=0, GraphRecursionError=0.
+
+**6. Redis `life_kernel:dashboard_message_id`**: probe via `redis-cli -n 0 get` returned empty (same soft deviation as prior snapshot — key absent in core Redis, dashboard self-heals via `DashboardWriter._recover_message_id()` REST-scan, non-blocking, self-healing).
+
+**Soak clock**: ActiveEnterTimestamp 2026-06-29 06:39:05 WIB → 24h target = **2026-06-30 06:39 WIB**. Snapshot at 23:26 WIB = ~16h47m into 24h window. **Window NOT complete → NOT upgrading to PRODUCTION PASS.**
+
+**Verdict**: **CLEAN**. All hard blocker dimensions green (NRestarts=0, 0 fallback, 0 recursion/OOM/traceback/HARD_STOP, brain thinking 9/5min, dashboard editing 9/5min 0-fail, mem ~25% of 4G). No restart needed. Continue monitoring toward 2026-06-30 06:39 WIB target.
+
+*Context: P24 "truly 100% fork" mandate in progress on local repo — independent of VPS P20 runtime (NRestarts=0 confirms zero impact).*

@@ -29,8 +29,11 @@ Inspired by Clawdbot's ``normalizeAnthropicModelId`` pattern.
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Vendor prefix mapping
@@ -218,7 +221,8 @@ def _normalize_provider_alias(provider_name: str) -> str:
         from hermes_cli.models import normalize_provider
 
         return normalize_provider(raw)
-    except Exception:
+    except Exception as e:
+        logger.debug("provider alias resolution failed for %r: %s", raw, e)
         return raw
 
 
@@ -428,10 +432,10 @@ def normalize_model_for_provider(model_input: str, target_provider: str) -> str:
             normalized = normalize_copilot_model_id(name)
             if normalized:
                 return normalized
-        except Exception:
+        except Exception as e:
             # Fall through to the generic strip-vendor behaviour below
             # if the Copilot-specific path is unavailable for any reason.
-            pass
+            logger.debug("copilot model normalizer unavailable: %s", e)
 
     # --- Copilot / Copilot ACP / openai-codex fallback:
     #     strip matching provider prefix, keep dots ---

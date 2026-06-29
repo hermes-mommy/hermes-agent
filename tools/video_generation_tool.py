@@ -211,10 +211,11 @@ def check_video_generation_requirements() -> bool:
             try:
                 if provider.is_available():
                     return True
-            except Exception:
+            except Exception as exc:
+                logger.debug("video_gen provider.is_available() error: %s", exc)
                 continue
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("video_gen availability check failed: %s", exc)
     return False
 
 
@@ -479,7 +480,8 @@ def _build_dynamic_video_schema() -> Dict[str, Any]:
 
         _ensure_plugins_discovered()
         provider = get_provider(configured)
-    except Exception:
+    except Exception as exc:
+        logger.debug("video_gen get_provider('%s') failed: %s", configured, exc)
         provider = None
 
     if provider is None:
@@ -491,11 +493,13 @@ def _build_dynamic_video_schema() -> Dict[str, Any]:
 
     try:
         caps = provider.capabilities() or {}
-    except Exception:
+    except Exception as exc:
+        logger.debug("video_gen provider.capabilities() error: %s", exc)
         caps = {}
     try:
         models = provider.list_models() or []
-    except Exception:
+    except Exception as exc:
+        logger.debug("video_gen provider.list_models() error: %s", exc)
         models = []
 
     active_model = configured_model or provider.default_model()

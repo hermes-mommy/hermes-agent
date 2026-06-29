@@ -18,9 +18,10 @@ Method reference: https://chromedevtools.github.io/devtools-protocol/
 from __future__ import annotations
 
 import asyncio
+import importlib
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 from tools.registry import registry, tool_error
 
@@ -37,8 +38,8 @@ try:
 
     _WS_AVAILABLE = True
 except ImportError:
-    websockets = None  # type: ignore[assignment]
-    WebSocketException = Exception  # type: ignore[assignment,misc]
+    websockets = cast(Any, None)
+    WebSocketException = cast(Any, Exception)
     _WS_AVAILABLE = False
 
 
@@ -78,8 +79,8 @@ def _resolve_cdp_endpoint() -> str:
     2. ``browser.cdp_url`` in ``config.yaml``
     """
     try:
-        from tools.browser_tool import _get_cdp_override  # type: ignore[import-not-found]
-
+        _mod = importlib.import_module("tools.browser_tool")
+        _get_cdp_override = getattr(_mod, "_get_cdp_override")
         return (_get_cdp_override() or "").strip()
     except Exception as exc:  # pragma: no cover — defensive
         logger.debug("browser_cdp: failed to resolve CDP endpoint: %s", exc)
@@ -202,7 +203,8 @@ def _browser_cdp_via_supervisor(
     ``asyncio.run_coroutine_threadsafe`` onto the supervisor loop).
     """
     try:
-        from tools.browser_supervisor import SUPERVISOR_REGISTRY  # type: ignore[import-not-found]
+        _mod = importlib.import_module("tools.browser_supervisor")
+        SUPERVISOR_REGISTRY = getattr(_mod, "SUPERVISOR_REGISTRY")
     except Exception as exc:  # pragma: no cover — defensive
         return tool_error(
             f"CDP supervisor is not available: {exc}. frame_id routing requires "
@@ -232,8 +234,9 @@ def _browser_cdp_via_supervisor(
                 break
     if frame_info is None:
         # Check the raw frames dict too (frame_tree is capped at 30 entries)
-        with supervisor._state_lock:  # type: ignore[attr-defined]
-            raw = supervisor._frames.get(frame_id)  # type: ignore[attr-defined]
+        _sv = cast(Any, supervisor)
+        with _sv._state_lock:
+            raw = _sv._frames.get(frame_id)
         if raw is not None:
             frame_info = raw.to_dict()
 
@@ -258,7 +261,7 @@ def _browser_cdp_via_supervisor(
 
     # Dispatch onto the supervisor's loop.
     import asyncio as _asyncio
-    loop = supervisor._loop  # type: ignore[attr-defined]
+    loop = cast(Any, supervisor)._loop
     if loop is None or not loop.is_running():
         return tool_error(
             "CDP supervisor loop is not running. Try reconnecting with "
@@ -266,7 +269,7 @@ def _browser_cdp_via_supervisor(
         )
 
     async def _do_cdp():
-        return await supervisor._cdp(  # type: ignore[attr-defined]
+        return await cast(Any, supervisor)._cdp(
             method,
             params or {},
             session_id=child_sid,
@@ -541,11 +544,10 @@ def _browser_cdp_check() -> bool:
     ``registry.register(...)`` calls).
     """
     try:
-        from tools.browser_tool import (  # type: ignore[import-not-found]
-            _get_cdp_override,
-            check_browser_requirements,
-        )
-    except ImportError as exc:  # pragma: no cover — defensive
+        _mod = importlib.import_module("tools.browser_tool")
+        _get_cdp_override = getattr(_mod, "_get_cdp_override")
+        check_browser_requirements = getattr(_mod, "check_browser_requirements")
+    except (ImportError, AttributeError) as exc:  # pragma: no cover — defensive
         logger.debug("browser_cdp check: browser_tool import failed: %s", exc)
         return False
     if not check_browser_requirements():

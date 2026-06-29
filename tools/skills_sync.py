@@ -205,9 +205,10 @@ def _content_hash(directory: Path) -> str:
         from tools.skills_guard import content_hash
 
         return content_hash(directory)
-    except Exception:
+    except Exception as e:
         # Hashing is provenance metadata only; keep sync resilient if guard
         # dependencies are unavailable in a packaged/update context.
+        logger.debug("content_hash unavailable for %s, falling back to _dir_hash: %s", directory, e)
         return _dir_hash(directory)
 
 

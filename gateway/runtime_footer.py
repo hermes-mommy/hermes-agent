@@ -25,9 +25,12 @@ piecemeal, the footer is sent as a separate trailing message via
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Any, Iterable, Optional
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_FIELDS: tuple[str, ...] = ("model", "context_pct", "cwd")
 _SEP = " · "
@@ -43,7 +46,11 @@ def _home_relative_cwd(cwd: str) -> str:
         if home and (p == home or p.startswith(home + os.sep)):
             return "~" + p[len(home):]
         return p
-    except Exception:
+    except (OSError, ValueError) as e:
+        # OSError: filesystem edge cases (e.g. extremely long paths on POSIX).
+        # ValueError: malformed cwd strings passed to abspath on some platforms.
+        # Fail-soft: surface original cwd unchanged.
+        logger.debug("runtime_footer: home-relative cwd collapse failed for %r: %s", cwd, e)
         return cwd
 
 

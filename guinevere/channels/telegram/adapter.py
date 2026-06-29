@@ -384,15 +384,16 @@ class TelegramClient:
                 return False
             data = self._safe_json(resp)
             return bool(data.get("ok", False))
-        except Exception:
+        except Exception as e:
+            logger.debug(f"{self.LOG_PREFIX}.health_error", error=str(e))
             return False
 
     async def aclose(self) -> None:
         if self._owns_client and self._client is not None:
             try:
                 await self._client.aclose()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"{self.LOG_PREFIX}.aclose_error", error=str(e))
 
 
 # ---- Main adapter ----
@@ -504,6 +505,7 @@ class TelegramAdapter(ChannelSender):
                 message_id=str(message_id),
             )
         except Exception as exc:
+            logger.error("telegram send_message failed: %s", exc, exc_info=True)
             return SendResult(
                 success=False,
                 channel=self.channel_id,
@@ -536,6 +538,7 @@ class TelegramAdapter(ChannelSender):
                 message_id=str(message_id),
             )
         except Exception as exc:
+            logger.error("telegram edit_message failed: %s", exc, exc_info=True)
             return SendResult(
                 success=False,
                 channel=self.channel_id,
@@ -584,6 +587,7 @@ class TelegramAdapter(ChannelSender):
                 message_id=str(message_id),
             )
         except Exception as exc:
+            logger.error("telegram delete_message failed: %s", exc, exc_info=True)
             return SendResult(
                 success=False,
                 channel=self.channel_id,
@@ -633,6 +637,7 @@ class TelegramAdapter(ChannelSender):
                 message_id=str(message_id),
             )
         except Exception as exc:
+            logger.error("telegram send_photo failed: %s", exc, exc_info=True)
             return SendResult(
                 success=False,
                 channel=self.channel_id,
@@ -664,6 +669,7 @@ class TelegramAdapter(ChannelSender):
                 message_id=str(message_id),
             )
         except Exception as exc:
+            logger.error("telegram send_document failed: %s", exc, exc_info=True)
             return SendResult(
                 success=False,
                 channel=self.channel_id,

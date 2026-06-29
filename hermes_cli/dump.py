@@ -7,6 +7,7 @@ No ANSI colors, no checkmarks — just data.
 """
 
 import json
+import logging
 import os
 import platform
 import subprocess
@@ -14,6 +15,8 @@ import sys
 from pathlib import Path
 
 from hermes_cli.config import get_hermes_home, get_env_path, get_project_root, load_config
+
+logger = logging.getLogger(__name__)
 from hermes_cli.env_loader import load_hermes_dotenv
 from hermes_constants import display_hermes_home
 from agent.skill_utils import is_excluded_skill_path
@@ -39,8 +42,10 @@ def _get_git_commit(project_root: Path) -> str:
             value = result.stdout.strip()
             if value:
                 return value
-    except Exception:
-        pass
+    except (OSError, subprocess.SubprocessError) as e:
+        # git binary missing (OSError/FileNotFoundError) or
+        # subprocess.TimeoutExpired -> fall through to baked-SHA path.
+        logger.debug("git rev-parse failed: %s", e)
 
     # Fall back to the build-time baked SHA (populated in published Docker
     # images, absent otherwise).  Defers the import so the dump module
@@ -50,8 +55,10 @@ def _get_git_commit(project_root: Path) -> str:
         baked = get_build_sha(short=8)
         if baked:
             return baked
-    except Exception:
-        pass
+    except ImportError:
+        logger.debug("hermes_cli.build_info not available")
+    except Exception as e:
+        logger.debug("get_build_sha failed: %s", e)
 
     return "(unknown)"
 
@@ -81,7 +88,12 @@ def _gateway_status() -> str:
         if snapshot.service_installed and not snapshot.service_running:
             return f"stopped ({snapshot.manager})"
         return f"stopped ({snapshot.manager})"
-    except Exception:
+    except ImportError:
+        logger.debug("hermes_cli.gateway not available")
+        return "unknown" if sys.platform.startswith(("linux", "darwin")) else "N/A"
+    except Exception as e:
+        # Genuinely-unknown fail-soft for platform-specific gateway introspection.
+        logger.debug("get_gateway_runtime_snapshot failed: %s", e)
         return "unknown" if sys.platform.startswith(("linux", "darwin")) else "N/A"
 
 
@@ -116,7 +128,9 @@ def _cron_summary(hermes_home: Path) -> str:
         jobs = data.get("jobs", [])
         active = sum(1 for j in jobs if j.get("enabled", True))
         return f"{active} active / {len(jobs)} total"
-    except Exception:
+    except (OSError, ValueError) as e:
+        # File I/O errors and JSON decode errors (json.JSONDecodeError is ValueError).
+        logger.debug("cron jobs read failed: %s", e)
         return "(error reading)"
 
 
@@ -240,7 +254,13 @@ def run_dump(args):
 
     try:
         config = load_config()
-    except Exception:
+    except ImportError:
+        logger.debug("load_config import failed - using empty config")
+        config = {}
+    except Exception as e:
+        # Genuinely-unknown fail-soft dump: missing/corrupt config should
+        # not crash the dump command.
+        logger.debug("load_config failed: %s", e)
         config = {}
 
     model, provider = _get_model_and_provider(config)
@@ -249,7 +269,12 @@ def run_dump(args):
     try:
         from hermes_cli.profiles import get_active_profile_name
         profile = get_active_profile_name() or "(default)"
-    except Exception:
+    except ImportError:
+        logger.debug("hermes_cli.profiles not available")
+        profile = "(default)"
+    except Exception as e:
+        # Genuinely-unknown fail-soft for optional profile lookup.
+        logger.debug("get_active_profile_name failed: %s", e)
         profile = "(default)"
 
     # Terminal backend

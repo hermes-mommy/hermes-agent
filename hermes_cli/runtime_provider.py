@@ -66,8 +66,8 @@ def _config_base_url_trustworthy_for_bare_custom(cfg_base_url: str, cfg_provider
 
         if _resolve_provider(cfg_provider_norm) == "custom":
             return True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Provider alias resolution failed for %r: %s", cfg_provider_norm, e)
     if base_url_host_matches(bu, "openrouter.ai"):
         return False
     return _loopback_hostname(base_url_hostname(bu))
@@ -233,7 +233,8 @@ def _copilot_runtime_api_mode(model_cfg: Dict[str, Any], api_key: str) -> str:
         from hermes_cli.models import copilot_model_api_mode
 
         return copilot_model_api_mode(model_name, api_key=api_key)
-    except Exception:
+    except Exception as e:
+        logger.debug("copilot_model_api_mode lookup failed for model=%r: %s", model_name, e)
         return "chat_completions"
 
 
@@ -361,7 +362,8 @@ def _resolve_runtime_from_pool_entry(
                 from hermes_cli.models import azure_foundry_model_api_mode
 
                 inferred = azure_foundry_model_api_mode(effective_model)
-            except Exception:
+            except Exception as e:
+                logger.debug("azure_foundry_model_api_mode lookup failed for model=%r: %s", effective_model, e)
                 inferred = None
             if inferred:
                 api_mode = inferred
@@ -470,7 +472,8 @@ def _try_resolve_from_custom_pool(
             "source": f"pool:{pool_key}",
             "credential_pool": pool,
         }
-    except Exception:
+    except Exception as e:
+        logger.debug("Custom pool resolution failed for base_url=%r (provider=%r): %s", base_url, provider_label, e)
         return None
 
 
@@ -644,8 +647,8 @@ def _resolve_named_custom_runtime(
 
             if _resolve_provider(requested_norm) == "custom":
                 requested_norm = "custom"
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Provider alias resolution failed for %r: %s", requested_norm, e)
     if requested_norm == "custom" and explicit_base_url:
         base_url = explicit_base_url.strip().rstrip("/")
         # Check credential pool first — mirrors the named-custom-provider path
@@ -770,8 +773,8 @@ def _resolve_openrouter_runtime(
 
             if _resolve_provider(requested_norm) == "custom":
                 requested_norm = "custom"
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Provider alias resolution failed for %r: %s", requested_norm, e)
 
     env_openrouter_base_url = os.getenv("OPENROUTER_BASE_URL", "").strip()
     env_custom_base_url = os.getenv("CUSTOM_BASE_URL", "").strip()
@@ -935,7 +938,8 @@ def _resolve_azure_foundry_runtime(
             from hermes_cli.models import azure_foundry_model_api_mode
 
             inferred = azure_foundry_model_api_mode(effective_model)
-        except Exception:
+        except Exception as e:
+            logger.debug("azure_foundry_model_api_mode lookup failed for model=%r: %s", effective_model, e)
             inferred = None
         if inferred:
             cfg_api_mode = inferred
@@ -1026,7 +1030,8 @@ def _resolve_azure_foundry_runtime(
         try:
             from hermes_cli.config import get_env_value
             api_key = get_env_value("AZURE_FOUNDRY_API_KEY") or ""
-        except Exception:
+        except Exception as e:
+            logger.debug("AZURE_FOUNDRY_API_KEY env lookup via hermes_cli.config failed: %s", e)
             api_key = ""
     if not api_key:
         api_key = os.getenv("AZURE_FOUNDRY_API_KEY", "").strip()
@@ -1298,7 +1303,8 @@ def resolve_runtime_provider(
 
     try:
         pool = load_pool(provider) if should_use_pool else None
-    except Exception:
+    except Exception as e:
+        logger.debug("Credential pool load failed for provider=%r: %s", provider, e)
         pool = None
     if pool and pool.has_credentials():
         entry = pool.select()

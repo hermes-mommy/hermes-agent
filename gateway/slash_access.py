@@ -34,8 +34,11 @@ included here — only the slash-command access split.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, FrozenSet, Iterable, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 # Slash commands that MUST stay reachable for any allowed user, even when
@@ -215,7 +218,10 @@ def policy_for_source(gateway_config: Any, source: Any) -> SlashAccessPolicy:
     if platforms is not None:
         try:
             platform_config = platforms.get(source.platform)
-        except Exception:
+        except Exception as e:
+            # Fail-soft: an unusual mapping type may raise on .get(); fall
+            # back to no-platform config so dispatch still works.
+            logger.debug("platforms.get(%r) failed: %s", getattr(source, "platform", None), e)
             platform_config = None
     extra = _platform_extra(platform_config)
     scope = _scope_for_chat_type(getattr(source, "chat_type", None))

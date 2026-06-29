@@ -242,14 +242,20 @@ class GatewayStreamConsumer:
             self._queue.put((_COMMENTARY, text))
 
     def _notify_new_message(self) -> None:
-        """Fire the on_new_message callback, swallowing any errors."""
+        """Fire the on_new_message callback, swallowing any errors.
+
+        Vendored-platform-adapter callback: the implementation is supplied by
+        the gateway host, so we cannot narrow the exception type.  Fail-soft:
+        we already own the stream lifecycle here, and a callback raising
+        must not abort the in-flight message delivery.
+        """
         cb = self._on_new_message
         if cb is None:
             return
         try:
             cb()
-        except Exception:
-            logger.debug("on_new_message callback error", exc_info=True)
+        except Exception as e:
+            logger.debug("on_new_message callback error: %s", e)
 
     def _reset_segment_state(self, *, preserve_no_edit: bool = False) -> None:
         if preserve_no_edit and self._message_id == "__no_edit__":
@@ -630,8 +636,11 @@ class GatewayStreamConsumer:
             if self._accumulated and self._message_id:
                 try:
                     _best_effort_ok = bool(await self._send_or_edit(self._accumulated))
-                except Exception:
-                    pass
+                except Exception as e:
+                    # Vendored platform adapter: fail-soft during cancellation
+                    # cleanup.  We're already inside the CancelledError path,
+                    # so any adapter error here is non-actionable.
+                    logger.debug("Cancelled-time best-effort edit failed: %s", e)
             # Only confirm final delivery if the best-effort send above
             # actually succeeded OR if the final response was already
             # confirmed before we were cancelled.  Previously this
@@ -775,8 +784,13 @@ class GatewayStreamConsumer:
                         )
                         if result.success:
                             self._last_sent_text = clean_text
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        # Vendored platform adapter: best-effort cursor strip
+                        # during fallback.  If the platform is still flooding
+                        # we cannot recover, and we already tried the
+                        # adaptive-backoff retry.  Log and move on so the
+                        # base gateway path can still deliver the full answer.
+                        logger.debug("Best-effort cursor strip failed: %s", e)
                 self._already_sent = True
                 self._final_response_sent = True
                 self._final_content_delivered = True
@@ -900,8 +914,11 @@ class GatewayStreamConsumer:
                 chat_type=self.cfg.chat_type or None,
                 metadata=self.metadata,
             )
-        except Exception:
-            logger.debug("supports_draft_streaming probe raised", exc_info=True)
+        except Exception as e:
+            # Vendored platform adapter: the probe may raise if the adapter
+            # is raises internally instead of returning False.  Treat any
+            # exception as "drafts unsupported" and fall back to edit.
+            logger.debug("supports_draft_streaming probe raised: %s", e)
             supported = False
         if not supported:
             if transport == "draft":
@@ -1003,8 +1020,12 @@ class GatewayStreamConsumer:
                 content=prefix,
             )
             self._last_sent_text = prefix
-        except Exception:
-            pass  # best-effort — don't let this block the fallback path
+        except Exception as e:
+            # Vendored platform adapter: best-effort cursor strip; cannot
+            # block the rest of the fallback path.  Logged at debug level
+            # because flooding/platform errors are expected during burst
+            # responses.
+            logger.debug("Best-effort cursor strip failed: %s", e)
 
     async def _send_commentary(self, text: str) -> bool:
         """Send a completed interim assistant commentary message."""

@@ -20,6 +20,11 @@ from typing import Any, Callable, Final
 
 import structlog
 
+try:
+    from sqlalchemy.exc import SQLAlchemyError
+except ImportError:  # pragma: no cover
+    SQLAlchemyError = Exception
+
 logger = structlog.get_logger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -251,11 +256,12 @@ class TimescaleIngester:
             count = result.scalar_one()
             await session.commit()
             return int(count)
-        except Exception:
+        except SQLAlchemyError as e:
             await session.rollback()
             logger.exception(
                 "timescale_event_count_failed",
                 since=str(since) if since else None,
+                error=str(e),
             )
             return 0
         finally:
@@ -301,11 +307,12 @@ class TimescaleIngester:
                 "ingested_at": row["ingested_at"].isoformat() if row["ingested_at"] else None,
                 "extracted_facts": row["extracted_facts"],
             }
-        except Exception:
+        except SQLAlchemyError as e:
             await session.rollback()
             logger.exception(
                 "timescale_last_event_failed",
                 event_type=event_type,
+                error=str(e),
             )
             return None
         finally:
@@ -416,11 +423,12 @@ class TimescaleIngester:
                 total_events=total_events,
                 ingested_count=ingested_count,
             )
-        except Exception:
+        except SQLAlchemyError as e:
             await session.rollback()
             logger.exception(
                 "timescale_ingestion_log_failed",
                 batch_id=batch_id,
+                error=str(e),
             )
         finally:
             await session.close()

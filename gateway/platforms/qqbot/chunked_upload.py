@@ -420,8 +420,11 @@ class ChunkedUploader:
                 body_preview = ""
                 try:
                     body_preview = getattr(resp, "text", "")[:200]
-                except Exception:  # pragma: no cover — defensive
-                    pass
+                except Exception as exc:  # pragma: no cover — defensive
+                    logger.debug(
+                        "[%s] Could not read response body for error preview: %s",
+                        self._log_tag, exc,
+                    )
                 raise RuntimeError(
                     f"COS PUT returned {status}: {body_preview}"
                 )

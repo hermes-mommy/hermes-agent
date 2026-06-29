@@ -445,8 +445,11 @@ def cmd_mcp_remove(args):
         from tools.mcp_oauth_manager import get_manager
         get_manager().remove(name)
         _success("Cleaned up OAuth tokens")
-    except Exception:
-        pass
+    except Exception as exc:
+        # Fail-soft: MCP OAuth cleanup is best-effort; never block the remove.
+        # The OAuth manager is vendored third-party code; log at debug for
+        # observability without surfacing to the user.
+        logger.debug("OAuth token cleanup for %s failed: %s", name, exc)
 
 
 # ─── hermes mcp list ──────────────────────────────────────────────────────────

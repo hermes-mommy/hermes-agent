@@ -117,7 +117,14 @@ class HookRegistry:
                 sys.modules[module_name] = module
                 try:
                     spec.loader.exec_module(module)
-                except Exception:
+                except Exception as e:
+                    # Cleanup hook registration on failure, then re-raise so the
+                    # caller surfaces the loader error (no silent failure).
+                    print(
+                        f"[hooks] Loader exec failed for '{hook_name}': {e!r}; "
+                        f"removing module from sys.modules",
+                        flush=True,
+                    )
                     sys.modules.pop(module_name, None)
                     raise
 

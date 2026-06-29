@@ -341,8 +341,8 @@ def check_alias_collision(name: str) -> Optional[str]:
                     content = (wrapper_dir / canon).read_text()
                     if "hermes -p" in content:
                         return None  # it's our wrapper, safe to overwrite
-                except Exception:
-                    pass
+                except Exception as e:
+                    pass  # unreadable / weird FS — treat as not-our-wrapper
             return f"'{canon}' conflicts with an existing command ({existing_path})"
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
@@ -389,8 +389,8 @@ def remove_wrapper_script(name: str) -> bool:
             if "hermes -p" in content:
                 wrapper_path.unlink()
                 return True
-        except Exception:
-            pass
+        except Exception as e:
+            pass  # unreadable / never-our-wrapper — leave it alone
     return False
 
 
@@ -448,7 +448,8 @@ def _read_distribution_meta(profile_dir: Path) -> tuple:
             data.get("version"),
             data.get("source"),
         )
-    except Exception:
+    except Exception as e:
+        # Bad/Unparseable manifest — never break list operations over an unrelated profile
         return None, None, None
 
 
@@ -467,7 +468,8 @@ def _read_config_model(profile_dir: Path) -> tuple:
         if isinstance(model_cfg, dict):
             return model_cfg.get("default") or model_cfg.get("model"), model_cfg.get("provider")
         return None, None
-    except Exception:
+    except Exception as e:
+        # Unparseable config.yaml — degrade to "unknown model" rather than break list
         return None, None
 
 
@@ -476,7 +478,8 @@ def _check_gateway_running(profile_dir: Path) -> bool:
     try:
         from gateway.status import get_running_pid
         return get_running_pid(profile_dir / "gateway.pid", cleanup_stale=False) is not None
-    except Exception:
+    except Exception as e:
+        # gateway.status unavailable or PID-file unreadable — treat as not-running
         return False
 
 
@@ -526,7 +529,8 @@ def read_profile_meta(profile_dir: Path) -> dict:
         import yaml
         with open(path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
-    except Exception:
+    except Exception as e:
+        # Corrupt profile.yaml — never break list operations
         return {"description": "", "description_auto": False}
     if not isinstance(data, dict):
         return {"description": "", "description_auto": False}
@@ -559,7 +563,8 @@ def write_profile_meta(
                 loaded = yaml.safe_load(f) or {}
             if isinstance(loaded, dict):
                 existing = loaded
-        except Exception:
+        except Exception as e:
+            # Corrupt existing profile.yaml — overwrite from scratch with the new fields
             existing = {}
     if description is not None:
         existing["description"] = description.strip()
@@ -758,7 +763,7 @@ def create_profile(
         try:
             from hermes_cli.default_soul import DEFAULT_SOUL_MD
             soul_path.write_text(DEFAULT_SOUL_MD, encoding="utf-8")
-        except Exception:
+        except Exception as e:
             pass  # best-effort — don't fail profile creation over this
 
     # Write the opt-out marker so seed_profile_skills() and `hermes update`'s
@@ -784,7 +789,7 @@ def create_profile(
                 description=description.strip(),
                 description_auto=False,
             )
-        except Exception:
+        except Exception as e:
             pass  # non-fatal — user can describe later with `hermes profile describe`
 
     # Phase 4: when running inside a container under s6, register the
@@ -980,8 +985,8 @@ def delete_profile(name: str, yes: bool = False) -> Path:
         if active == canon:
             set_active_profile("default")
             print("✓ Active profile reset to default")
-    except Exception:
-        pass
+    except Exception as e:
+        pass  # non-fatal cleanup — profile directory already removed
 
     print(f"\nProfile '{canon}' deleted.")
     return profile_dir
@@ -1023,7 +1028,7 @@ def _maybe_register_gateway_service(profile_name: str) -> None:
         mgr = get_service_manager()
     except RuntimeError:
         return  # no backend on this host — nothing to do
-    except Exception:
+    except Exception as e:
         # Defensive: detect_service_manager failed for some other
         # reason. Stay silent on host rather than printing a confusing
         # s6 warning to users who have never touched the container.
@@ -1058,8 +1063,8 @@ def _maybe_unregister_gateway_service(profile_name: str) -> None:
         mgr = get_service_manager()
     except RuntimeError:
         return
-    except Exception:
-        return
+    except Exception as e:
+        return  # host-detection probe failed — silent no-op
     if not mgr.supports_runtime_registration():
         return
     try:
@@ -1544,8 +1549,8 @@ def rename_profile(old_name: str, new_name: str) -> Path:
         if get_active_profile() == old_canon:
             set_active_profile(new_canon)
             print(f"✓ Active profile updated: {new_canon}")
-    except Exception:
-        pass
+    except Exception as e:
+        pass  # active_profile unreadable / unwritable — rename already succeeded on disk
 
     return new_dir
 

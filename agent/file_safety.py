@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 def _hermes_home_path() -> Path:
@@ -12,7 +15,8 @@ def _hermes_home_path() -> Path:
     try:
         from hermes_constants import get_hermes_home  # local import to avoid cycles
         return get_hermes_home()
-    except Exception:
+    except (ImportError, ModuleNotFoundError, OSError, RuntimeError, ValueError) as e:
+        logger.debug("Falling back to default HERMES_HOME (~/.hermes): %s", e)
         return Path(os.path.expanduser("~/.hermes"))
 
 
@@ -21,7 +25,8 @@ def _hermes_root_path() -> Path:
     try:
         from hermes_constants import get_default_hermes_root  # local import to avoid cycles
         return get_default_hermes_root()
-    except Exception:
+    except (ImportError, ModuleNotFoundError, OSError, RuntimeError, ValueError) as e:
+        logger.debug("Falling back to default Hermes root (~/.hermes): %s", e)
         return Path(os.path.expanduser("~/.hermes"))
 
 
@@ -89,7 +94,8 @@ def get_safe_write_root() -> Optional[str]:
         return None
     try:
         return os.path.realpath(os.path.expanduser(root))
-    except Exception:
+    except (OSError, ValueError) as e:
+        logger.debug("Failed to resolve HERMES_WRITE_SAFE_ROOT=%r: %s", root, e)
         return None
 
 
@@ -118,7 +124,8 @@ def is_write_denied(path: str) -> bool:
             real = os.path.realpath(base)
             if real not in hermes_dirs:
                 hermes_dirs.append(real)
-        except Exception:
+        except (OSError, ValueError, TypeError) as e:
+            logger.debug("Skipping unresolvable Hermes base path %r: %s", base, e)
             continue
 
     for base_real in hermes_dirs:
@@ -126,20 +133,21 @@ def is_write_denied(path: str) -> bool:
             try:
                 if resolved == os.path.realpath(os.path.join(base_real, name)):
                     return True
-            except Exception:
+            except (OSError, ValueError, TypeError) as e:
+                logger.debug("Skipping unresolvable control file %r under %r: %s", name, base_real, e)
                 continue
         try:
             mcp_real = os.path.realpath(os.path.join(base_real, mcp_tokens_dir_name))
             if resolved == mcp_real or resolved.startswith(mcp_real + os.sep):
                 return True
-        except Exception:
-            pass
+        except (OSError, ValueError, TypeError) as e:
+            logger.debug("Skipping unresolvable mcp-tokens dir under %r: %s", base_real, e)
         try:
             pairing_real = os.path.realpath(os.path.join(base_real, "pairing"))
             if resolved == pairing_real or resolved.startswith(pairing_real + os.sep):
                 return True
-        except Exception:
-            pass
+        except (OSError, ValueError, TypeError) as e:
+            logger.debug("Skipping unresolvable pairing dir under %r: %s", base_real, e)
 
     safe_root = get_safe_write_root()
     if safe_root and not (resolved == safe_root or resolved.startswith(safe_root + os.sep)):
@@ -220,7 +228,8 @@ def get_read_block_error(path: str) -> Optional[str]:
             real = base.resolve()
             if real not in hermes_dirs:
                 hermes_dirs.append(real)
-        except Exception:
+        except (OSError, RuntimeError, ValueError) as e:
+            logger.debug("Skipping unresolvable Hermes base path %r: %s", base, e)
             continue
 
     # Skills .hub: prompt-injection carriers.
@@ -254,7 +263,8 @@ def get_read_block_error(path: str) -> Optional[str]:
         for name in credential_file_names:
             try:
                 blocked = (hd / name).resolve()
-            except Exception:
+            except (OSError, RuntimeError, ValueError) as e:
+                logger.debug("Skipping unresolvable credential file %r under %r: %s", name, hd, e)
                 continue
             if resolved == blocked:
                 return (
@@ -270,7 +280,8 @@ def get_read_block_error(path: str) -> Optional[str]:
     for hd in hermes_dirs:
         try:
             mcp_tokens = (hd / "mcp-tokens").resolve()
-        except Exception:
+        except (OSError, RuntimeError, ValueError) as e:
+            logger.debug("Skipping unresolvable mcp-tokens dir under %r: %s", hd, e)
             continue
         if resolved == mcp_tokens:
             return (

@@ -249,7 +249,12 @@ class WearableSensorAdapter:
         try:
             result = await self._data_source()
             return result is not None
-        except Exception:
+        except (ConnectionError, TimeoutError, OSError, AttributeError, TypeError) as exc:
+            logger.warning(
+                "wearable_health_check_failed",
+                sensor=self._source_name,
+                error_type=type(exc).__name__,
+            )
             return False
 
 
@@ -283,7 +288,11 @@ class CalendarSensorAdapter:
             return False
         try:
             return bool(await self._backend.health())
-        except Exception:
+        except (ConnectionError, TimeoutError, OSError, AttributeError, TypeError) as exc:
+            logger.warning(
+                "calendar_health_check_failed",
+                error_type=type(exc).__name__,
+            )
             return False
 
 
@@ -314,5 +323,9 @@ class FinanceSensorAdapter:
             return False
         try:
             return bool(await self._backend.health())
-        except Exception:
+        except (ConnectionError, TimeoutError, OSError, AttributeError, TypeError) as exc:
+            logger.warning(
+                "finance_health_check_failed",
+                error_type=type(exc).__name__,
+            )
             return False

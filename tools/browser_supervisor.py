@@ -364,8 +364,8 @@ class CDPSupervisor:
                 if ws is not None:
                     try:
                         await ws.close()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("stop: ws.close() failed: %s", e)
 
             try:
                 from agent.async_utils import safe_schedule_threadsafe
@@ -373,8 +373,8 @@ class CDPSupervisor:
                 if fut is not None:
                     try:
                         fut.result(timeout=2.0)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("stop: _close_ws future failed: %s", e)
             except RuntimeError:
                 pass  # loop already shutting down
         if self._thread is not None:
@@ -572,12 +572,12 @@ class CDPSupervisor:
                     t.cancel()
                 if pending:
                     loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("thread cleanup: task cancel gather failed: %s", e)
             try:
                 loop.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("thread cleanup: loop.close() failed: %s", e)
             with self._state_lock:
                 self._active = False
 
@@ -664,8 +664,8 @@ class CDPSupervisor:
                 if ws is not None:
                     try:
                         await ws.close()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("reconnect cleanup: ws.close() failed: %s", e)
 
             if self._stop_requested:
                 return
@@ -761,8 +761,11 @@ class CDPSupervisor:
                 session_id=session_id,
                 timeout=3.0,
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(
+                "dialog bridge: Runtime.evaluate inject failed on sid=%s: %s",
+                (session_id or "")[:16], e,
+            )
 
     async def _cdp(
         self,
@@ -799,8 +802,8 @@ class CDPSupervisor:
                     break
                 try:
                     msg = json.loads(raw)
-                except Exception:
-                    logger.debug("CDP supervisor: non-JSON frame dropped")
+                except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                    logger.debug("CDP supervisor: non-JSON frame dropped: %s", e)
                     continue
                 if "id" in msg:
                     fut = self._pending_calls.pop(msg["id"], None)
@@ -1050,8 +1053,8 @@ class CDPSupervisor:
                     "Fetch.continueRequest", {"requestId": request_id},
                     session_id=session_id, timeout=3.0,
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("fetch continueRequest failed for %s: %s", request_id, e)
             return
 
         # Parse query string for dialog metadata. Use urllib to be robust.

@@ -299,8 +299,8 @@ class CodexAppServerSession:
         if self._client is not None:
             try:
                 self._client.close()
-            except Exception:  # pragma: no cover - best-effort cleanup
-                pass
+            except Exception as e:  # pragma: no cover - best-effort cleanup
+                logger.debug("codex client close raised during teardown: %s", e, exc_info=True)
             self._client = None
         self._thread_id = None
 
@@ -346,7 +346,8 @@ class CodexAppServerSession:
             return base
         try:
             tail = self._client.stderr_tail(tail_lines)
-        except Exception:  # pragma: no cover - diagnostic best-effort
+        except Exception as e:  # pragma: no cover - diagnostic best-effort
+            logger.debug("stderr_tail lookup failed: %s", e, exc_info=True)
             return base
         if not tail:
             return base
@@ -532,8 +533,8 @@ class CodexAppServerSession:
             if self._on_event is not None:
                 try:
                     self._on_event(note)
-                except Exception:  # pragma: no cover - display callback
-                    logger.debug("on_event callback raised", exc_info=True)
+                except Exception as e:  # pragma: no cover - display callback
+                    logger.debug("on_event callback raised: %s", e, exc_info=True)
 
             # Track in-progress fileChange items so the approval bridge
             # can surface a real change summary when codex requests
@@ -705,8 +706,8 @@ class CodexAppServerSession:
                     command, description, allow_permanent=False
                 )
                 return _approval_choice_to_codex_decision(choice)
-            except Exception:
-                logger.exception("approval_callback raised on exec request")
+            except Exception as e:
+                logger.exception("approval_callback raised on exec request: %s", e)
                 return "decline"
         return "decline"  # fail-closed when no callback wired
 
@@ -746,8 +747,8 @@ class CodexAppServerSession:
                     allow_permanent=False,
                 )
                 return _approval_choice_to_codex_decision(choice)
-            except Exception:
-                logger.exception("approval_callback raised on apply_patch")
+            except Exception as e:
+                logger.exception("approval_callback raised on apply_patch: %s", e)
                 return "decline"
         return "decline"
 
@@ -841,5 +842,6 @@ def _get_hermes_version() -> str:
         from importlib.metadata import version
 
         return version("hermes-agent")
-    except Exception:  # pragma: no cover
+    except Exception as e:  # pragma: no cover
+        logger.debug("hermes-agent version lookup failed: %s", e, exc_info=True)
         return "0.0.0"

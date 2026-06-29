@@ -119,7 +119,8 @@ def _load_stt_config() -> dict:
     try:
         from hermes_cli.config import load_config
         return load_config().get("stt", {})
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to load STT config, using empty dict: %s", e)
         return {}
 
 
@@ -484,12 +485,13 @@ def _terminate_command_stt_process_tree(proc: subprocess.Popen) -> None:
                 stderr=subprocess.DEVNULL,
                 timeout=5,
             )
-        except Exception:
+        except Exception as e:
+            logger.debug("taskkill failed, falling back to proc.kill(): %s", e)
             proc.kill()
         return
 
     try:
-        import psutil  # type: ignore
+        import psutil
     except ImportError:
         # psutil is optional — fall back to single-process terminate/kill
         proc.terminate()
@@ -509,7 +511,8 @@ def _terminate_command_stt_process_tree(proc: subprocess.Popen) -> None:
         parent.terminate()
     except psutil.NoSuchProcess:
         return
-    except Exception:
+    except Exception as e:
+        logger.debug("psutil terminate tree failed, falling back to proc.terminate(): %s", e)
         proc.terminate()
 
     try:
@@ -528,7 +531,8 @@ def _terminate_command_stt_process_tree(proc: subprocess.Popen) -> None:
         parent.kill()
     except psutil.NoSuchProcess:
         return
-    except Exception:
+    except Exception as e:
+        logger.debug("psutil kill tree failed, falling back to proc.kill(): %s", e)
         proc.kill()
 
 
@@ -555,7 +559,8 @@ def _run_command_stt(command: str, timeout: float) -> subprocess.CompletedProces
         _terminate_command_stt_process_tree(proc)
         try:
             stdout, stderr = proc.communicate(timeout=1)
-        except Exception:
+        except Exception as e:
+            logger.debug("proc.communicate failed after timeout, using partial output: %s", e)
             stdout = getattr(exc, "output", None)
             stderr = getattr(exc, "stderr", None)
         raise subprocess.TimeoutExpired(
@@ -840,8 +845,8 @@ def _get_provider(stt_config: dict) -> str:
         if resolve_xai_http_credentials().get("api_key"):
             logger.info("No local STT available, using xAI Grok STT API")
             return "xai"
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("xAI credential check failed during auto-detect: %s", e)
     return "none"
 
 
@@ -1466,7 +1471,8 @@ def _transcribe_xai(file_path: str, model_name: str) -> Dict[str, Any]:
             try:
                 err_body = response.json()
                 detail = err_body.get("error", {}).get("message", "") or response.text[:300]
-            except Exception:
+            except Exception as e:
+                logger.debug("Failed to parse xAI error response as JSON: %s", e)
                 detail = response.text[:300]
             return {
                 "success": False,

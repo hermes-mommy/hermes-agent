@@ -29,6 +29,8 @@ from typing import Optional
 
 from hermes_cli.fallback_config import get_fallback_chain
 
+_logger = logging.getLogger(__name__)
+
 
 def _normalize_toolsets(toolsets: object = None) -> list[str] | None:
     if not toolsets:
@@ -67,7 +69,8 @@ def _validate_explicit_toolsets(toolsets: object = None) -> tuple[list[str] | No
 
             discover_plugins()
             plugin_valid = [name for name in unresolved if validate_toolset(name)]
-        except Exception:
+        except Exception as exc:
+            _logger.debug("hermes -z: plugin discovery failed during toolset validation: %s", exc)
             plugin_valid = []
 
         if plugin_valid:
@@ -99,7 +102,8 @@ def _validate_explicit_toolsets(toolsets: object = None) -> tuple[list[str] | No
                     mcp_names.add(str(name))
                 else:
                     mcp_disabled.add(str(name))
-        except Exception:
+        except Exception as exc:
+            _logger.debug("hermes -z: MCP config read failed during toolset validation: %s", exc)
             mcp_names = set()
             mcp_disabled = set()
 
@@ -188,8 +192,8 @@ def run_oneshot(
     finally:
         try:
             devnull.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            _logger.debug("hermes -z: ignoring devnull close error: %s", exc)
 
     if response:
         real_stdout.write(response)
@@ -267,7 +271,8 @@ def _run_agent(
                 from hermes_cli import model_switch as _ms
                 _ms._ensure_direct_aliases()
                 direct = _ms.DIRECT_ALIASES.get(explicit_model.strip().lower())
-            except Exception:
+            except Exception as exc:
+                _logger.debug("hermes -z: direct alias lookup failed: %s", exc)
                 direct = None
             if direct is not None:
                 effective_model = direct.model

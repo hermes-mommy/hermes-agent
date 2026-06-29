@@ -703,7 +703,7 @@ def decode_inbound_push(data: bytes) -> Optional[dict]:
         }
         # 过滤空值（保持 API 整洁）
         return {k: v for k, v in result.items() if v or k in {"msg_body", "msg_seq"}}
-    except Exception as e:
+    except (ValueError, IndexError, TypeError, UnicodeDecodeError) as e:
         if DEBUG_MODE:
             logger.debug("[yuanbao_proto] decode_inbound_push failed: %s", e)
         return None
@@ -1120,7 +1120,7 @@ def decode_query_group_info_rsp(data: bytes) -> Optional[dict]:
             result["member_count"] = 0
 
         return result
-    except Exception:
+    except (ValueError, IndexError, TypeError, UnicodeDecodeError):
         return None
 
 
@@ -1205,5 +1205,5 @@ def decode_get_group_member_list_rsp(data: bytes) -> Optional[dict]:
             "next_offset": _get_varint(fdict, 4),
             "is_complete": bool(_get_varint(fdict, 5)),
         }
-    except Exception:
+    except (ValueError, IndexError, TypeError, UnicodeDecodeError):
         return None

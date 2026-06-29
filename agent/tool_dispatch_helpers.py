@@ -96,7 +96,12 @@ def _is_mcp_tool_parallel_safe(tool_name: str) -> bool:
     try:
         from tools.mcp_tool import is_mcp_tool_parallel_safe
         return is_mcp_tool_parallel_safe(tool_name)
-    except Exception:
+    except Exception as e:
+        # Plugin-isolation: MCP module is an optional import surface and any
+        # importer/internal error from a third-party tool must not break the
+        # dispatcher's parallelism gating.  Includes ModuleNotFoundError,
+        # AttributeError, and any third-party MCP adapter exceptions.
+        logger.debug("MCP parallel-safe lookup failed for %s: %s", tool_name, e)
         return False
 
 
@@ -114,12 +119,14 @@ def _should_parallelize_tool_batch(tool_calls) -> bool:
         tool_name = tool_call.function.name
         try:
             function_args = json.loads(tool_call.function.arguments)
-        except Exception:
-            logging.debug(
+        except json.JSONDecodeError as e:
+            logger.debug(
                 "Could not parse args for %s — defaulting to sequential; raw=%s",
                 tool_name,
                 tool_call.function.arguments[:200],
+                exc_info=False,
             )
+            logger.debug("json.JSONDecodeError: %s", e)
             return False
         if not isinstance(function_args, dict):
             logging.debug(
@@ -209,7 +216,11 @@ def _multimodal_text_summary(value: Any) -> str:
         return value
     try:
         return json.dumps(value, default=str)
-    except Exception:
+    except (TypeError, ValueError) as e:
+        # JSON serialization fallback: `default=str` covers most cases but
+        # objects with custom __str__ that itself raises, or values that
+        # produce RecursionError, fall back to plain stringification.
+        logger.debug("json.dumps failed for value of type %s: %s", type(value).__name__, e)
         return str(value)
 
 
@@ -275,7 +286,8 @@ def _extract_error_preview(result: Any, max_len: int = 180) -> str:
     if not isinstance(text, str):
         try:
             text = str(text)
-        except Exception:
+        except (UnicodeError, ValueError) as e:
+            logger.debug("str() coercion failed for type %s: %s", type(text).__name__, e)
             return ""
     # Try to parse JSON and pull the ``error`` field — tool handlers return
     # ``{"success": false, "error": "..."}``; raw string wins if parse fails.
@@ -285,7 +297,8 @@ def _extract_error_preview(result: Any, max_len: int = 180) -> str:
             data = json.loads(stripped)
             if isinstance(data, dict) and isinstance(data.get("error"), str):
                 text = data["error"]
-        except Exception:
+        except json.JSONDecodeError as e:
+            logger.debug("error-preview JSON parse failed (raw wins): %s", e)
             pass
     # Collapse whitespace, trim to max_len.
     text = " ".join(text.split())

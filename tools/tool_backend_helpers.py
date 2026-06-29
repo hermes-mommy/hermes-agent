@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Any, Dict
 
 from utils import is_truthy_value
+
+logger = logging.getLogger(__name__)
 
 
 _DEFAULT_BROWSER_PROVIDER = "local"
@@ -32,7 +35,8 @@ def managed_nous_tools_enabled(*, force_fresh: bool = False) -> bool:
         if not account_info.logged_in:
             return False
         return account_info.paid_service_access is True
-    except Exception:
+    except Exception as e:
+        logger.debug("managed_nous_tools_enabled: %s", e)
         return False
 
 
@@ -55,8 +59,8 @@ def nous_tool_gateway_unavailable_message(
         )
         if message:
             return message
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("nous_tool_gateway_unavailable_message: %s", e)
     return (
         f"{capability} is unavailable. Run `hermes model` to refresh your "
         "Nous Portal login and billing status."
@@ -147,8 +151,8 @@ def prefers_gateway(config_section: str) -> bool:
         section = (load_config() or {}).get(config_section)
         if isinstance(section, dict):
             return is_truthy_value(section.get("use_gateway"), default=False)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("prefers_gateway: %s", e)
     return False
 
 
@@ -168,6 +172,7 @@ def fal_key_is_configured() -> bool:
             from hermes_cli.config import get_env_value
 
             value = get_env_value("FAL_KEY")
-        except Exception:
+        except Exception as e:
+            logger.debug("fal_key_is_configured: %s", e)
             value = None
     return bool(value and value.strip())

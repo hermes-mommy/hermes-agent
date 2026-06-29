@@ -26,7 +26,12 @@ try:
     AIOHTTP_AVAILABLE = True
 except ImportError:
     AIOHTTP_AVAILABLE = False
-    aiohttp = None  # type: ignore[assignment]
+    aiohttp = None
+
+# Import-guarded sentinel for aiohttp client exception base class.
+# Resolves to aiohttp.ClientError when installed, else ConnectionError
+# (vendored base-class fallback; adapter guarded by AIOHTTP_AVAILABLE).
+_AIOHTTP_CLIENT_ERROR: type[BaseException] = aiohttp.ClientError if AIOHTTP_AVAILABLE else ConnectionError
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import (
@@ -133,8 +138,11 @@ class HomeAssistantAdapter(BasePlatformAdapter):
             logger.info("[%s] Connected to %s", self.name, self._hass_url)
             return True
 
-        except Exception as e:
+        except (_AIOHTTP_CLIENT_ERROR, asyncio.TimeoutError, OSError) as e:
             logger.error("[%s] Failed to connect: %s", self.name, e)
+            return False
+        except Exception as e:
+            logger.exception("[%s] Unexpected non-network error during connect", self.name)
             return False
 
     async def _ws_connect(self) -> bool:
@@ -223,8 +231,10 @@ class HomeAssistantAdapter(BasePlatformAdapter):
                 await self._read_events()
             except asyncio.CancelledError:
                 return
-            except Exception as e:
+            except (_AIOHTTP_CLIENT_ERROR, asyncio.TimeoutError, OSError, json.JSONDecodeError) as e:
                 logger.warning("[%s] WebSocket error: %s", self.name, e)
+            except Exception as e:
+                logger.exception("[%s] Unexpected error in listen loop", self.name)
 
             if not self._running:
                 return
@@ -241,8 +251,10 @@ class HomeAssistantAdapter(BasePlatformAdapter):
                 if success:
                     backoff_idx = 0  # Reset on successful reconnect
                     logger.info("[%s] Reconnected", self.name)
-            except Exception as e:
+            except (_AIOHTTP_CLIENT_ERROR, asyncio.TimeoutError, OSError) as e:
                 logger.warning("[%s] Reconnection failed: %s", self.name, e)
+            except Exception as e:
+                logger.exception("[%s] Unexpected reconnection error", self.name)
 
     async def _read_events(self) -> None:
         """Read events from WebSocket until disconnected."""
@@ -434,7 +446,11 @@ class HomeAssistantAdapter(BasePlatformAdapter):
 
         except asyncio.TimeoutError:
             return SendResult(success=False, error="Timeout sending notification to HA")
+        except (_AIOHTTP_CLIENT_ERROR, OSError) as e:
+            logger.warning("[%s] HTTP send failed: %s", self.name, e)
+            return SendResult(success=False, error=str(e))
         except Exception as e:
+            logger.exception("[%s] Unexpected error sending notification", self.name)
             return SendResult(success=False, error=str(e))
 
     async def send_typing(self, chat_id: str, metadata=None) -> None:

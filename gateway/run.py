@@ -44,6 +44,12 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, Optional, Any, List, Union
 
+# Module-level logger — must be defined BEFORE any module-level try/except
+# block that wants to log on failure (config-bridge plugins, IPv4 bootstrap,
+# async def helpers).  A second (duplicate) declaration further down the
+# file is allowed by Python's rebinding semantics and acts as a no-op.
+logger = logging.getLogger(__name__)
+
 # account_usage imports the OpenAI SDK chain (~230 ms). Only needed by
 # /usage; we still import it at module top in the gateway because test
 # patches (tests/gateway/test_usage_command.py) target
@@ -205,7 +211,11 @@ def _gateway_loop_exception_handler(
         if task is not None:
             try:
                 task_name = task.get_name() if hasattr(task, "get_name") else repr(task)
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: fail-soft exception swallowed",
+                    exc_info=True,
+                )
                 task_name = repr(task)
         logger.warning(
             "Gateway swallowed transient network error from %s: %s: %s",
@@ -779,7 +789,11 @@ def _reload_runtime_env_preserving_config_authority() -> None:
             cfg = _yaml.safe_load(f) or {}
         from hermes_cli.config import _expand_env_vars
         cfg = _expand_env_vars(cfg)
-    except Exception:
+    except Exception as _runpy_e:
+        logger.debug(
+            "gateway/run.py: fail-soft exception swallowed",
+            exc_info=True,
+        )
         return
 
     agent_cfg = cfg.get("agent", {})
@@ -870,7 +884,11 @@ if _config_path.exists():
                 from hermes_cli.plugins import get_plugin_auxiliary_tasks
                 for _entry in get_plugin_auxiliary_tasks():
                     _aux_bridged_keys.add(_entry["key"])
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: fail-soft exception swallowed",
+                    exc_info=True,
+                )
                 # Plugin discovery failure must not break gateway startup;
                 # built-in bridging stays intact.
                 pass
@@ -959,7 +977,7 @@ if _config_path.exists():
             if _trust_recent_seconds is not None:
                 os.environ["HERMES_MEDIA_TRUST_RECENT_SECONDS"] = str(_trust_recent_seconds)
     except Exception as _bridge_err:
-        # Previously this was silent (`except Exception: pass`), which
+        # Previously this was silent (bare ``except Exception`` with a ``pass`` body), which
         # hid partial bridge failures and let .env defaults shadow
         # config.yaml values — users observed max_turns=500 in config
         # but a 60-iteration cap in practice. Surface the failure to
@@ -1163,7 +1181,11 @@ def _try_resolve_fallback_provider() -> dict | None:
             except Exception as fb_exc:
                 logger.debug("Fallback entry %s failed: %s", entry.get("provider"), fb_exc)
                 continue
-    except Exception:
+    except Exception as _runpy_e:
+        logger.debug(
+            "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+            exc_info=True,
+        )
         pass
     return None
 
@@ -1215,7 +1237,11 @@ async def _probe_audio_duration(path: str) -> Optional[str]:
                     return frames / float(rate)
             secs = await asyncio.to_thread(_wav_duration)
             return _format_duration(secs)
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
 
     if ext in (".ogg", ".opus", ".oga"):
@@ -1225,7 +1251,11 @@ async def _probe_audio_duration(path: str) -> Optional[str]:
                 return float(OggOpus(path).info.length)
             secs = await asyncio.to_thread(_ogg_duration)
             return _format_duration(secs)
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
 
     try:
@@ -1237,7 +1267,11 @@ async def _probe_audio_duration(path: str) -> Optional[str]:
         stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
         if proc.returncode == 0:
             return _format_duration(float(stdout.decode().strip()))
-    except Exception:
+    except Exception as _runpy_e:
+        logger.debug(
+            "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+            exc_info=True,
+        )
         pass
 
     return None
@@ -1301,7 +1335,11 @@ def _skill_slug_from_frontmatter(skill_md: Path) -> tuple[str | None, str | None
     """
     try:
         content = skill_md.read_text(encoding="utf-8", errors="replace")
-    except Exception:
+    except Exception as _runpy_e:
+        logger.debug(
+            "gateway/run.py: fail-soft exception swallowed",
+            exc_info=True,
+        )
         return None, None
     if not content.startswith("---"):
         return None, None
@@ -1389,7 +1427,11 @@ def _check_unavailable_skill(command_name: str) -> str | None:
                         f"The **{command_name}** skill is available but not installed.\n"
                         f"Install it with: `hermes skills install {install_path}`"
                     )
-    except Exception:
+    except Exception as _runpy_e:
+        logger.debug(
+            "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+            exc_info=True,
+        )
         pass
     return None
 
@@ -1424,7 +1466,11 @@ def _load_gateway_config() -> dict:
         # _hermes_home working).
         if config_path == get_config_path():
             return read_raw_config()
-    except Exception:
+    except Exception as _runpy_e:
+        logger.debug(
+            "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+            exc_info=True,
+        )
         pass
 
     try:
@@ -1432,7 +1478,7 @@ def _load_gateway_config() -> dict:
             import yaml
             with open(config_path, 'r', encoding='utf-8') as f:
                 return yaml.safe_load(f) or {}
-    except Exception:
+    except Exception as _runpy_e:
         logger.debug("Could not load gateway config from %s", config_path)
     return {}
 
@@ -1494,7 +1540,11 @@ def _resolve_hermes_bin() -> Optional[list[str]]:
 
         if importlib.util.find_spec("hermes_cli") is not None:
             return [sys.executable, "-m", "hermes_cli.main"]
-    except Exception:
+    except Exception as _runpy_e:
+        logger.debug(
+            "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+            exc_info=True,
+        )
         pass
 
     return None
@@ -1803,7 +1853,11 @@ class GatewayRunner:
         try:
             from tools.tirith_security import ensure_installed
             ensure_installed(log_failures=False)
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             pass  # Non-fatal — fail-open at scan time if unavailable
         
         # Initialize session database for session_search tool support
@@ -1931,7 +1985,7 @@ class GatewayRunner:
                 parsed = json.loads(raw_volumes)
                 if isinstance(parsed, list):
                     volumes = [str(v) for v in parsed if isinstance(v, str)]
-            except Exception:
+            except Exception as _runpy_e:
                 logger.debug("Could not parse TERMINAL_DOCKER_VOLUMES for gateway media warning", exc_info=True)
 
         has_explicit_output_mount = False
@@ -1963,7 +2017,11 @@ class GatewayRunner:
         try:
             from tools.skill_manager_tool import _find_skill
             return _find_skill("hermes-agent-setup") is not None
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             return False
 
     # -- Voice mode persistence ------------------------------------------
@@ -2066,7 +2124,11 @@ class GatewayRunner:
             _auto_tts_default = bool(
                 (_full_cfg.get("voice") or {}).get("auto_tts", False)
             )
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             _auto_tts_default = False
         if hasattr(adapter, "_auto_tts_default"):
             adapter._auto_tts_default = _auto_tts_default
@@ -2180,7 +2242,11 @@ class GatewayRunner:
                 session_key = self.session_store._generate_session_key(source)
                 if isinstance(session_key, str) and session_key:
                     return session_key
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                    exc_info=True,
+                )
                 pass
         config = getattr(self, "config", None)
         return build_session_key(
@@ -2201,7 +2267,7 @@ class GatewayRunner:
                 chat_id=str(source.chat_id),
                 user_id=str(source.user_id),
             )
-        except Exception:
+        except Exception as _runpy_e:
             logger.debug("Failed to read Telegram topic mode state", exc_info=True)
             return False
         # Only honor a real True from the SessionDB. Any other value
@@ -2339,7 +2405,7 @@ class GatewayRunner:
             bindings = session_db.list_telegram_topic_bindings_for_chat(
                 chat_id=str(source.chat_id),
             )
-        except Exception:
+        except Exception as _runpy_e:
             logger.debug("topic-recover: read failed", exc_info=True)
             return None
         if not bindings:
@@ -2370,7 +2436,11 @@ class GatewayRunner:
         if not resolved_session_key and source is not None:
             try:
                 resolved_session_key = self._session_key_for_source(source)
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: fail-soft exception swallowed",
+                    exc_info=True,
+                )
                 resolved_session_key = None
 
         model = _resolve_gateway_model(user_config)
@@ -2430,7 +2500,11 @@ class GatewayRunner:
                         "No model configured — defaulting to %s for provider %s",
                         model, runtime_kwargs["provider"],
                     )
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                    exc_info=True,
+                )
                 pass
 
         return model, runtime_kwargs
@@ -2474,7 +2548,11 @@ class GatewayRunner:
 
         try:
             overrides = resolve_fast_mode_overrides(route["model"])
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             overrides = None
         route["request_overrides"] = overrides or {}
         return route
@@ -2698,7 +2776,11 @@ class GatewayRunner:
                 restart_requested=self._restart_requested,
                 active_agents=self._running_agent_count(),
             )
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
 
     def _update_platform_runtime_status(
@@ -2717,7 +2799,11 @@ class GatewayRunner:
                 error_code=error_code,
                 error_message=error_message,
             )
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
 
     # ------------------------------------------------------------------
@@ -2751,7 +2837,11 @@ class GatewayRunner:
                 error_code=None,
                 error_message=info["pause_reason"],
             )
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
         logger.warning(
             "%s paused after %d consecutive failures (%s) — "
@@ -2782,7 +2872,11 @@ class GatewayRunner:
                 error_code=None,
                 error_message=None,
             )
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
         logger.info("%s resumed — retrying on next watcher tick", platform.value)
         return True
@@ -2884,7 +2978,11 @@ class GatewayRunner:
         if not resolved_session_key and source is not None:
             try:
                 resolved_session_key = self._session_key_for_source(source)
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: fail-soft exception swallowed",
+                    exc_info=True,
+                )
                 resolved_session_key = None
 
         overrides = getattr(self, "_session_reasoning_overrides", {}) or {}
@@ -3016,7 +3114,11 @@ class GatewayRunner:
                 with open(cfg_path, encoding="utf-8") as _f:
                     cfg = _y.safe_load(_f) or {}
                 return cfg.get("provider_routing", {}) or {}
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
         return {}
 
@@ -3037,7 +3139,11 @@ class GatewayRunner:
                 fb = get_fallback_chain(cfg)
                 if fb:
                     return fb
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
         return None
 
@@ -3083,7 +3189,11 @@ class GatewayRunner:
                 with lock:
                     return bool(children)
             return bool(children)
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             return False
 
     def _queue_or_replace_pending_event(self, session_key: str, event: MessageEvent) -> None:
@@ -3216,7 +3326,11 @@ class GatewayRunner:
         if effective_mode == "interrupt" and running_agent and running_agent is not _AGENT_PENDING_SENTINEL:
             try:
                 running_agent.interrupt(event.text)
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: fail-soft exception swallowed",
+                    exc_info=True,
+                )
                 pass  # don't let interrupt failure block the ack
 
         # Check if busy ack is disabled — skip sending but still process the input.
@@ -3266,7 +3380,11 @@ class GatewayRunner:
                     status_parts.append(f"iteration {iteration}/{max_iter}")
                 if current_tool:
                     status_parts.append(f"running: {current_tool}")
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                    exc_info=True,
+                )
                 pass
 
         status_detail = f" ({', '.join(status_parts)})" if status_parts else ""
@@ -3537,7 +3655,11 @@ class GatewayRunner:
                     session_id=getattr(agent, "session_id", None),
                     platform="gateway",
                 )
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                    exc_info=True,
+                )
                 pass
             self._cleanup_agent_resources(agent)
 
@@ -3562,7 +3684,11 @@ class GatewayRunner:
                     agent.shutdown_memory_provider(session_messages)
                 else:
                     agent.shutdown_memory_provider()
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
         # Close tool resources (terminal sandboxes, browser daemons,
         # background processes, httpx clients) to prevent zombie
@@ -3570,7 +3696,11 @@ class GatewayRunner:
         try:
             if hasattr(agent, "close"):
                 agent.close()
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
         # Auxiliary async clients (session_search/web/vision/etc.) live in a
         # process-global cache and are created inside worker threads. Clean up
@@ -3579,7 +3709,11 @@ class GatewayRunner:
         try:
             from agent.auxiliary_client import cleanup_stale_async_clients
             cleanup_stale_async_clients()
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
 
     _STUCK_LOOP_THRESHOLD = 3  # restarts while active before auto-suspend
@@ -3597,7 +3731,11 @@ class GatewayRunner:
         path = _hermes_home / self._STUCK_LOOP_FILE
         try:
             counts = json.loads(path.read_text()) if path.exists() else {}
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             counts = {}
 
         # Increment active sessions, remove inactive ones (loop broken)
@@ -3609,7 +3747,11 @@ class GatewayRunner:
 
         try:
             atomic_json_write(path, new_counts, indent=None)
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
 
     def _suspend_stuck_loop_sessions(self) -> int:
@@ -3627,7 +3769,11 @@ class GatewayRunner:
 
         try:
             counts = json.loads(path.read_text())
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             return 0
 
         suspended = 0
@@ -3644,19 +3790,31 @@ class GatewayRunner:
                         "consecutive restarts — likely a stuck loop)",
                         session_key, counts[session_key],
                     )
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                    exc_info=True,
+                )
                 pass
 
         if suspended:
             try:
                 self.session_store._save()
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                    exc_info=True,
+                )
                 pass
 
         # Clear the file — counters start fresh after suspension
         try:
             path.unlink(missing_ok=True)
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
 
         return suspended
@@ -3679,7 +3837,11 @@ class GatewayRunner:
                     atomic_json_write(path, counts, indent=None)
                 else:
                     path.unlink(missing_ok=True)
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
 
     async def _launch_detached_restart_command(self) -> None:
@@ -3919,7 +4081,11 @@ class GatewayRunner:
                 "or HERMES_MAX_ITERATIONS from .env, or default 90)",
                 _effective_max_iter,
             )
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
         # Redaction status: ON by default (#17691). Surface a prominent
         # warning if an operator has explicitly opted out so they don't
@@ -3942,19 +4108,31 @@ class GatewayRunner:
                     "in config.yaml to re-enable.",
                     _redact_raw,
                 )
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
         try:
             from hermes_cli.profiles import get_active_profile_name
             _profile = get_active_profile_name()
             if _profile and _profile != "default":
                 logger.info("Active profile: %s", _profile)
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
         try:
             from gateway.status import write_runtime_status
             write_runtime_status(gateway_state="starting", exit_reason=None)
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
 
         # Log any active supply-chain security advisories. Operators see this
@@ -3975,7 +4153,7 @@ class GatewayRunner:
                     "Run `hermes doctor` on the gateway host for full "
                     "remediation steps."
                 )
-        except Exception:
+        except Exception as _runpy_e:
             logger.debug(
                 "security advisory check failed at gateway startup",
                 exc_info=True,
@@ -4029,7 +4207,11 @@ class GatewayRunner:
                 e.allow_all_env for e in platform_registry.plugin_entries()
                 if e.allow_all_env
             )
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
         _any_allowlist = any(
             os.getenv(v) for v in _builtin_allowed_vars + _plugin_allowed_vars
@@ -4054,7 +4236,7 @@ class GatewayRunner:
         try:
             from hermes_cli.plugins import discover_plugins
             discover_plugins()
-        except Exception:
+        except Exception as _runpy_e:
             logger.warning(
                 "plugin discovery failed at gateway startup", exc_info=True,
             )
@@ -4072,7 +4254,7 @@ class GatewayRunner:
             from hermes_cli.config import load_config
             from agent.shell_hooks import register_from_config
             register_from_config(load_config(), accept_hooks=False)
-        except Exception:
+        except Exception as _runpy_e:
             logger.debug(
                 "shell-hook registration failed at gateway startup",
                 exc_info=True,
@@ -4105,7 +4287,11 @@ class GatewayRunner:
             logger.info("Previous gateway exited cleanly — skipping session suspension")
             try:
                 _clean_marker.unlink()
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                    exc_info=True,
+                )
                 pass
         else:
             try:
@@ -4256,7 +4442,11 @@ class GatewayRunner:
                 try:
                     from gateway.status import write_runtime_status
                     write_runtime_status(gateway_state="startup_failed", exit_reason=reason)
-                except Exception:
+                except Exception as _runpy_e:
+                    logger.debug(
+                        "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                        exc_info=True,
+                    )
                     pass
                 self._request_clean_exit(reason)
                 return True
@@ -4284,7 +4474,11 @@ class GatewayRunner:
                             gateway_state="degraded",
                             exit_reason=None,
                         )
-                    except Exception:
+                    except Exception as _runpy_e:
+                        logger.debug(
+                            "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                            exc_info=True,
+                        )
                         pass
                     # Fall through to the normal "running" state — reconnect
                     # watcher takes it from here.
@@ -4682,7 +4876,11 @@ class GatewayRunner:
                                 session_id=entry.session_id,
                                 platform=_platform,
                             )
-                        except Exception:
+                        except Exception as _runpy_e:
+                            logger.debug(
+                                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                                exc_info=True,
+                            )
                             pass
                         # Shut down memory provider and close tool resources
                         # on the cached agent.  Idle agents live in
@@ -4798,7 +4996,11 @@ class GatewayRunner:
         try:
             from hermes_cli.profiles import get_active_profile_name
             return get_active_profile_name() or "default"
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             return "default"
 
     async def _kanban_notifier_watcher(self, interval: float = 5.0) -> None:
@@ -4823,7 +5025,7 @@ class GatewayRunner:
         from gateway.config import Platform as _Platform
         try:
             from hermes_cli import kanban_db as _kb
-        except Exception:
+        except Exception as _runpy_e:
             logger.warning("kanban notifier: kanban_db not importable; notifier disabled")
             return
 
@@ -4876,7 +5078,11 @@ class GatewayRunner:
                     # more than once before advancing the cursor.
                     try:
                         boards = _kb.list_boards(include_archived=False)
-                    except Exception:
+                    except Exception as _runpy_e:
+                        logger.debug(
+                            "gateway/run.py: fail-soft exception swallowed",
+                            exc_info=True,
+                        )
                         boards = [_kb.read_board_metadata(_kb.DEFAULT_BOARD)]
                     seen_db_paths: set[str] = set()
                     for board_meta in boards:
@@ -4884,7 +5090,11 @@ class GatewayRunner:
                         db_path = board_meta.get("db_path")
                         try:
                             resolved_db_path = str(Path(db_path).expanduser().resolve()) if db_path else str(_kb.kanban_db_path(slug).resolve())
-                        except Exception:
+                        except Exception as _runpy_e:
+                            logger.debug(
+                                "gateway/run.py: fail-soft exception swallowed",
+                                exc_info=True,
+                            )
                             resolved_db_path = f"slug:{slug}"
                         if resolved_db_path in seen_db_paths:
                             logger.debug(
@@ -5329,7 +5539,7 @@ class GatewayRunner:
         # as an escape hatch (false-y value disables without editing YAML).
         try:
             from hermes_cli.config import load_config as _load_config
-        except Exception:
+        except Exception as _runpy_e:
             logger.warning("kanban dispatcher: config loader unavailable; disabled")
             return
         env_override = os.environ.get("HERMES_KANBAN_DISPATCH_IN_GATEWAY", "").strip().lower()
@@ -5351,7 +5561,7 @@ class GatewayRunner:
 
         try:
             from hermes_cli import kanban_db as _kb
-        except Exception:
+        except Exception as _runpy_e:
             logger.warning("kanban dispatcher: kanban_db not importable; dispatcher disabled")
             return
 
@@ -5441,7 +5651,11 @@ class GatewayRunner:
             path = _kb.kanban_db_path(slug)
             try:
                 resolved = str(path.expanduser().resolve())
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: fail-soft exception swallowed",
+                    exc_info=True,
+                )
                 resolved = str(path)
             try:
                 stat = path.stat()
@@ -5544,7 +5758,11 @@ class GatewayRunner:
                 if conn is not None:
                     try:
                         conn.close()
-                    except Exception:
+                    except Exception as _runpy_e:
+                        logger.debug(
+                            "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                            exc_info=True,
+                        )
                         pass
 
         def _tick_once() -> "list[tuple[str, Optional[object]]]":
@@ -5556,7 +5774,11 @@ class GatewayRunner:
             """
             try:
                 boards = _kb.list_boards(include_archived=False)
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: fail-soft exception swallowed",
+                    exc_info=True,
+                )
                 boards = [_kb.read_board_metadata(_kb.DEFAULT_BOARD)]
             out: list[tuple[str, "Optional[object]"]] = []
             for b in boards:
@@ -5578,7 +5800,11 @@ class GatewayRunner:
             """
             try:
                 boards = _kb.list_boards(include_archived=False)
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: fail-soft exception swallowed",
+                    exc_info=True,
+                )
                 boards = [_kb.read_board_metadata(_kb.DEFAULT_BOARD)]
             for b in boards:
                 slug = b.get("slug") or _kb.DEFAULT_BOARD
@@ -5589,13 +5815,21 @@ class GatewayRunner:
                         return True
                     if _kb.has_spawnable_review(conn):
                         return True
-                except Exception:
+                except Exception as _runpy_e:
+                    logger.debug(
+                        "gateway/run.py: fail-soft exception swallowed",
+                        exc_info=True,
+                    )
                     continue
                 finally:
                     if conn is not None:
                         try:
                             conn.close()
-                        except Exception:
+                        except Exception as _runpy_e:
+                            logger.debug(
+                                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                                exc_info=True,
+                            )
                             pass
             return False
 
@@ -5629,7 +5863,11 @@ class GatewayRunner:
                 return 0
             try:
                 boards = _kb.list_boards(include_archived=False)
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: fail-soft exception swallowed",
+                    exc_info=True,
+                )
                 boards = [_kb.read_board_metadata(_kb.DEFAULT_BOARD)]
             attempted = 0
             successes = 0
@@ -5660,7 +5898,7 @@ class GatewayRunner:
                             outcome = _decomp.decompose_task(
                                 tid, author="auto-decomposer",
                             )
-                        except Exception:
+                        except Exception as _runpy_e:
                             logger.exception(
                                 "kanban auto-decompose: decompose_task crashed on %s",
                                 tid,
@@ -5706,7 +5944,7 @@ class GatewayRunner:
                         len(pids),
                         pids,
                     )
-            except Exception:
+            except Exception as _runpy_e:
                 logger.exception("kanban dispatcher: zombie reaper failed")
 
             try:
@@ -5750,7 +5988,7 @@ class GatewayRunner:
             except asyncio.CancelledError:
                 logger.debug("kanban dispatcher: cancelled")
                 raise
-            except Exception:
+            except Exception as _runpy_e:
                 logger.exception("kanban dispatcher: unexpected watcher error")
 
             # Sleep in 1s slices so shutdown is snappy — otherwise a stop()
@@ -5837,7 +6075,11 @@ class GatewayRunner:
                         try:
                             from gateway.channel_directory import build_channel_directory
                             await build_channel_directory(self.adapters)
-                        except Exception:
+                        except Exception as _runpy_e:
+                            logger.debug(
+                                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                                exc_info=True,
+                            )
                             pass
                     # Check if the failure is non-retryable
                     elif adapter.has_fatal_error and not adapter.fatal_error_retryable:
@@ -6199,7 +6441,11 @@ class GatewayRunner:
             if not timed_out:
                 try:
                     (_hermes_home / ".clean_shutdown").touch()
-                except Exception:
+                except Exception as _runpy_e:
+                    logger.debug(
+                        "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                        exc_info=True,
+                    )
                     pass
             else:
                 logger.info(
@@ -6292,7 +6538,11 @@ class GatewayRunner:
                     _raw = cfg_get(_gw_cfg, "display", "platforms", "telegram", "notifications")
                     if _raw not in {None, ""}:
                         _notify_mode = str(_raw).strip().lower()
-                except Exception:
+                except Exception as _runpy_e:
+                    logger.debug(
+                        "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                        exc_info=True,
+                    )
                     pass
             _notify_mode = _notify_mode or "important"
             if _notify_mode not in {"all", "important"}:
@@ -6551,7 +6801,11 @@ class GatewayRunner:
                         platform_env_map[source.platform] = entry.allowed_users_env
                     if entry.allow_all_env:
                         platform_allow_all_map[source.platform] = entry.allow_all_env
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                    exc_info=True,
+                )
                 pass
 
         # Per-platform allow-all flag (e.g., DISCORD_ALLOW_ALL_USERS=true)
@@ -6748,7 +7002,7 @@ class GatewayRunner:
                 )
                 if getattr(result, "success", False):
                     return
-            except Exception:
+            except Exception as _runpy_e:
                 logger.debug(
                     "[%s] send_private_notice failed, falling back to public",
                     getattr(source, "platform", "?"),
@@ -6887,13 +7141,21 @@ class GatewayRunner:
                 if cmd:
                     try:
                         from hermes_cli.commands import resolve_command as _resolve_update_cmd
-                    except Exception:
+                    except Exception as _runpy_e:
+                        logger.debug(
+                            "gateway/run.py: fail-soft exception swallowed",
+                            exc_info=True,
+                        )
                         _resolve_update_cmd = None
                     if _resolve_update_cmd is not None:
                         try:
                             _cmd_def = _resolve_update_cmd(cmd)
                             _recognized_cmd = _cmd_def.name if _cmd_def else None
-                        except Exception:
+                        except Exception as _runpy_e:
+                            logger.debug(
+                                "gateway/run.py: fail-soft exception swallowed",
+                                exc_info=True,
+                            )
                             _recognized_cmd = None
                 if _recognized_cmd:
                     response_text = ""
@@ -6949,7 +7211,11 @@ class GatewayRunner:
         try:
             from tools import clarify_gateway as _clarify_mod
             _pending_clarify = _clarify_mod.get_pending_for_session(_quick_key)
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             _pending_clarify = None
         if _pending_clarify is not None:
             _raw_clarify_reply = (event.text or "").strip()
@@ -6987,7 +7253,11 @@ class GatewayRunner:
         try:
             from tools.approval import has_blocking_approval
             _tool_approval_live = has_blocking_approval(_quick_key)
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             _tool_approval_live = False
         if _pending_confirm and not _tool_approval_live:
             _raw_reply = (event.text or "").strip()
@@ -7049,7 +7319,11 @@ class GatewayRunner:
                         f"({_stale_idle:.0f}s ago) "
                         f"| iteration={_sa.get('api_call_count', 0)}/{_sa.get('max_iterations', 0)}"
                     )
-                except Exception:
+                except Exception as _runpy_e:
+                    logger.debug(
+                        "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                        exc_info=True,
+                    )
                     pass
             # Evict if: agent is idle beyond timeout, OR wall-clock age is
             # extreme (10x timeout or 2h, whichever is larger — catches
@@ -7664,7 +7938,11 @@ class GatewayRunner:
                 return "Usage: /steer <prompt>  (no agent is running; sending as a normal message)"
             try:
                 event.text = steer_payload
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                    exc_info=True,
+                )
                 pass
             # Do NOT return — fall through to _handle_message_with_agent
             # at the end of this function so the rewritten text is sent
@@ -7885,7 +8163,11 @@ class GatewayRunner:
                 if _final_text.strip():
                     try:
                         session_entry = self.session_store.get_or_create_session(source)
-                    except Exception:
+                    except Exception as _runpy_e:
+                        logger.debug(
+                            "gateway/run.py: fail-soft exception swallowed",
+                            exc_info=True,
+                        )
                         session_entry = None
                     if session_entry is not None:
                         await self._post_turn_goal_continuation(
@@ -8034,7 +8316,11 @@ class GatewayRunner:
                                 _stt_msg,
                                 metadata=_stt_meta,
                             )
-                        except Exception:
+                        except Exception as _runpy_e:
+                            logger.debug(
+                                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                                exc_info=True,
+                            )
                             pass
 
         if audio_file_paths:
@@ -8119,7 +8405,11 @@ class GatewayRunner:
                         _msg_raw_ctx = _msg_model_cfg.get("context_length")
                         if _msg_raw_ctx is not None:
                             _msg_config_ctx = int(_msg_raw_ctx)
-                except Exception:
+                except Exception as _runpy_e:
+                    logger.debug(
+                        "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                        exc_info=True,
+                    )
                     pass
                 _msg_ctx_len = get_model_context_length(
                     self._model,
@@ -8163,7 +8453,7 @@ class GatewayRunner:
             self._session_sources = cached_sources
         try:
             cached_sources[session_key] = dataclasses.replace(source)
-        except Exception:
+        except Exception as _runpy_e:
             logger.debug("Failed to cache live session source for %s", session_key, exc_info=True)
             return
         # LRU: mark as most-recently-used and trim to max size.
@@ -8172,7 +8462,11 @@ class GatewayRunner:
             max_size = getattr(self, "_session_sources_max", 512)
             while len(cached_sources) > max_size:
                 cached_sources.popitem(last=False)
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
 
     def _get_cached_session_source(self, session_key: str):
@@ -8185,7 +8479,11 @@ class GatewayRunner:
         if source is not None:
             try:
                 cached_sources.move_to_end(session_key)
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                    exc_info=True,
+                )
                 pass
         return source
 
@@ -8213,7 +8511,11 @@ class GatewayRunner:
             source = dataclasses.replace(source, thread_id=recovered)
             try:
                 event.source = source
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                    exc_info=True,
+                )
                 pass
 
         session_entry = self.session_store.get_or_create_session(source)
@@ -8225,7 +8527,7 @@ class GatewayRunner:
                     chat_id=str(source.chat_id),
                     thread_id=str(source.thread_id),
                 ) if self._session_db else None
-            except Exception:
+            except Exception as _runpy_e:
                 logger.debug("Failed to read Telegram topic binding", exc_info=True)
                 binding = None
             if binding:
@@ -8242,7 +8544,7 @@ class GatewayRunner:
             else:
                 try:
                     self._record_telegram_topic_binding(source, session_entry)
-                except Exception:
+                except Exception as _runpy_e:
                     logger.debug("Failed to record Telegram topic binding", exc_info=True)
         if getattr(session_entry, "was_auto_reset", False):
             # Treat auto-reset as a full conversation boundary — drop every
@@ -8283,7 +8585,11 @@ class GatewayRunner:
         try:
             _pcfg = _load_gateway_config()
             _redact_pii = bool((_pcfg.get("privacy") or {}).get("redact_pii", False))
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
 
         # Build the context prompt to inject
@@ -8341,7 +8647,11 @@ class GatewayRunner:
                             session_info = self._format_session_info()
                             if session_info:
                                 notice = f"{notice}\n\n{session_info}"
-                        except Exception:
+                        except Exception as _runpy_e:
+                            logger.debug(
+                                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                                exc_info=True,
+                            )
                             pass
                         await adapter.send(
                             source.chat_id, notice,
@@ -8477,7 +8787,11 @@ class GatewayRunner:
                     _hyg_provider = _hyg_runtime.get("provider") or _hyg_provider
                     _hyg_base_url = _hyg_runtime.get("base_url") or _hyg_base_url
                     _hyg_api_key = _hyg_runtime.get("api_key") or _hyg_api_key
-                except Exception:
+                except Exception as _runpy_e:
+                    logger.debug(
+                        "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                        exc_info=True,
+                    )
                     pass
 
                 # Check custom_providers per-model context_length
@@ -8488,7 +8802,11 @@ class GatewayRunner:
                         try:
                             from hermes_cli.config import get_compatible_custom_providers as _gw_gcp
                             _hyg_custom_providers = _gw_gcp(_hyg_data)
-                        except Exception:
+                        except Exception as _runpy_e:
+                            logger.debug(
+                                "gateway/run.py: fail-soft exception swallowed",
+                                exc_info=True,
+                            )
                             _hyg_custom_providers = _hyg_data.get("custom_providers")
                             if not isinstance(_hyg_custom_providers, list):
                                 _hyg_custom_providers = []
@@ -8507,7 +8825,11 @@ class GatewayRunner:
                                 break
                     except (TypeError, ValueError):
                         pass
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                    exc_info=True,
+                )
                 pass
 
             if _hyg_compression_enabled:
@@ -8808,7 +9130,11 @@ class GatewayRunner:
                 _typing_adapter = self.adapters.get(source.platform)
                 if _typing_adapter and hasattr(_typing_adapter, "stop_typing"):
                     await _typing_adapter.stop_typing(source.chat_id)
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                    exc_info=True,
+                )
                 pass
 
             if not self._is_session_run_current(_quick_key, run_generation):
@@ -8890,7 +9216,11 @@ class GatewayRunner:
                     "show_reasoning",
                     getattr(self, "_show_reasoning", False),
                 )
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: fail-soft exception swallowed",
+                    exc_info=True,
+                )
                 _show_reasoning_effective = getattr(self, "_show_reasoning", False)
             if _show_reasoning_effective and response:
                 last_reasoning = agent_result.get("last_reasoning")
@@ -9178,7 +9508,11 @@ class GatewayRunner:
                 _err_adapter = self.adapters.get(source.platform)
                 if _err_adapter and hasattr(_err_adapter, "stop_typing"):
                     await _err_adapter.stop_typing(source.chat_id)
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                    exc_info=True,
+                )
                 pass
             logger.exception("Agent error in session %s", session_key)
             error_type = type(e).__name__
@@ -9199,7 +9533,11 @@ class GatewayRunner:
                         _err_json = _err_body.json().get("error", {})
                         if not isinstance(_err_json, dict):
                             _err_json = {}
-                except Exception:
+                except Exception as _runpy_e:
+                    logger.debug(
+                        "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                        exc_info=True,
+                    )
                     pass
                 if _err_json.get("type") == "usage_limit_reached":
                     _resets_in = _err_json.get("resets_in_seconds")
@@ -9268,9 +9606,17 @@ class GatewayRunner:
                 try:
                     from hermes_cli.config import get_compatible_custom_providers
                     custom_provs = get_compatible_custom_providers(data)
-                except Exception:
+                except Exception as _runpy_e:
+                    logger.debug(
+                        "gateway/run.py: fail-soft exception swallowed",
+                        exc_info=True,
+                    )
                     custom_provs = data.get("custom_providers")
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
 
         # Also check custom_providers for context_length when top-level model.context_length is not set
@@ -9305,7 +9651,11 @@ class GatewayRunner:
                                     break
                                 except (TypeError, ValueError):
                                     pass
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                    exc_info=True,
+                )
                 pass
 
         # Resolve runtime credentials for probing
@@ -9314,7 +9664,11 @@ class GatewayRunner:
             provider = provider or runtime.get("provider")
             base_url = base_url or runtime.get("base_url")
             api_key = runtime.get("api_key")
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
 
         context_length = get_model_context_length(
@@ -9388,13 +9742,21 @@ class GatewayRunner:
         try:
             from tools.env_passthrough import clear_env_passthrough
             clear_env_passthrough()
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
 
         try:
             from tools.credential_files import clear_credential_files
             clear_credential_files()
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
 
         # Reset the session
@@ -9418,7 +9780,11 @@ class GatewayRunner:
             _old_sid = old_entry.session_id if old_entry else None
             _invoke_hook("on_session_finalize", session_id=_old_sid,
                          platform=source.platform.value if source.platform else "")
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
 
         # Emit session:end hook (session is ending)
@@ -9438,7 +9804,11 @@ class GatewayRunner:
         # Resolve session config info to surface to the user
         try:
             session_info = self._format_session_info()
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             session_info = ""
 
         if new_entry:
@@ -9464,7 +9834,11 @@ class GatewayRunner:
                     header = t("gateway.reset.header_titled", title=sanitized)
                 except ValueError as e:
                     _title_note = t("gateway.reset.title_error_untitled", error=str(e))
-                except Exception:
+                except Exception as _runpy_e:
+                    logger.debug(
+                        "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                        exc_info=True,
+                    )
                     pass
             elif not _title_note:
                 # sanitize_title returned empty (whitespace-only / unprintable)
@@ -9479,7 +9853,7 @@ class GatewayRunner:
         if self._is_telegram_topic_lane(source) and new_entry is not None:
             try:
                 self._record_telegram_topic_binding(source, new_entry)
-            except Exception:
+            except Exception as _runpy_e:
                 logger.debug("Failed to rebind Telegram topic after /new", exc_info=True)
 
         # Fire plugin on_session_reset hook (new session guaranteed to exist)
@@ -9488,14 +9862,22 @@ class GatewayRunner:
             _new_sid = new_entry.session_id if new_entry else None
             _invoke_hook("on_session_reset", session_id=_new_sid,
                          platform=source.platform.value if source.platform else "")
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
 
         # Append a random tip to the reset message
         try:
             from hermes_cli.tips import get_random_tip
             _tip_line = t("gateway.reset.tip", tip=get_random_tip())
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             _tip_line = ""
 
         if session_info:
@@ -9737,7 +10119,11 @@ class GatewayRunner:
         if self._session_db:
             try:
                 title = self._session_db.get_session_title(session_entry.session_id)
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: fail-soft exception swallowed",
+                    exc_info=True,
+                )
                 title = None
             try:
                 row = self._session_db.get_session(session_entry.session_id)
@@ -9749,7 +10135,11 @@ class GatewayRunner:
                         + (row.get("cache_write_tokens") or 0)
                         + (row.get("reasoning_tokens") or 0)
                     )
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: fail-soft exception swallowed",
+                    exc_info=True,
+                )
                 db_total_tokens = 0
 
         lines = [
@@ -9825,7 +10215,11 @@ class GatewayRunner:
                 p for p in process_registry.list_sessions()
                 if p.get("status") == "running"
             ]
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             running_processes = []
 
         background_tasks = [
@@ -10118,7 +10512,11 @@ class GatewayRunner:
         # so future platforms aren't accidentally gated by this check.
         try:
             platform_value = event.source.platform.value
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             return False
         if platform_value != "telegram":
             return False
@@ -10128,7 +10526,11 @@ class GatewayRunner:
             if not marker_path.exists():
                 return False
             data = json.loads(marker_path.read_text())
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             return False
 
         if data.get("platform") != platform_value:
@@ -10164,7 +10566,11 @@ class GatewayRunner:
                     lines.append(f"`{cmd}` — {skill_cmds[cmd]['description']}")
                 if len(sorted_cmds) > 10:
                     lines.append(t("gateway.help.more_use_commands", count=len(sorted_cmds) - 10))
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
         return _telegramize_command_mentions(
             "\n".join(lines),
@@ -10194,7 +10600,11 @@ class GatewayRunner:
                 for cmd in sorted(skill_cmds):
                     desc = skill_cmds[cmd].get("description", "").strip() or t("gateway.commands.default_desc")
                     entries.append(f"`{cmd}` — {desc}")
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
 
         if not entries:
@@ -10254,7 +10664,11 @@ class GatewayRunner:
             try:
                 from hermes_cli.models import clear_provider_models_cache
                 clear_provider_models_cache()
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                    exc_info=True,
+                )
                 pass
 
         # Read current model/provider from config
@@ -10277,9 +10691,17 @@ class GatewayRunner:
                 try:
                     from hermes_cli.config import get_compatible_custom_providers
                     custom_provs = get_compatible_custom_providers(cfg)
-                except Exception:
+                except Exception as _runpy_e:
+                    logger.debug(
+                        "gateway/run.py: fail-soft exception swallowed",
+                        exc_info=True,
+                    )
                     custom_provs = cfg.get("custom_providers")
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
 
         # Check for session override
@@ -10311,7 +10733,11 @@ class GatewayRunner:
                         custom_providers=custom_provs,
                         max_models=50,
                     )
-                except Exception:
+                except Exception as _runpy_e:
+                    logger.debug(
+                        "gateway/run.py: fail-soft exception swallowed",
+                        exc_info=True,
+                    )
                     providers = []
 
                 if providers:
@@ -10396,7 +10822,11 @@ class GatewayRunner:
                                 _sw_raw = _sw_model_cfg.get("context_length")
                                 if _sw_raw is not None:
                                     _sw_config_ctx = int(_sw_raw)
-                        except Exception:
+                        except Exception as _runpy_e:
+                            logger.debug(
+                                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                                exc_info=True,
+                            )
                             pass
                         ctx = resolve_display_context_length(
                             result.new_model,
@@ -10454,7 +10884,11 @@ class GatewayRunner:
                     elif p.get("api_url"):
                         lines.append(f"  `{p['api_url']}`")
                     lines.append("")
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                    exc_info=True,
+                )
                 pass
 
             lines.append(t("gateway.model.usage_switch_model"))
@@ -10570,7 +11004,11 @@ class GatewayRunner:
                 _sw2_raw = _sw2_model_cfg.get("context_length")
                 if _sw2_raw is not None:
                     _sw2_config_ctx = int(_sw2_raw)
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
         ctx = resolve_display_context_length(
             result.new_model,
@@ -10646,7 +11084,7 @@ class GatewayRunner:
             try:
                 session_key = self._session_key_for_source(event.source)
                 self._evict_cached_agent(session_key)
-            except Exception:
+            except Exception as _runpy_e:
                 logger.debug("could not evict cached agent after codex-runtime change",
                              exc_info=True)
 
@@ -10663,7 +11101,11 @@ class GatewayRunner:
         try:
             config = _load_gateway_config()
             personalities = cfg_get(config, "agent", "personalities", default={})
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             config = {}
             personalities = {}
 
@@ -10779,7 +11221,11 @@ class GatewayRunner:
 
                 goals_cfg = (load_config() or {}).get("goals") or {}
             return int(goals_cfg.get("max_turns", 20) or 20)
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             return 20
 
     def _get_goal_manager_for_event(self, event: "MessageEvent"):
@@ -10941,7 +11387,11 @@ class GatewayRunner:
 
         try:
             metadata = self._thread_metadata_for_source(source)
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             metadata = None
 
         result = await adapter.send(source.chat_id, message, metadata=metadata)
@@ -10974,7 +11424,11 @@ class GatewayRunner:
 
         try:
             session_key = self._session_key_for_source(source)
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             session_key = None
 
         if session_key and hasattr(adapter, "register_post_delivery_callback"):
@@ -11386,7 +11840,11 @@ class GatewayRunner:
             if channel:
                 safe_text = transcript[:2000].replace("@everyone", "@\u200beveryone").replace("@here", "@\u200bhere")
                 await channel.send(f"**[Voice]** <@{user_id}>: {safe_text}")
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
 
         # Build a synthetic MessageEvent and feed through the normal pipeline
@@ -11660,7 +12118,11 @@ class GatewayRunner:
                 cp_cfg = _data.get("checkpoints", {})
                 if isinstance(cp_cfg, bool):
                     cp_cfg = {"enabled": cp_cfg}
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
 
         if not cp_cfg.get("enabled", False):
@@ -11884,7 +12346,11 @@ class GatewayRunner:
                             caption=alt_text,
                             metadata=_thread_metadata,
                         )
-                    except Exception:
+                    except Exception as _runpy_e:
+                        logger.debug(
+                            "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                            exc_info=True,
+                        )
                         pass
 
                 # Send media files
@@ -11895,7 +12361,11 @@ class GatewayRunner:
                             file_path=media_path,
                             metadata=_thread_metadata,
                         )
-                    except Exception:
+                    except Exception as _runpy_e:
+                        logger.debug(
+                            "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                            exc_info=True,
+                        )
                         pass
             else:
                 preview = prompt[:60] + ("..." if len(prompt) > 60 else "")
@@ -11913,7 +12383,11 @@ class GatewayRunner:
                     content=f"❌ Background task {task_id} failed: {e}",
                     metadata=_thread_metadata,
                 )
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                    exc_info=True,
+                )
                 pass
 
     async def _handle_reasoning_command(self, event: MessageEvent) -> str:
@@ -12121,7 +12595,11 @@ class GatewayRunner:
                 cfg_get(user_config, "display", "tool_progress_command"),
                 default=False,
             )
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             gate_enabled = False
 
         if not gate_enabled:
@@ -12190,7 +12668,11 @@ class GatewayRunner:
                 parts = text.split(None, 1)
                 if len(parts) > 1:
                     arg = parts[1].strip().lower()
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             arg = ""
 
         # --- load config ----------------------------------------------------
@@ -12392,7 +12874,7 @@ class GatewayRunner:
             return {"checked": False}
         try:
             me = await bot.get_me()
-        except Exception:
+        except Exception as _runpy_e:
             logger.debug("Failed to fetch Telegram getMe topic capabilities", exc_info=True)
             return {"checked": False}
 
@@ -12423,7 +12905,7 @@ class GatewayRunner:
         if callable(create_topic):
             try:
                 thread_id = await create_topic(int(source.chat_id), "System")
-            except Exception:
+            except Exception as _runpy_e:
                 logger.debug("Failed to create Telegram System topic", exc_info=True)
         if not thread_id:
             return
@@ -12436,7 +12918,7 @@ class GatewayRunner:
                 metadata={"thread_id": str(thread_id)},
             )
             message_id = getattr(send_result, "message_id", None)
-        except Exception:
+        except Exception as _runpy_e:
             logger.debug("Failed to send Telegram System topic intro", exc_info=True)
         if not message_id:
             return
@@ -12450,7 +12932,7 @@ class GatewayRunner:
                 message_id=int(message_id),
                 disable_notification=True,
             )
-        except Exception:
+        except Exception as _runpy_e:
             logger.debug("Failed to pin Telegram System topic intro", exc_info=True)
 
     async def _send_telegram_topic_setup_image(self, source: SessionSource) -> None:
@@ -12468,7 +12950,7 @@ class GatewayRunner:
                 caption="BotFather → Bot Settings → Threads Settings",
                 metadata={"thread_id": str(source.thread_id)} if source.thread_id else None,
             )
-        except Exception:
+        except Exception as _runpy_e:
             logger.debug("Failed to send Telegram topic setup image", exc_info=True)
 
     def _sanitize_telegram_topic_title(self, title: str) -> str:
@@ -12513,7 +12995,11 @@ class GatewayRunner:
             if callable(get_info):
                 try:
                     operator_topic = get_info(adapter, str(source.chat_id), str(source.thread_id))
-                except Exception:
+                except Exception as _runpy_e:
+                    logger.debug(
+                        "gateway/run.py: fail-soft exception swallowed",
+                        exc_info=True,
+                    )
                     operator_topic = None
                 # Only treat dict-shaped returns as operator-declared; a
                 # bare MagicMock or other sentinel shouldn't count.
@@ -12529,7 +13015,7 @@ class GatewayRunner:
                 )
                 if binding and str(binding.get("session_id") or "") != str(session_id):
                     return
-            except Exception:
+            except Exception as _runpy_e:
                 logger.debug("Failed to verify Telegram topic binding before rename", exc_info=True)
                 return
 
@@ -12564,7 +13050,7 @@ class GatewayRunner:
                     message_thread_id=source.thread_id,
                     name=topic_name,
                 )
-        except Exception:
+        except Exception as _runpy_e:
             logger.debug("Failed to rename Telegram topic for auto-generated title", exc_info=True)
 
     def _telegram_topic_auto_rename_disabled(self, source: SessionSource) -> bool:
@@ -12609,7 +13095,11 @@ class GatewayRunner:
             return
         try:
             copied_source = dataclasses.replace(source)
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             copied_source = source
         future = safe_schedule_threadsafe(
             self._rename_telegram_topic_for_session_title(copied_source, session_id, title),
@@ -12622,7 +13112,7 @@ class GatewayRunner:
         def _log_rename_failure(fut) -> None:
             try:
                 fut.result()
-            except Exception:
+            except Exception as _runpy_e:
                 logger.debug("Telegram topic title rename failed", exc_info=True)
 
         future.add_done_callback(_log_rename_failure)
@@ -12684,7 +13174,11 @@ class GatewayRunner:
                 chat_id=chat_id,
                 user_id=str(source.user_id or ""),
             )
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             currently_enabled = False
         if not currently_enabled:
             return "Multi-session topic mode is not currently enabled for this chat."
@@ -12724,7 +13218,7 @@ class GatewayRunner:
             try:
                 if not auth_fn(source):
                     return t("gateway.topic.unauthorized")
-            except Exception:
+            except Exception as _runpy_e:
                 logger.debug("Topic auth check failed", exc_info=True)
 
         args = event.get_command_args().strip()
@@ -12775,7 +13269,7 @@ class GatewayRunner:
                     chat_id=str(source.chat_id),
                     thread_id=str(source.thread_id),
                 )
-            except Exception:
+            except Exception as _runpy_e:
                 logger.debug("Failed to read Telegram topic binding", exc_info=True)
                 binding = None
             if binding:
@@ -12783,7 +13277,11 @@ class GatewayRunner:
                 title = None
                 try:
                     title = self._session_db.get_session_title(session_id)
-                except Exception:
+                except Exception as _runpy_e:
+                    logger.debug(
+                        "gateway/run.py: fail-soft exception swallowed",
+                        exc_info=True,
+                    )
                     title = None
                 session_label = title or t("gateway.topic.untitled_session")
                 return t(
@@ -12810,7 +13308,7 @@ class GatewayRunner:
                 user_id=str(source.user_id),
                 limit=10,
             )
-        except Exception:
+        except Exception as _runpy_e:
             logger.debug("Failed to list unlinked Telegram sessions", exc_info=True)
             sessions = []
 
@@ -12887,7 +13385,11 @@ class GatewayRunner:
                 if message.get("role") == "assistant" and message.get("content"):
                     last_assistant = str(message.get("content"))
                     break
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             last_assistant = None
 
         response = f"Session restored: {title}"
@@ -12916,7 +13418,11 @@ class GatewayRunner:
                     source=source.platform.value if source.platform else "unknown",
                     user_id=source.user_id,
                 )
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: fail-soft exception swallowed",
+                    exc_info=True,
+                )
                 pass  # Session might already exist, ignore errors
 
         title_arg = event.get_command_args().strip()
@@ -13120,13 +13626,21 @@ class GatewayRunner:
                     codex_reasoning_items=msg.get("codex_reasoning_items"),
                     codex_message_items=msg.get("codex_message_items"),
                 )
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: fail-soft exception swallowed",
+                    exc_info=True,
+                )
                 pass  # Best-effort copy
 
         # Set title
         try:
             self._session_db.set_session_title(new_session_id, branch_title)
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
 
         # Switch the session store entry to the new session
@@ -13174,7 +13688,11 @@ class GatewayRunner:
             try:
                 _entry_for_billing = self.session_store.get_or_create_session(source)
                 persisted = self._session_db.get_session(_entry_for_billing.session_id) or {}
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: fail-soft exception swallowed",
+                    exc_info=True,
+                )
                 persisted = {}
             provider = provider or persisted.get("billing_provider")
             base_url = base_url or persisted.get("billing_base_url")
@@ -13190,7 +13708,11 @@ class GatewayRunner:
                     base_url=base_url,
                     api_key=api_key,
                 )
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: fail-soft exception swallowed",
+                    exc_info=True,
+                )
                 account_snapshot = None
             if account_snapshot:
                 account_lines = render_account_usage_lines(account_snapshot, markdown=True)
@@ -13241,7 +13763,11 @@ class GatewayRunner:
                     lines.append(t("gateway.usage.label_cost", prefix=prefix, amount=f"{float(cost_result.amount_usd):.4f}"))
                 elif cost_result.status == "included":
                     lines.append(t("gateway.usage.label_cost_included"))
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                    exc_info=True,
+                )
                 pass
 
             # Context window and compressions
@@ -13448,7 +13974,11 @@ class GatewayRunner:
                         for _sess_key, _entry in list(_cache.items()):
                             try:
                                 _agent = _entry[0] if isinstance(_entry, tuple) else _entry
-                            except Exception:
+                            except Exception as _runpy_e:
+                                logger.debug(
+                                    "gateway/run.py: fail-soft exception swallowed",
+                                    exc_info=True,
+                                )
                                 continue
                             if _agent is None:
                                 continue
@@ -13488,7 +14018,11 @@ class GatewayRunner:
                 self.session_store.append_to_transcript(
                     session_entry.session_id, reload_msg
                 )
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: fail-soft exception swallowed",
+                    exc_info=True,
+                )
                 pass  # Best-effort; don't fail the reload over a transcript write
 
             return "\n".join(lines)
@@ -13680,7 +14214,11 @@ class GatewayRunner:
             approvals = cfg.get("approvals") if isinstance(cfg, dict) else None
             if isinstance(approvals, dict):
                 confirm_required = bool(approvals.get("destructive_slash_confirm", True))
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
 
         if not confirm_required:
@@ -13813,7 +14351,11 @@ class GatewayRunner:
             from hermes_cli.config import load_config
             cfg = load_config()
             return cfg if isinstance(cfg, dict) else {}
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             return {}
 
     def _thread_metadata_for_source(
@@ -14027,7 +14569,11 @@ class GatewayRunner:
                 entry = platform_registry.get(platform.value)
                 if not entry or not entry.allow_update_command:
                     return t("gateway.update.platform_not_messaging")
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: fail-soft exception swallowed",
+                    exc_info=True,
+                )
                 return t("gateway.update.platform_not_messaging")
 
         if is_managed():
@@ -14210,7 +14756,11 @@ class GatewayRunner:
                         if not session_key:
                             session_key = f"{platform_str}:{chat_id}"
                     break
-                except Exception:
+                except Exception as _runpy_e:
+                    logger.debug(
+                        "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                        exc_info=True,
+                    )
                     pass
 
         if not adapter or not chat_id:
@@ -14368,7 +14918,11 @@ class GatewayRunner:
                     "❌ Hermes update timed out after 30 minutes.",
                     metadata=metadata,
                 )
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                    exc_info=True,
+                )
                 pass
             for p in (pending_path, claimed_path, output_path,
                       exit_code_path, prompt_path):
@@ -14860,9 +15414,13 @@ class GatewayRunner:
                     from gateway.platform_registry import platform_registry
                     if not platform_registry.is_registered(platform.value):
                         raise ValueError(platform_name)
-                except Exception:
+                except Exception as _runpy_e:
+                    logger.debug(
+                        "gateway/run.py: fail-soft exception swallowed",
+                        exc_info=True,
+                    )
                     raise ValueError(platform_name)
-        except Exception:
+        except Exception as _runpy_e:
             logger.warning(
                 "Synthetic process event has invalid platform metadata: %r",
                 platform_name,
@@ -15130,7 +15688,11 @@ class GatewayRunner:
             from tools.registry import registry
 
             out["tools.registry_generation"] = getattr(registry, "_generation", None)
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             out["tools.registry_generation"] = None
 
         # Honcho identity-mapping keys live in honcho.json, not user_config.
@@ -15148,7 +15710,11 @@ class GatewayRunner:
             out["honcho.runtime_peer_prefix"] = hcfg.runtime_peer_prefix or ""
             aliases = hcfg.user_peer_aliases or {}
             out["honcho.user_peer_aliases"] = sorted(aliases.items()) if isinstance(aliases, dict) else []
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             out["honcho.peer_name"] = None
             out["honcho.ai_peer"] = None
             out["honcho.pin_peer_name"] = None
@@ -15313,7 +15879,11 @@ class GatewayRunner:
 
         try:
             from tools import slash_confirm as _slash_confirm_mod
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             _slash_confirm_mod = None
         if _slash_confirm_mod is not None:
             try:
@@ -15327,7 +15897,11 @@ class GatewayRunner:
 
         try:
             from tools.approval import clear_session as _clear_approval_session
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             return
 
         try:
@@ -15389,7 +15963,11 @@ class GatewayRunner:
             interrupt_event = getattr(adapter, "_active_sessions", {}).get(session_key)
             if interrupt_event is not None:
                 setattr(interrupt_event, "_hermes_run_generation", int(generation))
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
 
     async def _interrupt_and_clear_session(
@@ -15462,7 +16040,11 @@ class GatewayRunner:
                 # Older agent instance (shouldn't happen in practice) —
                 # fall back to the legacy full-close path.
                 self._cleanup_agent_resources(agent)
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
 
     def _enforce_agent_cache_cap(self) -> None:
@@ -15765,7 +16347,11 @@ class GatewayRunner:
         if _adapter:
             try:
                 await _adapter.send_typing(source.chat_id, metadata=_thread_metadata)
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                    exc_info=True,
+                )
                 pass
 
         # Make the HTTP request with SSE streaming -----------------------
@@ -15963,7 +16549,11 @@ class GatewayRunner:
             from agent.display import set_tool_preview_max_len
             _tpl = resolve_display_setting(user_config, platform_key, "tool_preview_length", 0)
             set_tool_preview_max_len(int(_tpl) if _tpl else 0)
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                exc_info=True,
+            )
             pass
 
         # Tool progress mode — resolved per-platform with env var fallback
@@ -16088,7 +16678,11 @@ class GatewayRunner:
                     _agent_for_interrupt, "is_interrupted", False
                 ):
                     return
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                    exc_info=True,
+                )
                 pass
 
             # "new" mode: only report when tool changes
@@ -16186,7 +16780,11 @@ class GatewayRunner:
                 while not progress_queue.empty():
                     try:
                         progress_queue.get_nowait()
-                    except Exception:
+                    except Exception as _runpy_e:
+                        logger.debug(
+                            "gateway/run.py: fail-soft exception swallowed",
+                            exc_info=True,
+                        )
                         break
                 return
 
@@ -16203,7 +16801,11 @@ class GatewayRunner:
             )
             try:
                 _raw_progress_limit = int(getattr(adapter, "MAX_MESSAGE_LENGTH", 4000) or 4000)
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: fail-soft exception swallowed",
+                    exc_info=True,
+                )
                 _raw_progress_limit = 4000
             # Leave a little room for platform quirks / formatting.  For tiny
             # test adapters keep the limit usable instead of clamping to 500+.
@@ -16316,7 +16918,11 @@ class GatewayRunner:
                         while not progress_queue.empty():
                             try:
                                 progress_queue.get_nowait()
-                            except Exception:
+                            except Exception as _runpy_e:
+                                logger.debug(
+                                    "gateway/run.py: fail-soft exception swallowed",
+                                    exc_info=True,
+                                )
                                 break
                         return
 
@@ -16335,7 +16941,11 @@ class GatewayRunner:
                             # Drop this event and continue draining.
                             await asyncio.sleep(0)
                             continue
-                    except Exception:
+                    except Exception as _runpy_e:
+                        logger.debug(
+                            "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                            exc_info=True,
+                        )
                         pass
 
                     # Handle dedup messages: update last line with repeat counter
@@ -16475,7 +17085,11 @@ class GatewayRunner:
                                     _pending_text = _progress_text(progress_lines)
                                     try:
                                         await _edit_progress_message(progress_msg_id, _pending_text)
-                                    except Exception:
+                                    except Exception as _runpy_e:
+                                        logger.debug(
+                                            "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                                            exc_info=True,
+                                        )
                                         pass
                                 progress_msg_id = None
                                 progress_lines = []
@@ -16484,7 +17098,11 @@ class GatewayRunner:
                             else:
                                 progress_lines.append(raw)
                                 await _roll_progress_overflow_if_needed()
-                        except Exception:
+                        except Exception as _runpy_e:
+                            logger.debug(
+                                "gateway/run.py: fail-soft exception swallowed",
+                                exc_info=True,
+                            )
                             break
                     # Final edit with all remaining tools (only if editing works)
                     if can_edit and progress_lines and progress_msg_id:
@@ -16493,7 +17111,11 @@ class GatewayRunner:
                         full_text = _progress_text(progress_lines)
                         try:
                             await _edit_progress_message(progress_msg_id, full_text)
-                        except Exception:
+                        except Exception as _runpy_e:
+                            logger.debug(
+                                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                                exc_info=True,
+                            )
                             pass
                     return
                 except Exception as e:
@@ -16579,7 +17201,11 @@ class GatewayRunner:
                 def _track_status_id(fut) -> None:
                     try:
                         res = fut.result()
-                    except Exception:
+                    except Exception as _runpy_e:
+                        logger.debug(
+                            "gateway/run.py: fail-soft exception swallowed",
+                            exc_info=True,
+                        )
                         return
                     mid = getattr(res, "message_id", None)
                     if getattr(res, "success", False) and mid:
@@ -16916,7 +17542,11 @@ class GatewayRunner:
                 # typing is active (Slack Assistant API).
                 try:
                     _status_adapter.pause_typing_for_chat(_status_chat_id)
-                except Exception:
+                except Exception as _runpy_e:
+                    logger.debug(
+                        "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                        exc_info=True,
+                    )
                     pass
 
                 send_ok = False
@@ -17128,7 +17758,11 @@ class GatewayRunner:
             if session_key:
                 try:
                     _resume_entry = self.session_store._entries.get(session_key)
-                except Exception:
+                except Exception as _runpy_e:
+                    logger.debug(
+                        "gateway/run.py: fail-soft exception swallowed",
+                        exc_info=True,
+                    )
                     _resume_entry = None
             _is_resume_pending = bool(
                 _resume_entry is not None
@@ -17233,7 +17867,11 @@ class GatewayRunner:
                 try:
                     from tools.clarify_gateway import clear_session as _clear_clarify_session
                     _clear_clarify_session(_approval_session_key)
-                except Exception:
+                except Exception as _runpy_e:
+                    logger.debug(
+                        "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                        exc_info=True,
+                    )
                     pass
                 reset_current_session_key(_approval_session_token)
             result_holder[0] = result
@@ -17364,7 +18002,7 @@ class GatewayRunner:
                                 session_id,
                                 agent.session_id,
                             )
-                    except Exception:
+                    except Exception as _runpy_e:
                         logger.debug(
                             "Failed to restore thread_id from binding after session split",
                             exc_info=True,
@@ -17418,7 +18056,11 @@ class GatewayRunner:
                         all_msgs,
                         **maybe_auto_title_kwargs,
                     )
-                except Exception:
+                except Exception as _runpy_e:
+                    logger.debug(
+                        "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                        exc_info=True,
+                    )
                     pass
 
             return {
@@ -17597,7 +18239,11 @@ class GatewayRunner:
                             _parts.append(str(_action))
                         if _parts:
                             _status_detail = " — " + ", ".join(_parts)
-                    except Exception:
+                    except Exception as _runpy_e:
+                        logger.debug(
+                            "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                            exc_info=True,
+                        )
                         pass
                 _heartbeat_text = f"⏳ Working — {_elapsed_mins} min{_status_detail}"
                 try:
@@ -17699,7 +18345,11 @@ class GatewayRunner:
                         try:
                             _act = _agent_ref.get_activity_summary()
                             _idle_secs = _act.get("seconds_since_activity", 0.0)
-                        except Exception:
+                        except Exception as _runpy_e:
+                            logger.debug(
+                                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                                exc_info=True,
+                            )
                             pass
                     # Staged warning: fire once before escalating to full timeout.
                     if (not _warning_fired and _agent_warning is not None
@@ -17748,7 +18398,11 @@ class GatewayRunner:
                 if _timed_out_agent and hasattr(_timed_out_agent, "get_activity_summary"):
                     try:
                         _activity = _timed_out_agent.get_activity_summary()
-                    except Exception:
+                    except Exception as _runpy_e:
+                        logger.debug(
+                            "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                            exc_info=True,
+                        )
                         pass
 
                 _last_desc = _activity.get("last_activity_desc", "unknown")
@@ -17882,7 +18536,11 @@ class GatewayRunner:
                             )
                             pending_event = None
                             pending = None
-                    except Exception:
+                    except Exception as _runpy_e:
+                        logger.debug(
+                            "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                            exc_info=True,
+                        )
                         pass
 
             if self._draining and (pending_event or pending):
@@ -17974,7 +18632,11 @@ class GatewayRunner:
                                 _bg_result = _bg_cb()
                                 if inspect.isawaitable(_bg_result):
                                     await _bg_result
-                            except Exception:
+                            except Exception as _runpy_e:
+                                logger.debug(
+                                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                                    exc_info=True,
+                                )
                                 pass
                     elif adapter and hasattr(adapter, "_post_delivery_callbacks"):
                         _bg_cb = adapter._post_delivery_callbacks.pop(session_key, None)
@@ -17983,7 +18645,11 @@ class GatewayRunner:
                                 _bg_result = _bg_cb()
                                 if inspect.isawaitable(_bg_result):
                                     await _bg_result
-                            except Exception:
+                            except Exception as _runpy_e:
+                                logger.debug(
+                                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                                    exc_info=True,
+                                )
                                 pass
                 # else: interrupted — discard the interrupted response ("Operation
                 # interrupted." is just noise; the user already knows they sent a
@@ -18022,7 +18688,11 @@ class GatewayRunner:
                             source.chat_id,
                             metadata=_status_thread_metadata,
                         )
-                    except Exception:
+                    except Exception as _runpy_e:
+                        logger.debug(
+                            "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                            exc_info=True,
+                        )
                         pass
 
                 followup_result = await self._run_agent(
@@ -18183,7 +18853,11 @@ class GatewayRunner:
                             await _adapter_snapshot.delete_message(
                                 _chat_id_snapshot, _mid
                             )
-                        except Exception:
+                        except Exception as _runpy_e:
+                            logger.debug(
+                                "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                                exc_info=True,
+                            )
                             pass
                 try:
                     safe_schedule_threadsafe(
@@ -18191,7 +18865,11 @@ class GatewayRunner:
                         logger=logger,
                         log_message="Temp bubble cleanup scheduling error",
                     )
-                except Exception:
+                except Exception as _runpy_e:
+                    logger.debug(
+                        "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                        exc_info=True,
+                    )
                     pass
 
             try:
@@ -18426,7 +19104,11 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
                 try:
                     from gateway.status import clear_takeover_marker
                     clear_takeover_marker()
-                except Exception:
+                except Exception as _runpy_e:
+                    logger.debug(
+                        "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                        exc_info=True,
+                    )
                     pass
                 return False
             # Wait up to 10 seconds for the old process to exit.
@@ -18453,14 +19135,22 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
             # Force-unlink to cover the old-process-crashed case.
             try:
                 (get_hermes_home() / "gateway.pid").unlink(missing_ok=True)
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                    exc_info=True,
+                )
                 pass
             # Clean up any takeover marker the old process didn't consume
             # (e.g. SIGKILL'd before its shutdown handler could read it).
             try:
                 from gateway.status import clear_takeover_marker
                 clear_takeover_marker()
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                    exc_info=True,
+                )
                 pass
             # Also release all scoped locks left by the old process.
             # Stopped (Ctrl+Z) processes don't release locks on exit,
@@ -18473,7 +19163,11 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
                 )
                 if _released:
                     logger.info("Released %d stale scoped lock(s) from old gateway.", _released)
-            except Exception:
+            except Exception as _runpy_e:
+                logger.debug(
+                    "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+                    exc_info=True,
+                )
                 pass
         else:
             hermes_home = str(get_hermes_home())
@@ -18494,7 +19188,11 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
     try:
         from tools.skills_sync import sync_skills
         sync_skills(quiet=True)
-    except Exception:
+    except Exception as _runpy_e:
+        logger.debug(
+            "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+            exc_info=True,
+        )
         pass
 
     # Centralized logging — agent.log (INFO+), errors.log (WARNING+),
@@ -18519,7 +19217,11 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
             from hermes_cli.config import load_config as _load_cli_config
 
             _mm_cfg = (_load_cli_config() or {}).get("logging", {}).get("memory_monitor", {}) or {}
-        except Exception:
+        except Exception as _runpy_e:
+            logger.debug(
+                "gateway/run.py: fail-soft exception swallowed",
+                exc_info=True,
+            )
             _mm_cfg = {}
         if _mm_cfg.get("enabled", True):
             try:
@@ -18783,7 +19485,11 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
     try:
         from tools.mcp_tool import shutdown_mcp_servers
         shutdown_mcp_servers()
-    except Exception:
+    except Exception as _runpy_e:
+        logger.debug(
+            "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+            exc_info=True,
+        )
         pass
 
     # Stop the periodic memory monitor (if it was started above).
@@ -18793,7 +19499,11 @@ async def start_gateway(config: Optional[GatewayConfig] = None, replace: bool = 
         from gateway import memory_monitor as _memory_monitor
 
         _memory_monitor.stop_memory_monitoring(timeout=2.0)
-    except Exception:
+    except Exception as _runpy_e:
+        logger.debug(
+            "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+            exc_info=True,
+        )
         pass
 
     if runner.exit_code is not None:
@@ -18837,7 +19547,11 @@ def main():
     try:
         from hermes_cli.stdio import configure_windows_stdio
         configure_windows_stdio()
-    except Exception:
+    except Exception as _runpy_e:
+        logger.debug(
+            "gateway/run.py: silent exception swallowed during fail-soft try/except (was bare 'pass')",
+            exc_info=True,
+        )
         pass
 
     import argparse

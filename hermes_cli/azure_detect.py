@@ -162,7 +162,10 @@ def _http_get_json(url: str,
             body = resp.read()
             try:
                 return resp.status, json.loads(body.decode("utf-8", errors="replace"))
-            except Exception:
+            except (ValueError, UnicodeDecodeError) as exc:
+                # JSONDecodeError is a subclass of ValueError so this
+                # catches invalid JSON AND encode failures of the raw body.
+                logger.debug("azure_detect: GET %s body parse failed: %s", url, exc)
                 return resp.status, None
     except HTTPError as exc:
         return exc.code, None
@@ -187,7 +190,10 @@ def _looks_like_anthropic_path(url: str) -> bool:
         parsed = urlparse(url)
         path = (parsed.path or "").lower().rstrip("/")
         return path.endswith("/anthropic") or "/anthropic/" in path + "/"
-    except Exception:
+    except ValueError as exc:
+        # urlparse is mostly infallible on str inputs, but ValueError
+        # is the documented failure (e.g. for some unusual IPv6 hosts).
+        logger.debug("azure_detect: urlparse failed for %r: %s", url, exc)
         return False
 
 
@@ -286,11 +292,15 @@ def _probe_anthropic_messages(base_url: str,
             if exc.code == 400 and ("messages" in lowered or "model" in lowered):
                 return True
             return False
-        except Exception:
+        except (OSError, UnicodeDecodeError) as body_exc:
+            # HTTPError.read() can raise ConnectionResetError / BadStatusLine
+            # (OSError); and decode raises UnicodeDecodeError on non-UTF-8.
+            logger.debug("azure_detect: anthropic probe body read failed: %s", body_exc)
             return False
     except (URLError, TimeoutError, OSError):
         return False
-    except Exception:  # pragma: no cover
+    except Exception as exc:  # pragma: no cover — defensive
+        logger.debug("azure_detect: anthropic probe unexpected error: %s", exc)
         return False
 
 
@@ -317,7 +327,8 @@ def detect(base_url: str,
     try:
         parsed = urlparse(base_url)
         result.hostname = (parsed.hostname or "").lower()
-    except Exception:
+    except ValueError as exc:
+        logger.debug("azure_detect: urlparse failed for %r: %s", base_url, exc)
         result.hostname = ""
 
     # 1. Path sniff.  Azure Foundry exposes Anthropic-style deployments
@@ -384,7 +395,8 @@ def lookup_context_length(model: str,
             DEFAULT_FALLBACK_CONTEXT,
             get_model_context_length,
         )
-    except Exception:
+    except ImportError as exc:
+        logger.debug("azure_detect: agent.model_metadata import failed: %s", exc)
         return None
 
     # Resolve the credential once. For Entra mode this calls the token

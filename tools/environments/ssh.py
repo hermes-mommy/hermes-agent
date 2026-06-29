@@ -118,8 +118,8 @@ class SSHEnvironment(BaseEnvironment):
             if home and result.returncode == 0:
                 logger.debug("SSH: remote home = %s", home)
                 return home
-        except Exception:
-            pass
+        except (OSError, subprocess.SubprocessError) as exc:
+            logger.debug("SSH: remote home detection failed, using fallback: %s", exc)
         if self.user == "root":
             return "/root"
         return f"/home/{self.user}"
@@ -213,7 +213,7 @@ class SSHEnvironment(BaseEnvironment):
                     ssh_cmd, stdin=tar_proc.stdout, stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                 )
-            except Exception:
+            except (OSError, subprocess.SubprocessError):
                 tar_proc.kill()
                 tar_proc.wait()
                 raise

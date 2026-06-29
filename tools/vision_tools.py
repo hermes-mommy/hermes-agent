@@ -63,8 +63,8 @@ def _resolve_download_timeout() -> float:
         val = cfg_get(cfg, "auxiliary", "vision", "download_timeout")
         if val is not None:
             return float(val)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Could not read download_timeout from config: %s", e)
     return 30.0
 
 _VISION_DOWNLOAD_TIMEOUT = _resolve_download_timeout()
@@ -626,8 +626,8 @@ async def _vision_analyze_native(
             try:
                 if temp_image_path.exists():
                     temp_image_path.unlink()
-            except Exception:
-                pass
+            except OSError as e:
+                logger.debug("Could not delete temp image %s: %s", temp_image_path, e)
 
 
 async def vision_analyze_tool(
@@ -794,8 +794,8 @@ async def vision_analyze_tool(
             _vtemp = _vision_cfg.get("temperature")
             if _vtemp is not None:
                 vision_temperature = float(_vtemp)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Could not read vision config, using defaults: %s", e)
         call_kwargs = {
             "task": "vision",
             "messages": messages,
@@ -935,7 +935,8 @@ def check_vision_requirements() -> bool:
         # provider can't be resolved.
         _provider, client, _model = resolve_vision_provider_client(provider="auto")
         return client is not None
-    except Exception:
+    except Exception as e:
+        logger.debug("Vision requirements check failed: %s", e)
         return False
 
 
@@ -1291,8 +1292,8 @@ async def video_analyze_tool(
             _vtemp = _vision_cfg.get("temperature")
             if _vtemp is not None:
                 vision_temperature = float(_vtemp)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Could not read video vision config, using defaults: %s", e)
 
         call_kwargs = {
             "task": "vision",

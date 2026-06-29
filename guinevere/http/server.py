@@ -92,8 +92,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         settings = load_settings()
         app.state.settings = settings
         logger.info("config_loaded")
-    except Exception:
-        logger.warning("config_load_failed", exc_info=True)
+    except Exception as e:
+        logger.warning("config_load_failed: %s", e, exc_info=True)
         app.state.settings = None
 
     # ── Phase 1: concurrency gate ─────────────────────────────────────
@@ -111,8 +111,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
                 pg_pool = await asyncpg.create_pool(pg_dsn, min_size=1, max_size=5)
                 app.state.pg_pool = pg_pool
                 logger.info("pg_pool_created")
-            except Exception:
-                logger.warning("pg_pool_creation_failed", exc_info=True)
+            except Exception as e:
+                logger.warning("pg_pool_creation_failed: %s", e, exc_info=True)
                 app.state.pg_pool = None
 
     # ── Phase 3: optional Redis client (fail-soft) ────────────────────
@@ -126,8 +126,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
                 redis_client = aioredis.from_url(redis_url)
                 app.state.redis_client = redis_client
                 logger.info("redis_client_created")
-            except Exception:
-                logger.warning("redis_client_creation_failed", exc_info=True)
+            except Exception as e:
+                logger.warning("redis_client_creation_failed: %s", e, exc_info=True)
                 app.state.redis_client = None
 
     # ── Phase 4: start TaskGroup with real M3 + placeholder M16 ──────
@@ -156,8 +156,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             )
             app.state.consciousness_loop = _consciousness_loop
             logger.info("m3_consciousness_wired", substrates=len(_consciousness_loop.substrate_names))
-        except Exception:
-            logger.warning("m3_consciousness_wire_failed", exc_info=True)
+        except Exception as e:
+            logger.warning("m3_consciousness_wire_failed: %s", e, exc_info=True)
             consciousness_task = tg.create_task(
                 _noop_placeholder(),
                 name="m3-consciousness-fallback",

@@ -46,7 +46,8 @@ def _resolve_skill_commands_platform() -> Optional[str]:
             os.getenv("HERMES_PLATFORM")
             or get_session_env("HERMES_SESSION_PLATFORM")
         )
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to import gateway.session_context; falling back to env-only platform resolution: %s", e)
         resolved_platform = os.getenv("HERMES_PLATFORM")
     return resolved_platform or None
 
@@ -66,8 +67,8 @@ def _load_skill_payload(skill_identifier: str, task_id: str | None = None) -> tu
             trusted_roots = [SKILLS_DIR]
             try:
                 trusted_roots.extend(get_external_skills_dirs())
-            except Exception:
-                pass
+            except (ImportError, OSError) as e:
+                logger.debug("Failed to resolve external skills dirs; using SKILLS_DIR only: %s", e)
 
             # Prefer the lexical path under a trusted skill root before
             # resolving symlinks.  Slash-command discovery can legitimately
@@ -85,7 +86,8 @@ def _load_skill_payload(skill_identifier: str, task_id: str | None = None) -> tu
             if normalized is None:
                 try:
                     normalized = str(identifier_path.resolve().relative_to(SKILLS_DIR.resolve()))
-                except Exception:
+                except (ValueError, OSError) as e:
+                    logger.debug("Could not resolve skill identifier %r under SKILLS_DIR; using raw identifier: %s", raw_identifier, e)
                     normalized = raw_identifier
         else:
             normalized = raw_identifier.lstrip("/")
@@ -93,7 +95,8 @@ def _load_skill_payload(skill_identifier: str, task_id: str | None = None) -> tu
         loaded_skill = json.loads(
             skill_view(normalized, task_id=task_id, preprocess=False)
         )
-    except Exception:
+    except (ImportError, OSError, ValueError) as e:
+        logger.debug("Failed to load skill_view() payload for %r: %s", normalized, e)
         return None
 
     if not loaded_skill.get("success"):
@@ -112,7 +115,8 @@ def _load_skill_payload(skill_identifier: str, task_id: str | None = None) -> tu
     elif skill_path:
         try:
             skill_dir = SKILLS_DIR / Path(skill_path).parent
-        except Exception:
+        except (ValueError, OSError) as e:
+            logger.debug("Could not reconstruct skill_dir from skill_path %r: %s", skill_path, e)
             skill_dir = None
 
     return loaded_skill, skill_dir, skill_name
@@ -153,8 +157,8 @@ def _inject_skill_config(loaded_skill: dict[str, Any], parts: list[str]) -> None
             lines.append(f"  {key} = {display_val}")
         lines.append("]")
         parts.extend(lines)
-    except Exception:
-        pass  # Non-critical — skill still loads without config injection
+    except (ImportError, AttributeError, ValueError) as e:
+        logger.debug("Skill config injection skipped for %r: %s", loaded_skill.get("name"), e)
 
 
 def _build_skill_message(
@@ -319,10 +323,11 @@ def scan_skill_commands() -> Dict[str, Dict[str, Any]]:
                         "skill_md_path": str(skill_md),
                         "skill_dir": str(skill_md.parent),
                     }
-                except Exception:
+                except (OSError, ValueError, KeyError, UnicodeDecodeError) as e:
+                    logger.debug("Skipping malformed skill index file %s: %s", skill_md, e)
                     continue
-    except Exception:
-        pass
+    except (ImportError, OSError, ValueError, KeyError) as e:
+        logger.debug("Skill command scan failed; returning empty command map: %s", e)
     return _skill_commands
 
 
@@ -455,8 +460,8 @@ def build_skill_invocation_message(
     try:
         from tools.skill_usage import bump_use
         bump_use(skill_name)
-    except Exception:
-        pass  # Non-critical — skill invocation proceeds regardless
+    except (ImportError, OSError, AttributeError) as e:
+        logger.debug("Skill usage tracking bump_use() skipped for %r: %s", skill_name, e)
 
     activation_note = (
         f'[IMPORTANT: The user has invoked the "{skill_name}" skill, indicating they want '
@@ -502,8 +507,8 @@ def build_preloaded_skills_prompt(
         try:
             from tools.skill_usage import bump_use
             bump_use(skill_name)
-        except Exception:
-            pass  # Non-critical
+        except (ImportError, OSError, AttributeError) as e:
+            logger.debug("Skill usage tracking bump_use() skipped for %r: %s", skill_name, e)
 
         activation_note = (
             f'[IMPORTANT: The user launched this CLI session with the "{skill_name}" skill '

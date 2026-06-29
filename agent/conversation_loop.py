@@ -139,7 +139,8 @@ def _nous_entitlement_message(capability: str) -> str:
             capability=capability,
         )
         return message or ""
-    except Exception:
+    except Exception as e:
+        logger.debug("nous entitlement message failed: %s", e)
         return ""
 
 
@@ -222,7 +223,8 @@ def _try_refresh_nous_paid_entitlement_credentials(agent) -> bool:
             force=False,
             inference_auth_mode=NOUS_INFERENCE_AUTH_MODE_LEGACY,
         )
-    except Exception:
+    except Exception as e:
+        logger.debug("nous paid entitlement credential refresh failed: %s", e)
         return False
 
 
@@ -404,7 +406,8 @@ def run_conversation(
             getattr(agent, "provider", "") or "",
             getattr(agent, "model", "") or "",
         )
-    except Exception:
+    except Exception as e:
+        logger.debug("set_runtime_main failed (optional runtime hint): %s", e)
         pass
 
     # Tag all log records on this thread with the session ID so
@@ -478,7 +481,8 @@ def run_conversation(
                     "issue — cleaned up automatically. Proceeding with fresh "
                     "connection."
                 )
-        except Exception:
+        except Exception as e:
+            logger.debug("pre-turn dead connection cleanup failed: %s", e)
             pass
     # Replay compression warning through status_callback for gateway
     # platforms (the callback was not wired during __init__).
@@ -741,7 +745,8 @@ def run_conversation(
         try:
             _turn_msg = original_user_message if isinstance(original_user_message, str) else ""
             agent._memory_manager.on_turn_start(agent._user_turn_count, _turn_msg)
-        except Exception:
+        except Exception as e:
+            logger.debug("memory manager on_turn_start failed: %s", e)
             pass
 
     # External memory provider: prefetch once before the tool loop.
@@ -754,7 +759,8 @@ def run_conversation(
         try:
             _query = original_user_message if isinstance(original_user_message, str) else ""
             _ext_prefetch_cache = agent._memory_manager.prefetch_all(_query) or ""
-        except Exception:
+        except Exception as e:
+            logger.debug("memory manager prefetch_all failed: %s", e)
             pass
 
     # Optional opt-in runtime: if api_mode == codex_app_server, hand the
@@ -860,7 +866,8 @@ def run_conversation(
                             blocks = list(existing) if existing else []
                             blocks.append({"type": "text", "text": marker})
                             _sm["content"] = blocks
-                        except Exception:
+                        except (TypeError, ValueError) as e:
+                            logger.debug("multimodal content block append failed: %s", e)
                             pass
                     _injected = True
                     logger.debug(
@@ -1042,7 +1049,8 @@ def run_conversation(
                                 sort_keys=True,
                             ),
                         }}
-                    except Exception:
+                    except (TypeError, ValueError, json.JSONDecodeError) as e:
+                        logger.debug("tool-call argument normalize failed (will repair): %s", e)
                         tc["function"]["arguments"] = _repair_tool_call_arguments(
                             tc["function"]["arguments"],
                             tc["function"].get("name", "?"),
@@ -1076,7 +1084,8 @@ def run_conversation(
             agent._api_call_count = api_call_count
             try:
                 agent.iteration_budget.refund()
-            except Exception:
+            except (AttributeError, RuntimeError, ValueError) as e:
+                logger.debug("iteration_budget.refund failed: %s", e)
                 pass
             break
         
@@ -1178,7 +1187,8 @@ def run_conversation(
                         }
                 except ImportError:
                     pass
-                except Exception:
+                except Exception as e:
+                    logger.debug("nous rate guard check failed (non-fatal): %s", e)
                     pass  # Never let rate guard break the agent loop
 
             try:
@@ -1229,7 +1239,8 @@ def run_conversation(
                         request_char_count=total_chars,
                         max_tokens=agent.max_tokens,
                     )
-                except Exception:
+                except Exception as e:
+                    logger.debug("pre_api_request plugin hook failed (non-fatal): %s", e)
                     pass
 
                 if env_var_enabled("HERMES_DUMP_REQUESTS"):
@@ -1923,7 +1934,8 @@ def run_conversation(
                     try:
                         from agent.nous_rate_guard import clear_nous_rate_limit
                         clear_nous_rate_limit()
-                    except Exception:
+                    except Exception as e:
+                        logger.debug("clear_nous_rate_limit failed: %s", e)
                         pass
                 agent._touch_activity(f"API call #{api_call_count} completed")
                 break  # Success, exit retry loop
@@ -2134,7 +2146,8 @@ def run_conversation(
                     _err_body = str(getattr(api_error, "body", None) or
                                     getattr(api_error, "message", None) or
                                     str(api_error))
-                except Exception:
+                except (TypeError, ValueError) as e:
+                    logger.debug("api_error body extraction failed: %s", e)
                     pass
                 _err_status = getattr(api_error, "status_code", None)
                 _IMAGE_REJECTION_PHRASES = (
@@ -2314,7 +2327,8 @@ def run_conversation(
                         agent._oauth_1m_beta_disabled = True
                         try:
                             agent._anthropic_client.close()
-                        except Exception:
+                        except (AttributeError, RuntimeError, OSError) as e:
+                            logger.debug("anthropic_client.close failed during OAuth recovery: %s", e)
                             pass
                         agent._rebuild_anthropic_client()
                         agent._vprint(
@@ -2355,7 +2369,8 @@ def run_conversation(
                         _body = getattr(api_error, "body", None) or getattr(api_error, "response", None)
                         if _body is not None:
                             _body_text = str(_body)[:200]
-                    except Exception:
+                    except (TypeError, ValueError) as e:
+                        logger.debug("Nous 401 body extraction failed: %s", e)
                         pass
                     print(f"{agent.log_prefix}🔐 Nous 401 — Portal authentication failed.")
                     if _body_text:
@@ -2742,7 +2757,8 @@ def run_conversation(
                                 "last-known state) -- not tripping "
                                 "cross-session breaker."
                             )
-                    except Exception:
+                    except Exception as e:
+                        logger.debug("nous rate-limit classification failed (non-fatal, falls through to normal retry): %s", e)
                         pass
                     if _genuine_nous_rate_limit:
                         # Skip straight to max_retries -- the
@@ -3451,7 +3467,8 @@ def run_conversation(
                     assistant_content_chars=len(_assistant_text),
                     assistant_tool_call_count=len(_assistant_tool_calls),
                 )
-            except Exception:
+            except Exception as e:
+                logger.debug("post_api_request plugin hook failed (non-fatal): %s", e)
                 pass
 
             # Handle assistant response
@@ -3475,13 +3492,13 @@ def run_conversation(
                 if first_line and getattr(agent, '_delegate_depth', 0) > 0:
                     try:
                         agent.tool_progress_callback("_thinking", first_line)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("tool_progress_callback(_thinking) failed (non-fatal): %s", e)
                 elif _think_text:
                     try:
                         agent.tool_progress_callback("reasoning.available", "_thinking", _think_text[:500], None)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("tool_progress_callback(reasoning.available) failed (non-fatal): %s", e)
             
             # Check for incomplete <REASONING_SCRATCHPAD> (opened but never closed)
             # This means the model ran out of output tokens mid-reasoning — retry up to 2 times
@@ -3805,8 +3822,8 @@ def run_conversation(
                 if agent.stream_delta_callback:
                     try:
                         agent.stream_delta_callback(None)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("stream_delta_callback(None) failed (non-fatal): %s", e)
 
                 agent._execute_tool_calls(assistant_message, messages, effective_task_id, api_call_count)
 
@@ -3829,8 +3846,8 @@ def run_conversation(
                             try:
                                 agent.stream_delta_callback(final_response)
                                 agent.stream_delta_callback(None)
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logger.debug("stream_delta_callback after guardrail halt failed (non-fatal): %s", e)
                     break
 
                 # Reset per-turn retry counters after successful tool
@@ -4340,11 +4357,12 @@ def run_conversation(
                     "exhaustion (%d/%d)",
                     _kanban_task, api_call_count, agent.max_iterations,
                 )
-            except Exception:
+            except Exception as e:
                 logger.warning(
                     "Failed to call kanban_block after iteration "
-                    "exhaustion for task %s",
+                    "exhaustion for task %s: %s",
                     _kanban_task,
+                    e,
                     exc_info=True,
                 )
 
@@ -4573,8 +4591,9 @@ def run_conversation(
                 review_memory=_should_review_memory,
                 review_skills=_should_review_skills,
             )
-        except Exception:
-            pass  # Background review is best-effort
+        except Exception as _bg_review_exc:
+            # Background review is best-effort — never block the user-facing response.
+            logger.debug("background review spawn failed: %s", _bg_review_exc)
 
     # Note: Memory provider on_session_end() + shutdown_all() are NOT
     # called here — run_conversation() is called once per user message in

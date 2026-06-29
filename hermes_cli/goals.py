@@ -314,8 +314,8 @@ def _goal_judge_max_tokens() -> int:
         value = int(value)
         if value > 0:
             return value
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("goal judge: failed to resolve max_tokens from config: %s", exc)
     return DEFAULT_JUDGE_MAX_TOKENS
 
 
@@ -345,13 +345,13 @@ def _parse_judge_response(raw: str) -> Tuple[bool, str, bool]:
     data: Optional[Dict[str, Any]] = None
     try:
         data = json.loads(text)
-    except Exception:
+    except json.JSONDecodeError:
         # Second try: pull the first JSON object out.
         match = _JSON_OBJECT_RE.search(text)
         if match:
             try:
                 data = json.loads(match.group(0))
-            except Exception:
+            except json.JSONDecodeError:
                 data = None
 
     if not isinstance(data, dict):
@@ -454,7 +454,8 @@ def judge_goal(
 
     try:
         raw = resp.choices[0].message.content or ""
-    except Exception:
+    except Exception as exc:
+        logger.debug("goal judge: failed to extract response content: %s", exc)
         raw = ""
 
     done, reason, parse_failed = _parse_judge_response(raw)

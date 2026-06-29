@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import logging
+
+
+logger = logging.getLogger(__name__)
+
 
 def _coerce_timeout(raw: object) -> float | None:
     try:
@@ -21,7 +26,10 @@ def get_provider_request_timeout(
     try:
         from hermes_cli.config import load_config_readonly
         config = load_config_readonly()
-    except Exception:
+    except Exception as e:
+        logger.debug(
+            "load_config_readonly failed in get_provider_request_timeout: %s", e
+        )
         return None
 
     providers = config.get("providers", {}) if isinstance(config, dict) else {}
@@ -50,7 +58,10 @@ def get_provider_stale_timeout(
     try:
         from hermes_cli.config import load_config_readonly
         config = load_config_readonly()
-    except Exception:
+    except Exception as e:
+        logger.debug(
+            "load_config_readonly failed in get_provider_stale_timeout: %s", e
+        )
         return None
 
     providers = config.get("providers", {}) if isinstance(config, dict) else {}

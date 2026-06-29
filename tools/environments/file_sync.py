@@ -303,7 +303,8 @@ class FileSyncManager:
         # Cache file mapping once to avoid O(n*m) from repeated iteration
         try:
             file_mapping = list(self._get_files_fn())
-        except Exception:
+        except Exception as e:
+            logger.debug("sync_back: failed to load file mapping (%s), proceeding with empty mapping", e)
             file_mapping = []
 
         with tempfile.NamedTemporaryFile(suffix=".tar") as tf:

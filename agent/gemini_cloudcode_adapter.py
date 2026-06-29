@@ -617,8 +617,8 @@ class GeminiCloudCodeClient:
         self.is_closed = True
         try:
             self._http.close()
-        except Exception:
-            pass
+        except httpx.HTTPError as e:
+            logger.debug("httpx.Client.close() raised during GeminiCode adapter cleanup: %s", e)
 
     # Implement the OpenAI SDK's context-manager-ish closure check
     def __enter__(self):
@@ -783,7 +783,8 @@ def _gemini_http_error(response: httpx.Response) -> CodeAssistError:
     body_json: Dict[str, Any] = {}
     try:
         body_text = response.text
-    except Exception:
+    except (httpx.HTTPError, UnicodeDecodeError, ValueError) as e:
+        logger.debug("Failed to read text body from Code Assist error response: %s", e)
         body_text = ""
     if body_text:
         try:
@@ -837,7 +838,8 @@ def _gemini_http_error(response: httpx.Response) -> CodeAssistError:
     if retry_delay_seconds is None:
         try:
             header_val = response.headers.get("Retry-After") or response.headers.get("retry-after")
-        except Exception:
+        except httpx.HTTPError as e:
+            logger.debug("Failed reading Retry-After header from Code Assist response: %s", e)
             header_val = None
         if header_val:
             try:

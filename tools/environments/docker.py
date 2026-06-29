@@ -94,7 +94,8 @@ def _load_hermes_env_vars() -> dict[str, str]:
         from hermes_cli.config import load_env
 
         return load_env() or {}
-    except Exception:
+    except Exception as e:
+        logger.debug("hermes_cli.config.load_env() unavailable: %s", e)
         return {}
 
 
@@ -201,7 +202,8 @@ def _resolve_host_user_spec() -> Optional[str]:
         return None
     try:
         return f"{get_uid()}:{get_gid()}"
-    except Exception:  # pragma: no cover - defensive
+    except Exception as e:  # pragma: no cover - defensive
+        logger.debug("Could not resolve host uid/gid: %s", e)
         return None
 
 
@@ -253,9 +255,10 @@ def _ensure_docker_available() -> None:
         raise RuntimeError(
             "Docker daemon is not responding. Ensure Docker is running and try again."
         )
-    except Exception:
+    except Exception as e:
         logger.error(
-            "Unexpected error while checking Docker availability.",
+            "Unexpected error while checking Docker availability: %s",
+            e,
             exc_info=True,
         )
         raise
@@ -547,8 +550,8 @@ class DockerEnvironment(BaseEnvironment):
         try:
             from tools.env_passthrough import get_all_passthrough
             passthrough_keys = set(get_all_passthrough())
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Could not load env_passthrough list: %s", e)
         # Explicit docker_forward_env entries are an intentional opt-in and must
         # win over the generic Hermes secret blocklist. Only implicit passthrough
         # keys are filtered.
@@ -624,7 +627,8 @@ class DockerEnvironment(BaseEnvironment):
                 _storage_opt_ok = True
             else:
                 _storage_opt_ok = False
-        except Exception:
+        except Exception as e:
+            logger.debug("Docker --storage-opt probe failed: %s", e)
             _storage_opt_ok = False
         logger.debug("Docker --storage-opt support: %s", _storage_opt_ok)
         return _storage_opt_ok
@@ -649,8 +653,8 @@ class DockerEnvironment(BaseEnvironment):
                         f"sleep 3 && {self._docker_exe} rm -f {self._container_id} >/dev/null 2>&1 &",
                         shell=True,
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Failed to schedule container removal for %s: %s", self._container_id, e)
             self._container_id = None
 
         if not self._persistent:

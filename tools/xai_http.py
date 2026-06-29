@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import Dict
+
+logger = logging.getLogger(__name__)
 
 
 def has_xai_credentials() -> bool:
@@ -41,7 +44,8 @@ def has_xai_credentials() -> bool:
         tokens = xai_state.get("tokens") if isinstance(xai_state, dict) else None
         access_token = tokens.get("access_token") if isinstance(tokens, dict) else None
         return bool(str(access_token or "").strip())
-    except Exception:
+    except Exception as e:
+        logger.debug("xai credential probe failed: %s", e)
         return False
 
 
@@ -58,8 +62,8 @@ def get_env_value(name: str, default=None):
         value = _hermes_get_env_value(name)
         if value is not None:
             return value
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("hermes_cli.config.get_env_value unavailable: %s", e)
     return os.environ.get(name, default)
 
 
@@ -67,7 +71,8 @@ def hermes_xai_user_agent() -> str:
     """Return a stable Hermes-specific User-Agent for xAI HTTP calls."""
     try:
         from hermes_cli import __version__
-    except Exception:
+    except Exception as e:
+        logger.debug("hermes_cli.__version__ unavailable: %s", e)
         __version__ = "unknown"
     return f"Hermes-Agent/{__version__}"
 
@@ -101,8 +106,8 @@ def resolve_xai_http_credentials(*, force_refresh: bool = False) -> Dict[str, st
                     "api_key": access_token,
                     "base_url": base_url or "https://api.x.ai/v1",
                 }
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("xai-oauth runtime provider unavailable: %s", e)
 
     try:
         from hermes_cli.auth import resolve_xai_oauth_runtime_credentials
@@ -116,8 +121,8 @@ def resolve_xai_http_credentials(*, force_refresh: bool = False) -> Dict[str, st
                 "api_key": access_token,
                 "base_url": base_url or "https://api.x.ai/v1",
             }
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("xai-oauth auth resolver unavailable: %s", e)
 
     api_key = str(get_env_value("XAI_API_KEY") or "").strip()
     base_url = str(get_env_value("XAI_BASE_URL") or "https://api.x.ai/v1").strip().rstrip("/")

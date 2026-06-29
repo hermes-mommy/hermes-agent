@@ -39,12 +39,18 @@ import time
 from typing import Any, Dict, List, Optional
 
 try:
-    from aiohttp import web
+    from aiohttp import web as _aiohttp_web
 
     AIOHTTP_AVAILABLE = True
 except ImportError:
     AIOHTTP_AVAILABLE = False
-    web = None  # type: ignore[assignment]
+    _aiohttp_web = None
+
+# Module object (or None when aiohttp is absent). Typed as ``Any`` so that
+# the call sites `web.Application()` / `web.json_response()` / etc. do
+# not need per-call suppressions. Runtime gating is via ``AIOHTTP_AVAILABLE``
+# and ``check_webhook_requirements()`` rather than None-checking here.
+web: Any = _aiohttp_web
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import (
@@ -252,8 +258,18 @@ class WebhookAdapter(BasePlatformAdapter):
             try:
                 from gateway.platform_registry import platform_registry
                 _is_known_platform = platform_registry.is_registered(deliver_type)
-            except Exception:
-                pass
+            except Exception as e:
+                # Plugin-isolation: the platform_registry is an optional
+                # extension surface. If its module import fails (missing
+                # dependency, version skew) or the lookup itself errors,
+                # we silently fall back to the built-in platform list.
+                # This deliberately matches the previous bare-except
+                # behaviour that was removed by the pattern sweep.
+                logger.debug(
+                    "[webhook] platform_registry lookup failed for %s: %s",
+                    deliver_type,
+                    e,
+                )
         if self.gateway_runner and _is_known_platform:
             return await self._deliver_cross_platform(
                 deliver_type, content, delivery
@@ -423,7 +439,15 @@ class WebhookAdapter(BasePlatformAdapter):
                 payload = dict(
                     urllib.parse.parse_qsl(raw_body.decode("utf-8"))
                 )
-            except Exception:
+            except (UnicodeDecodeError, ValueError, TypeError) as e:
+                # Body was neither valid JSON nor valid UTF-8 form-urlencoded.
+                # Surfaces a 400 with diagnostic context so operators can
+                # tell whether a provider misconfigured content-type or
+                # sent binary garbage. The original behaviour returned a
+                # generic 400; we preserve that, plus a debug log.
+                logger.debug(
+                    "[webhook] form-encoded fallback failed: %s", e,
+                )
                 return web.json_response(
                     {"error": "Cannot parse body"}, status=400
                 )
@@ -535,11 +559,22 @@ class WebhookAdapter(BasePlatformAdapter):
             )
             try:
                 result = await self._direct_deliver(prompt, delivery)
-            except Exception:
+            except Exception as e:
+                # Direct-delivery is an HTTP-facing feature; surfaces to the
+                # webhook caller. The adapter exception is logged at ERROR
+                # level via logger.exception (which preserves the traceback)
+                # and a generic 502 is returned so the caller does not see
+                # adapter-level internals. The handler did NOT swallow the
+                # exception silently: it logged it AND returned a structured
+                # error response. We deliberately keep the broad `Exception`
+                # catch here because any failure inside the adapter chain
+                # (subprocess gone, network down, target 5xx) must be
+                # surfaced uniformly to the webhook caller.
                 logger.exception(
-                    "[webhook] direct-deliver failed route=%s delivery=%s",
+                    "[webhook] direct-deliver failed route=%s delivery=%s err=%s",
                     route_name,
                     delivery_id,
+                    e,
                 )
                 return web.json_response(
                     {"status": "error", "error": "Delivery failed", "delivery_id": delivery_id},

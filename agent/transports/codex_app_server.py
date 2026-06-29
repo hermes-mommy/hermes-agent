@@ -17,6 +17,7 @@ runtime is not selected.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import queue
 import subprocess
@@ -24,6 +25,8 @@ import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
+
+logger = logging.getLogger(__name__)
 
 # Default minimum codex version we test against. The PR sets this from the
 # `codex --version` parsed at install time; bumping is a one-line change here.
@@ -172,8 +175,9 @@ class CodexAppServerClient:
         try:
             if self._proc.stdin and not self._proc.stdin.closed:
                 self._proc.stdin.close()
-        except Exception:
-            pass
+        except Exception as e:
+            # Fail-soft cleanup: stdin may already be closed/half-closed by child.
+            logger.debug("codex app-server stdin close failed during shutdown: %r", e)
         try:
             self._proc.terminate()
             self._proc.wait(timeout=timeout)
@@ -181,8 +185,9 @@ class CodexAppServerClient:
             try:
                 self._proc.kill()
                 self._proc.wait(timeout=1.0)
-            except Exception:
-                pass
+            except Exception as e:
+                # Fail-soft cleanup: kill is best-effort during teardown.
+                logger.debug("codex app-server kill failed during shutdown: %r", e)
 
     def __enter__(self) -> "CodexAppServerClient":
         return self
@@ -351,8 +356,11 @@ class CodexAppServerClient:
                     # Bound memory: keep last 500 lines.
                     if len(self._stderr_lines) > 500:
                         self._stderr_lines = self._stderr_lines[-500:]
-        except Exception:  # pragma: no cover
-            pass
+        except Exception as e:  # pragma: no cover
+            # Fail-soft: stderr reader thread exits silently on pipe close,
+            # decode errors, or daemon teardown. Thread is daemon, so this
+            # only runs during interactive shutdown or post-exit garbage.
+            logger.debug("codex app-server stderr reader exiting: %r", e)
 
 
 def parse_codex_version(output: str) -> Optional[tuple[int, int, int]]:

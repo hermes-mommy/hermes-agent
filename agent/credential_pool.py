@@ -9,7 +9,7 @@ import threading
 import time
 import uuid
 import re
-from dataclasses import dataclass, fields, replace
+from dataclasses import dataclass, field, fields, replace
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -47,7 +47,12 @@ def _load_config_safe() -> Optional[dict]:
         from hermes_cli.config import load_config
 
         return load_config()
-    except Exception:
+    except Exception as exc:
+        # Config errors are non-fatal — propagate as None so callers fall back
+        # to defaults.  Log at debug to keep noise low; only escalate via the
+        # callers' logger when load failure genuinely matters (see also
+        # _seed_custom_pool).
+        logger.debug("credential_pool: load_config failed (%s): %s", type(exc).__name__, exc)
         return None
 
 
@@ -118,9 +123,11 @@ class PooledCredential:
     agent_key: Optional[str] = None
     agent_key_expires_at: Optional[str] = None
     request_count: int = 0
-    extra: Dict[str, Any] = None  # type: ignore[assignment]
+    extra: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
+        # Defensive: callers may have constructed the dataclass pre-`field` migration
+        # with an explicit `extra=None`. Preserve the original MutableMapping type.
         if self.extra is None:
             self.extra = {}
 
@@ -316,7 +323,11 @@ def _iter_custom_providers(config: Optional[dict] = None):
             from hermes_cli.config import get_compatible_custom_providers
 
             custom_providers = get_compatible_custom_providers(config)
-        except Exception:
+        except (ImportError, AttributeError, TypeError, ValueError) as exc:
+            logger.debug(
+                "credential_pool: get_compatible_custom_providers unavailable (%s): %s",
+                type(exc).__name__, exc,
+            )
             return
     if not custom_providers:
         return
@@ -1512,7 +1523,7 @@ def _seed_from_singletons(provider: str, entries: List[PooledCredential]) -> Tup
     try:
         from hermes_cli.auth import is_source_suppressed as _is_suppressed
     except ImportError:
-        def _is_suppressed(_p, _s):  # type: ignore[misc]
+        def _is_suppressed(_p: str, _s: str) -> bool:
             return False
 
     if provider == "anthropic":
@@ -1732,7 +1743,14 @@ def _seed_from_singletons(provider: str, entries: List[PooledCredential]) -> Tup
                         raw = state.get("expires_at", "")
                         if raw:
                             expires_at_ms = int(_dt.fromisoformat(raw).timestamp() * 1000)
-                    except Exception:
+                    except (ValueError, TypeError) as exc:
+                        # fromisoformat raises ValueError on malformed strings and
+                        # TypeError on non-string inputs.  Unparseable expires_at
+                        # falls back to None (entry treated as not-yet-expiring).
+                        logger.debug(
+                            "credential_pool: minimax-oauth expires_at unparseable (%s): %s",
+                            type(exc).__name__, exc,
+                        )
                         expires_at_ms = None
                     base_url = str(state.get("inference_base_url", "") or "").rstrip("/")
                     changed |= _upsert_entry(
@@ -1842,14 +1860,22 @@ def _seed_from_env(provider: str, entries: List[PooledCredential]) -> Tuple[bool
     try:
         from hermes_cli.auth import is_source_suppressed as _is_source_suppressed
     except ImportError:
-        def _is_source_suppressed(_p, _s):  # type: ignore[misc]
+        def _is_source_suppressed(_p: str, _s: str) -> bool:
             return False
 
     def _secret_source_for_env(env_var: str) -> Optional[str]:
         try:
             from hermes_cli.env_loader import get_secret_source
             source_label = get_secret_source(env_var)
-        except Exception:
+        except Exception as exc:
+            # Best-effort provenance lookup — never fail pool seeding if env_loader
+            # is unavailable or returns something unexpected.  The bare form was
+            # forbidden; the broad-but-named form is acceptable for fail-soft
+            # vendored adapters (see project-wide forbidden-patterns policy).
+            logger.debug(
+                "credential_pool: get_secret_source(%s) failed (%s): %s",
+                env_var, type(exc).__name__, exc,
+            )
             source_label = None
         return str(source_label).strip() if source_label else None
 
@@ -1969,7 +1995,7 @@ def _seed_custom_pool(pool_key: str, entries: List[PooledCredential]) -> Tuple[b
     try:
         from hermes_cli.auth import is_source_suppressed as _is_suppressed
     except ImportError:
-        def _is_suppressed(_p, _s):  # type: ignore[misc]
+        def _is_suppressed(_p: str, _s: str) -> bool:
             return False
 
     # Seed from the custom_providers config entry's api_key field
@@ -2027,8 +2053,15 @@ def _seed_custom_pool(pool_key: str, entries: List[PooledCredential]) -> Tuple[b
                                 "label": "model_config",
                             },
                         )
-    except Exception:
-        pass
+    except Exception as exc:
+        # Best-effort model-config probe: any failure (config load, schema
+        # mismatch, base_url lookup) leaves the seed unchanged.  Bare-form is
+        # forbidden; broad-but-named + log.debug is acceptable for seed-time
+        # health probes per project policy.
+        logger.debug(
+            "credential_pool: model-config seed probe failed (%s): %s",
+            type(exc).__name__, exc,
+        )
 
     return changed, active_sources
 

@@ -117,7 +117,7 @@ def wait_for_response(clarify_id: str, timeout: float) -> Optional[str]:
 
     try:
         from tools.environments.base import touch_activity_if_due
-    except Exception:  # pragma: no cover - optional
+    except ImportError:  # pragma: no cover - optional
         touch_activity_if_due = None
 
     deadline = time.monotonic() + max(timeout, 0.0)
@@ -243,7 +243,8 @@ def get_clarify_timeout() -> int:
         cfg = load_config() or {}
         agent_cfg = cfg.get("agent", {}) or {}
         return int(agent_cfg.get("clarify_timeout", 600))
-    except Exception:
+    except Exception as e:  # noqa: BLE001 - genuine fail-soft config read
+        logger.debug("clarify_timeout config read failed, using default 600: %s", e)
         return 600
 
 

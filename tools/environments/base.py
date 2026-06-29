@@ -74,8 +74,8 @@ def touch_activity_if_due(
         if cb:
             elapsed = int(now - state["start"])
             cb(f"{label} ({elapsed}s elapsed)")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("touch_activity_if_due callback error: %s", e)
 
 
 def get_sandbox_dir() -> Path:
@@ -159,8 +159,8 @@ def _load_json_store(path: Path) -> dict:
     if path.exists():
         try:
             return json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("_load_json_store error for %s: %s", path, e)
     return {}
 
 
@@ -263,8 +263,8 @@ class _ThreadedProcessHandle:
         if self._cancel_fn:
             try:
                 self._cancel_fn()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("_ThreadedProcessHandle cancel_fn error: %s", e)
 
     def wait(self, timeout: float | None = None) -> int:
         self._done.wait(timeout=timeout)
@@ -543,8 +543,8 @@ class BaseEnvironment(ABC):
                         tail = decoder.decode(b"", final=True)
                         if tail:
                             output_chunks.append(tail)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("drain decoder finalization (Windows) error: %s", e)
                 return
             idle_after_exit = 0
             try:
@@ -577,8 +577,8 @@ class BaseEnvironment(ABC):
                     tail = decoder.decode(b"", final=True)
                     if tail:
                         output_chunks.append(tail)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("drain decoder finalization error: %s", e)
 
         drain_thread = threading.Thread(target=_drain, daemon=True)
         drain_thread.start()
@@ -692,8 +692,8 @@ class BaseEnvironment(ABC):
             try:
                 self._kill_process(proc)
                 drain_thread.join(timeout=2)
-            except Exception:
-                pass  # cleanup is best-effort
+            except Exception as e:
+                logger.debug("post-interrupt cleanup error: %s", e)  # cleanup is best-effort
             raise
 
         # Drain thread now exits promptly after bash does (~300ms idle
@@ -703,8 +703,8 @@ class BaseEnvironment(ABC):
 
         try:
             proc.stdout.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("proc.stdout.close() error: %s", e)
 
         if _DEBUG_INTERRUPT:
             logger.info(
@@ -843,8 +843,8 @@ class BaseEnvironment(ABC):
     def __del__(self):
         try:
             self.cleanup()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("BaseEnvironment.__del__ cleanup error: %s", e)
 
     def _prepare_command(self, command: str) -> tuple[str, str | None]:
         """Transform sudo commands if SUDO_PASSWORD is available."""

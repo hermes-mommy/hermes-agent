@@ -18,7 +18,7 @@ import subprocess
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from utils import is_truthy_value
 
@@ -32,10 +32,10 @@ try:
     from prompt_toolkit.auto_suggest import AutoSuggest, Suggestion
     from prompt_toolkit.completion import Completer, Completion
 except ImportError:  # pragma: no cover
-    AutoSuggest = object  # type: ignore[assignment,misc]
-    Completer = object    # type: ignore[assignment,misc]
-    Suggestion = None     # type: ignore[assignment]
-    Completion = None     # type: ignore[assignment]
+    AutoSuggest = Any
+    Completer = Any
+    Suggestion = Any
+    Completion = Any
 
 
 # ---------------------------------------------------------------------------
@@ -388,7 +388,8 @@ def _resolve_config_gates() -> set[str]:
     try:
         from hermes_cli.config import read_raw_config
         cfg = read_raw_config()
-    except Exception:
+    except Exception as e:
+        logger.debug("read_raw_config failed while resolving config gates: %s", e)
         return set()
     result: set[str] = set()
     for cmd in gated:
@@ -460,11 +461,13 @@ def _iter_plugin_command_entries() -> list[tuple[str, str, str]]:
     """
     try:
         from hermes_cli.plugins import get_plugin_commands
-    except Exception:
+    except ImportError as e:
+        logger.debug("hermes_cli.plugins import failed in _iter_plugin_command_entries: %s", e)
         return []
     try:
         commands = get_plugin_commands() or {}
-    except Exception:
+    except Exception as e:
+        logger.debug("get_plugin_commands failed in _iter_plugin_command_entries: %s", e)
         return []
     entries: list[tuple[str, str, str]] = []
     for name, meta in commands.items():
@@ -695,7 +698,8 @@ def _collect_gateway_skill_entries(
             if len(desc) > desc_limit:
                 desc = desc[:desc_limit - 3] + "..."
             plugin_pairs.append((name, desc))
-    except Exception:
+    except Exception as e:
+        logger.debug("Plugin command discovery failed in _collect_gateway_skill_entries: %s", e)
         pass
 
     plugin_pairs = _clamp_command_names(plugin_pairs, reserved_names)
@@ -709,7 +713,8 @@ def _collect_gateway_skill_entries(
     try:
         from agent.skill_utils import get_disabled_skill_names
         _platform_disabled = get_disabled_skill_names(platform=platform)
-    except Exception:
+    except Exception as e:
+        logger.debug("get_disabled_skill_names failed in _collect_gateway_skill_entries: %s", e)
         pass
 
     skill_triples: list[tuple[str, str, str]] = []
@@ -750,7 +755,8 @@ def _collect_gateway_skill_entries(
             if len(desc) > desc_limit:
                 desc = desc[:desc_limit - 3] + "..."
             skill_triples.append((name, desc, cmd_key))
-    except Exception:
+    except Exception as e:
+        logger.debug("Skill command discovery failed in _collect_gateway_skill_entries: %s", e)
         pass
 
     # Clamp names; cmd_key is passed through as extra payload so it survives
@@ -879,7 +885,8 @@ def discord_skill_commands_by_category(
     try:
         from agent.skill_utils import get_disabled_skill_names
         _platform_disabled = get_disabled_skill_names(platform="discord")
-    except Exception:
+    except Exception as e:
+        logger.debug("get_disabled_skill_names failed in discord_skill_commands_by_category: %s", e)
         pass
 
     # Collect raw skill data --------------------------------------------------
@@ -908,9 +915,11 @@ def discord_skill_commands_by_category(
             for ext in get_external_skills_dirs():
                 try:
                     _scan_roots.append(_P(ext).resolve())
-                except Exception:
+                except (OSError, ValueError) as e:
+                    logger.debug("External skills dir resolve failed %r: %s", ext, e)
                     continue
-        except Exception:
+        except Exception as e:
+            logger.debug("get_external_skills_dirs iteration failed in discord_skill_commands_by_category: %s", e)
             pass
         skill_cmds = get_skill_commands()
 
@@ -992,7 +1001,8 @@ def discord_skill_commands_by_category(
                 categories.setdefault(cat, []).append((discord_name, desc, cmd_key))
             else:
                 uncategorized.append((discord_name, desc, cmd_key))
-    except Exception:
+    except Exception as e:
+        logger.debug("Skill command discovery failed in discord_skill_commands_by_category: %s", e)
         pass
 
     return categories, uncategorized, hidden
@@ -1164,7 +1174,8 @@ def _lmstudio_completion_models() -> list[str]:
             if "lmstudio" not in (store.get("providers") or {}) \
                and "lmstudio" not in (store.get("credential_pool") or {}):
                 return []
-        except Exception:
+        except Exception as e:
+            logger.debug("_load_auth_store failed in _lmstudio_completion_models: %s", e)
             return []
     now = time.time()
     if _LMSTUDIO_COMPLETION_CACHE and (now - _LMSTUDIO_COMPLETION_CACHE[0]) < 30.0:
@@ -1176,7 +1187,8 @@ def _lmstudio_completion_models() -> list[str]:
             base_url=os.environ.get("LM_BASE_URL") or "http://127.0.0.1:1234/v1",
             timeout=0.8,
         )
-    except Exception:
+    except Exception as e:
+        logger.debug("fetch_lmstudio_models failed: %s", e)
         models = []
     _LMSTUDIO_COMPLETION_CACHE = (now, models)
     return models
@@ -1204,7 +1216,8 @@ class SlashCommandCompleter(Completer):
             return True
         try:
             return bool(self._command_filter(slash_command))
-        except Exception:
+        except Exception as e:
+            logger.debug("command_filter raised for %r: %s", slash_command, e)
             return True
 
     def _iter_skill_commands(self) -> Mapping[str, dict[str, Any]]:
@@ -1212,7 +1225,8 @@ class SlashCommandCompleter(Completer):
             return {}
         try:
             return self._skill_commands_provider() or {}
-        except Exception:
+        except Exception as e:
+            logger.debug("skill_commands_provider raised: %s", e)
             return {}
 
     def _iter_skill_bundles(self) -> Mapping[str, dict[str, Any]]:
@@ -1220,7 +1234,8 @@ class SlashCommandCompleter(Completer):
             return {}
         try:
             return self._skill_bundles_provider() or {}
-        except Exception:
+        except Exception as e:
+            logger.debug("skill_bundles_provider raised: %s", e)
             return {}
 
     # Commands that open pickers when run without arguments.
@@ -1567,7 +1582,8 @@ class SlashCommandCompleter(Completer):
                         display=name,
                         display_meta=s.get("description", "") or s.get("source", ""),
                     )
-        except Exception:
+        except Exception as e:
+            logger.debug("list_skins failed in _skin_completions: %s", e)
             pass
 
     @staticmethod
@@ -1595,7 +1611,8 @@ class SlashCommandCompleter(Completer):
                         display=name,
                         display_meta=meta,
                     )
-        except Exception:
+        except Exception as e:
+            logger.debug("load_config failed in _personality_completions: %s", e)
             pass
 
     def _model_completions(self, sub_text: str, sub_lower: str):
@@ -1628,7 +1645,8 @@ class SlashCommandCompleter(Completer):
                         display=name,
                         display_meta=f"{identity.vendor}/{identity.family}",
                     )
-        except Exception:
+        except Exception as e:
+            logger.debug("Model switch imports failed in _model_completions: %s", e)
             pass
         # LM Studio: surface locally-loaded models. Gated on the user actually
         # having LM Studio configured (env var or auth-store entry) so we
@@ -1740,7 +1758,8 @@ class SlashCommandCompleter(Completer):
                         display=f"/{cmd_name}",
                         display_meta=f"🔌 {short_desc}",
                     )
-        except Exception:
+        except Exception as e:
+            logger.debug("get_plugin_commands failed in get_completions: %s", e)
             pass
 
 

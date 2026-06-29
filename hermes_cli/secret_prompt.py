@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import getpass
+import logging
 import os
 import sys
 from collections.abc import Callable
+
+logger = logging.getLogger(__name__)
 
 
 _BACKSPACE_CHARS = {"\b", "\x7f"}
@@ -70,21 +73,23 @@ def masked_secret_prompt(prompt: str, *, mask: str = "*") -> str:
             return _masked_secret_prompt_windows(prompt, mask=mask)
         except (KeyboardInterrupt, EOFError):
             raise
-        except Exception:
+        except Exception as e:
+            logger.debug("windows masked prompt failed, falling back to getpass: %s", e)
             return getpass.getpass(prompt)
 
     try:
         return _masked_secret_prompt_posix(prompt, mask=mask)
     except (KeyboardInterrupt, EOFError):
         raise
-    except Exception:
+    except Exception as e:
+        logger.debug("posix masked prompt failed, falling back to getpass: %s", e)
         return getpass.getpass(prompt)
 
 
 def _stream_is_tty(stream) -> bool:
     try:
         return bool(stream.isatty())
-    except Exception:
+    except (OSError, ValueError):
         return False
 
 

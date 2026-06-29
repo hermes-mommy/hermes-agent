@@ -9,11 +9,14 @@ import sys
 import subprocess
 import shutil
 import importlib.util
+import logging
 from pathlib import Path
 
 from hermes_cli.config import get_project_root, get_hermes_home, get_env_path
 from hermes_cli.env_loader import load_hermes_dotenv
 from hermes_constants import display_hermes_home
+
+logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = get_project_root()
 HERMES_HOME = get_hermes_home()
@@ -74,7 +77,8 @@ def _safe_which(cmd: str) -> str | None:
     """shutil.which wrapper resilient to platform monkeypatching in tests."""
     try:
         return shutil.which(cmd)
-    except Exception:
+    except (OSError, ValueError, TypeError, AttributeError) as e:
+        logger.debug("shutil.which(%r) raised %s: %s", cmd, type(e).__name__, e)
         return None
 
 
@@ -110,7 +114,8 @@ def _honcho_is_configured_for_doctor() -> bool:
 
         cfg = HonchoClientConfig.from_global_config()
         return bool(cfg.enabled and (cfg.api_key or cfg.base_url))
-    except Exception:
+    except (ImportError, AttributeError, OSError, ValueError, TypeError) as e:
+        logger.debug("Honcho config probe failed: %s: %s", type(e).__name__, e)
         return False
 
 
@@ -163,19 +168,22 @@ def _has_healthy_oauth_fallback_for_apikey_provider(provider_label: str) -> bool
         try:
             from hermes_cli.auth import get_gemini_oauth_auth_status
             return bool((get_gemini_oauth_auth_status() or {}).get("logged_in"))
-        except Exception:
+        except (ImportError, AttributeError, ValueError, TypeError, OSError) as e:
+            logger.debug("Gemini OAuth probe failed: %s: %s", type(e).__name__, e)
             return False
     if normalized == "minimax":
         try:
             from hermes_cli.auth import get_minimax_oauth_auth_status
             return bool((get_minimax_oauth_auth_status() or {}).get("logged_in"))
-        except Exception:
+        except (ImportError, AttributeError, ValueError, TypeError, OSError) as e:
+            logger.debug("MiniMax OAuth probe failed: %s: %s", type(e).__name__, e)
             return False
     if normalized == "xai":
         try:
             from hermes_cli.auth import get_xai_oauth_auth_status
             return bool((get_xai_oauth_auth_status() or {}).get("logged_in"))
-        except Exception:
+        except (ImportError, AttributeError, ValueError, TypeError, OSError) as e:
+            logger.debug("xAI OAuth probe failed: %s: %s", type(e).__name__, e)
             return False
     return False
 
@@ -223,7 +231,8 @@ def _check_s6_supervision(issues: list[str]) -> None:
             S6ServiceManager,
             detect_service_manager,
         )
-    except Exception:
+    except ImportError as e:
+        logger.debug("service_manager module not available: %s", e)
         return
 
     if detect_service_manager() != "s6":
@@ -354,7 +363,8 @@ def _build_apikey_providers_list() -> list:
         from providers.base import ProviderProfile as _PP
         try:
             from hermes_cli.providers import normalize_provider as _normalize_provider
-        except Exception:  # pragma: no cover - normalization is best-effort
+        except ImportError as e:  # pragma: no cover - normalization is best-effort
+            logger.debug("normalize_provider unavailable: %s", e)
             def _normalize_provider(_name: str) -> str:
                 return (_name or "").strip().lower()
         for _pp in list_providers():
@@ -387,8 +397,11 @@ def _build_apikey_providers_list() -> list:
             )
             _hc = getattr(_pp, "supports_health_check", True)
             _static.append((_label, _key_vars, _models_url, _base_var, _hc))
-    except Exception:
-        pass
+    except (ImportError, AttributeError, RuntimeError, OSError, ValueError, TypeError) as e:
+        # Provider plugin enumeration is best-effort doctor metadata; if a
+        # misbehaving provider raises here we don't want to take down the
+        # rest of the API-key loop.
+        logger.debug("API-key provider enumeration failed: %s: %s", type(e).__name__, e)
     return _static
 
 
@@ -601,16 +614,17 @@ def run_doctor(args):
                     resolve_provider as _resolve_auth_provider,
                 )
                 known_providers = set(PROVIDER_REGISTRY.keys()) | {"openrouter", "custom", "auto"}
-            except Exception:
+            except (ImportError, AttributeError, ValueError, TypeError, OSError) as e:
+                logger.debug("PROVIDER_REGISTRY import failed: %s: %s", type(e).__name__, e)
                 _resolve_auth_provider = None
-                pass
             try:
                 from hermes_cli.config import get_compatible_custom_providers as _compatible_custom_providers
                 from hermes_cli.providers import (
                     normalize_provider as _normalize_catalog_provider,
                     resolve_provider_full as _resolve_provider_full,
                 )
-            except Exception:
+            except (ImportError, AttributeError, ValueError, TypeError, OSError) as e:
+                logger.debug("providers import failed: %s: %s", type(e).__name__, e)
                 _compatible_custom_providers = None
                 _normalize_catalog_provider = None
                 _resolve_provider_full = None
@@ -619,7 +633,8 @@ def run_doctor(args):
             if _compatible_custom_providers is not None:
                 try:
                     custom_providers = _compatible_custom_providers(cfg)
-                except Exception:
+                except (ValueError, TypeError, AttributeError, OSError, KeyError) as e:
+                    logger.debug("_compatible_custom_providers failed: %s: %s", type(e).__name__, e)
                     custom_providers = []
 
             user_providers = cfg.get("providers")
@@ -638,7 +653,8 @@ def run_doctor(args):
                 for known_provider in known_providers:
                     try:
                         valid_provider_ids.add(_normalize_catalog_provider(known_provider))
-                    except Exception:
+                    except (ValueError, TypeError, AttributeError) as e:
+                        logger.debug("normalize_provider(%r) failed: %s: %s", known_provider, type(e).__name__, e)
                         continue
 
             runtime_provider = provider
@@ -650,7 +666,8 @@ def run_doctor(args):
                 try:
                     runtime_provider = _resolve_auth_provider(provider)
                     provider_ids_to_accept.add(runtime_provider)
-                except Exception:
+                except (ValueError, TypeError, AttributeError, KeyError) as e:
+                    logger.debug("resolve_provider(%r) failed: %s: %s", provider, type(e).__name__, e)
                     runtime_provider = provider
 
             catalog_provider = provider
@@ -746,10 +763,12 @@ def run_doctor(args):
                             ),
                             issues,
                         )
-                except Exception:
-                    pass
+                except (ImportError, AttributeError, ValueError, TypeError, OSError, KeyError) as e:
+                    logger.debug("Provider credentials check failed for %r: %s: %s",
+                                 runtime_provider, type(e).__name__, e)
 
-        except Exception as e:
+        except (yaml.YAMLError, ValueError, TypeError, AttributeError, KeyError, OSError) as e:
+            logger.debug("Model/provider config validation failed: %s: %s", type(e).__name__, e)
             check_warn("Could not validate model/provider config", f"({e})")
     else:
         fallback_config = PROJECT_ROOT / 'cli-config.yaml'
@@ -786,15 +805,16 @@ def run_doctor(args):
                         migrate_config(interactive=False, quiet=False)
                         check_ok("Config migrated to latest version")
                         fixed_count += 1
-                    except Exception as mig_err:
+                    except (ValueError, TypeError, AttributeError, OSError, KeyError, RuntimeError) as mig_err:
+                        logger.debug("Config migration failed: %s: %s", type(mig_err).__name__, mig_err)
                         check_warn(f"Auto-migration failed: {mig_err}")
                         issues.append("Run 'hermes setup' to migrate config")
                 else:
                     issues.append("Run 'hermes doctor --fix' or 'hermes setup' to migrate config")
             else:
                 check_ok(f"Config version up to date (v{current_ver})")
-        except Exception:
-            pass
+        except (ImportError, AttributeError, ValueError, TypeError, OSError, KeyError, RuntimeError) as e:
+            logger.debug("check_config_version failed: %s: %s", type(e).__name__, e)
 
         # Detect stale root-level model keys (known bug source — PR #4329)
         try:
@@ -831,8 +851,8 @@ def run_doctor(args):
                     fixed_count += 1
                 else:
                     issues.append("Stale root-level provider/base_url in config.yaml — run 'hermes doctor --fix'")
-        except Exception:
-            pass
+        except (yaml.YAMLError, OSError, ValueError, TypeError, AttributeError, KeyError) as e:
+            logger.debug("Stale root keys check failed: %s: %s", type(e).__name__, e)
 
         # Validate config structure (catches malformed custom_providers, etc.)
         try:
@@ -849,8 +869,8 @@ def run_doctor(args):
                     for hint_line in ci.hint.splitlines():
                         check_info(hint_line)
                     issues.append(ci.message)
-        except Exception:
-            pass
+        except (ImportError, AttributeError, ValueError, TypeError, OSError, KeyError, RuntimeError) as e:
+            logger.debug("validate_config_structure failed: %s: %s", type(e).__name__, e)
 
     _section("xAI Model Retirement (May 15, 2026)")
 
@@ -945,8 +965,8 @@ def run_doctor(args):
             check_warn("xAI OAuth", "(not logged in)")
             if xai_oauth_status.get("error"):
                 check_info(xai_oauth_status["error"])
-    except Exception:
-        pass
+    except (ImportError, AttributeError, ValueError, TypeError, OSError) as e:
+        logger.debug("xAI OAuth status check failed: %s: %s", type(e).__name__, e)
 
     _section("Directory Structure")
     hermes_home = HERMES_HOME
@@ -1055,8 +1075,8 @@ def run_doctor(args):
                     issues.append("Large WAL file — run 'hermes doctor --fix' to checkpoint")
             elif wal_size > 10 * 1024 * 1024:  # 10 MB
                 check_info(f"WAL file is {wal_size // (1024*1024)} MB (normal for active sessions)")
-        except Exception:
-            pass
+        except OSError as e:
+            logger.debug("WAL size probe failed: %s: %s", type(e).__name__, e)
 
     _check_gateway_service_linger(issues)
     _check_s6_supervision(issues)
@@ -1155,7 +1175,8 @@ def run_doctor(args):
     try:
         from hermes_constants import is_container as _is_container
         running_in_container = _is_container()
-    except Exception:
+    except ImportError as e:
+        logger.debug("is_container unavailable: %s", e)
         running_in_container = False
 
     if running_in_container:
@@ -1296,10 +1317,10 @@ def run_doctor(args):
                     _get_cdp_override,
                     _using_lightpanda_engine,
                 )
-            except Exception:
+            except ImportError as e:
                 # If browser_tool can't even import, that's a separate bug
                 # surfaced elsewhere; don't crash doctor.
-                pass
+                logger.debug("browser_tool import failed: %s", e)
             else:
                 # Only warn about Chromium if the installed engine actually
                 # requires it: Camofox, CDP override, a cloud provider, or
@@ -1379,8 +1400,8 @@ def run_doctor(args):
                         f"({moderate} moderate "
                         f"{'vulnerability' if moderate == 1 else 'vulnerabilities'})",
                     )
-            except Exception:
-                pass
+            except (subprocess.TimeoutExpired, OSError, ValueError) as e:
+                logger.debug("npm audit for %s failed: %s: %s", label, type(e).__name__, e)
 
     if _is_termux():
         check_info("Termux compatibility fallbacks:")
@@ -1695,7 +1716,8 @@ def run_doctor(args):
             auth_mode = str(model_cfg.get("auth_mode") or "").strip().lower()
             if cfg_provider != "azure-foundry" or auth_mode != "entra_id":
                 return _ConnectivityResult("Azure Foundry (Entra ID)", [], [])
-        except Exception:
+        except (ImportError, AttributeError, ValueError, TypeError, OSError) as e:
+            logger.debug("Azure config probe failed: %s: %s", type(e).__name__, e)
             return _ConnectivityResult("Azure Foundry (Entra ID)", [], [])
 
         try:
@@ -1856,7 +1878,8 @@ def run_doctor(args):
                 lock_data = json.loads(lock_file.read_text())
                 count = len(lock_data.get("installed", {}))
                 check_ok(f"Lock file OK ({count} hub-installed skill(s))")
-            except Exception:
+            except (OSError, ValueError, json.JSONDecodeError) as e:
+                logger.debug("Skills Hub lock file parse failed: %s: %s", type(e).__name__, e)
                 check_warn("Lock file", "(corrupted or unreadable)")
         quarantine = hub_dir / "quarantine"
         q_count = sum(1 for d in quarantine.iterdir() if d.is_dir()) if quarantine.exists() else 0
@@ -1895,8 +1918,8 @@ def run_doctor(args):
             with open(_mem_cfg_path, encoding="utf-8") as _f:
                 _raw_cfg = _yaml.safe_load(_f) or {}
             _active_memory_provider = (_raw_cfg.get("memory") or {}).get("provider", "")
-    except Exception:
-        pass
+    except (ImportError, OSError, ValueError, TypeError) as e:
+        logger.debug("Memory config read failed: %s: %s", type(e).__name__, e)
 
     if not _active_memory_provider:
         check_ok("Built-in memory active", "(no external provider configured — this is fine)")
@@ -2011,12 +2034,12 @@ def run_doctor(args):
                             _m = _re.search(r"hermes -p (\S+)", content)
                             if _m and not profile_exists(_m.group(1)):
                                 check_warn(f"Orphan alias: {wrapper.name} → profile '{_m.group(1)}' no longer exists")
-                    except Exception:
-                        pass
+                    except OSError as e:
+                        logger.debug("Orphan alias read failed for %s: %s: %s", wrapper.name, type(e).__name__, e)
     except ImportError:
         pass
-    except Exception:
-        pass
+    except (AttributeError, ValueError, TypeError, OSError) as e:
+        logger.debug("Profile listing failed: %s: %s", type(e).__name__, e)
 
     print()
     remaining_issues = issues + manual_issues

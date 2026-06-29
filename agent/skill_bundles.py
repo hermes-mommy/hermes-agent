@@ -298,8 +298,11 @@ def build_bundle_invocation_message(
         try:
             from tools.skill_usage import bump_use
             bump_use(skill_name)
-        except Exception:
-            pass
+        except Exception as exc:
+            # bump_use is best-effort usage telemetry — never let it
+            # break bundle loading, but log so silent regressions are
+            # diagnosable.
+            logger.debug("bump_use failed for %s: %s", skill_name, exc)
 
         activation_note = (
             f'[Loaded as part of the "{bundle_name}" skill bundle.]'

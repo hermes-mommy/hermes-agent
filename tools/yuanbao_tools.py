@@ -423,8 +423,8 @@ def _check_yuanbao():
         from gateway.session_context import get_session_env
         if get_session_env("HERMES_SESSION_PLATFORM", "") == "yuanbao":
             return True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("[yuanbao_tools] _check_yuanbao session context unavailable: %s", e)
     return _get_active_adapter() is not None
 
 
@@ -453,8 +453,8 @@ async def _handle_yb_send_dm(args, **kw):
             # chat_id format: "group:<code>" → extract the code part
             if chat_id.startswith("group:"):
                 group_code = chat_id.split(":", 1)[1]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("[yuanbao_tools] send_dm session context fallback failed: %s", e)
 
     # Parse media_files: list of {{"path": str, "is_voice": bool}} → List[Tuple[str, bool]]
     raw_media = args.get("media_files") or []

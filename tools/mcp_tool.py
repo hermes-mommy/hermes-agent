@@ -145,9 +145,10 @@ def _get_mcp_stderr_log() -> Any:
             logger.debug("Failed to open MCP stderr log, using devnull: %s", exc)
             try:
                 _mcp_stderr_log_fh = open(os.devnull, "w", encoding="utf-8")
-            except Exception:
+            except OSError as exc:
                 # Last resort: the real stderr.  Not ideal for TUI users but
                 # it matches pre-fix behavior.
+                logger.debug("Failed to open devnull, falling back to stderr: %s", exc)
                 _mcp_stderr_log_fh = sys.stderr
         return _mcp_stderr_log_fh
 
@@ -164,8 +165,8 @@ def _write_stderr_log_header(server_name: str) -> None:
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         fh.write(f"\n===== [{ts}] starting MCP server '{server_name}' =====\n")
         fh.flush()
-    except Exception:
-        pass
+    except OSError as exc:
+        logger.debug("Failed to write MCP stderr log header for '%s': %s", server_name, exc)
 
 # ---------------------------------------------------------------------------
 # Graceful import -- MCP SDK is an optional dependency
@@ -1159,8 +1160,8 @@ class MCPServerTask:
             await self._refresh_tools()
         except asyncio.CancelledError:
             raise
-        except Exception:
-            logger.exception("MCP server '%s': dynamic tool refresh failed", self.name)
+        except Exception as e:
+            logger.exception("MCP server '%s': dynamic tool refresh failed: %s", self.name, e)
 
     def _schedule_tools_refresh(self) -> asyncio.Task:
         """Schedule a background tool refresh and keep it strongly referenced."""
@@ -1208,8 +1209,8 @@ class MCPServerTask:
                             logger.debug("MCP server '%s': resources/list_changed (ignored)", self.name)
                         case _:
                             pass
-            except Exception:
-                logger.exception("Error in MCP message handler for '%s'", self.name)
+            except Exception as e:
+                logger.exception("Error in MCP message handler for '%s': %s", self.name, e)
         return _handler
 
     async def _refresh_tools(self):
@@ -1913,9 +1914,13 @@ def _get_auth_error_types() -> tuple:
     except ImportError:
         pass
     try:
-        # Older MCP SDK variants exported this
-        from mcp.client.auth import UnauthorizedError  # type: ignore
-        types.append(UnauthorizedError)
+        # Older MCP SDK variants exported this — use getattr to avoid
+        # static-analysis complaints about a name that may not exist in
+        # the current SDK stubs.
+        import mcp.client.auth as _mcp_auth_mod
+        _unauthorized = getattr(_mcp_auth_mod, "UnauthorizedError", None)
+        if _unauthorized is not None:
+            types.append(_unauthorized)
     except ImportError:
         pass
     try:
@@ -2245,8 +2250,8 @@ def _snapshot_child_pids() -> set:
     try:
         import psutil
         return {c.pid for c in psutil.Process(my_pid).children()}
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("psutil child-process lookup failed: %s", e)
 
     return set()
 
@@ -2382,8 +2387,8 @@ def _load_mcp_config() -> Dict[str, dict]:
         try:
             from hermes_cli.env_loader import load_hermes_dotenv
             load_hermes_dotenv()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to load hermes .env (non-fatal): %s", e)
         return {name: _interpolate_env_vars(cfg) for name, cfg in servers.items()}
     except Exception as exc:
         logger.debug("Failed to load MCP config: %s", exc)
@@ -3703,8 +3708,8 @@ def _stop_mcp_loop():
             thread.join(timeout=5)
         try:
             loop.close()
-        except Exception:
-            pass
+        except OSError as exc:
+            logger.debug("Error closing MCP event loop: %s", exc)
         # After closing the loop, any stdio subprocesses that survived the
         # graceful shutdown are now orphaned — include active PIDs too
         # since the loop is gone and no session can still be in flight.

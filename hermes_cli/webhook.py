@@ -11,6 +11,7 @@ hot-reloaded by the webhook adapter without a gateway restart.
 """
 
 import json
+import logging
 import os
 import re
 import secrets
@@ -22,6 +23,8 @@ from typing import Dict
 from hermes_constants import display_hermes_home
 from utils import atomic_replace
 from hermes_cli.config import cfg_get
+
+logger = logging.getLogger(__name__)
 
 
 _SUBSCRIPTIONS_FILENAME = "webhook_subscriptions.json"
@@ -44,7 +47,8 @@ def _load_subscriptions() -> Dict[str, dict]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         return data if isinstance(data, dict) else {}
-    except Exception:
+    except (json.JSONDecodeError, OSError, ValueError) as e:
+        logger.debug("Failed to load webhook subscriptions from %s: %s", path, e)
         return {}
 
 
@@ -72,7 +76,8 @@ def _save_subscriptions(subs: Dict[str, dict]) -> None:
         # Re-assert after rename in case the destination existed with a
         # broader mode and atomic_replace preserved it.
         os.chmod(path, _SUBSCRIPTIONS_FILE_MODE)
-    except Exception:
+    except Exception as e:
+        logger.exception("Failed to save webhook subscriptions: %s", e)
         try:
             tmp_path.unlink(missing_ok=True)
         except OSError:
@@ -86,7 +91,8 @@ def _get_webhook_config() -> dict:
         from hermes_cli.config import load_config
         cfg = load_config()
         return cfg_get(cfg, "platforms", "webhook", default={})
-    except Exception:
+    except (ImportError, AttributeError, KeyError, TypeError, OSError, ValueError) as e:
+        logger.debug("Failed to load webhook config: %s", e)
         return {}
 
 

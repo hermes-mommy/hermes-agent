@@ -4,10 +4,13 @@ Used by `hermes tools` and `hermes skills` for interactive checklists.
 Provides a curses multi-select with keyboard navigation, plus a
 text-based numbered fallback for terminals without curses support.
 """
+import logging
 import sys
 from typing import Callable, List, Optional, Set
 
 from hermes_cli.colors import Colors, color
+
+logger = logging.getLogger(__name__)
 
 
 def flush_stdin() -> None:
@@ -28,8 +31,12 @@ def flush_stdin() -> None:
             return
         import termios
         termios.tcflush(sys.stdin, termios.TCIFLUSH)
-    except Exception:
-        pass
+    except (ImportError, AttributeError, OSError) as e:
+        # termios is POSIX-only (ImportError on Windows); tcflush may
+        # raise OSError on broken/redirected FDs (e.g. EBADF).  Fail-soft:
+        # leftover escape bytes would only corrupt the next input(); the
+        # safest fallback is to let the caller skip the drain.
+        logger.debug("flush_stdin: skipping stdin flush (%s: %s)", type(e).__name__, e)
 
 
 def curses_checklist(
@@ -158,7 +165,11 @@ def curses_checklist(
 
     except KeyboardInterrupt:
         return cancel_returns
-    except Exception:
+    except Exception as e:
+        # curses may be unavailable (Windows), the terminal may refuse to
+        # enter cbreak mode, or stdscr may raise an internal _curses error
+        # during rendering.  Any of these fall back to a numbered text menu.
+        logger.debug("curses_checklist: falling back to numbered prompt (%s: %s)", type(e).__name__, e)
         return _numbered_fallback(title, items, selected, cancel_returns, status_fn)
 
 
@@ -282,7 +293,11 @@ def curses_radiolist(
 
     except KeyboardInterrupt:
         return cancel_returns
-    except Exception:
+    except Exception as e:
+        # curses may be unavailable (Windows), the terminal may refuse to
+        # enter cbreak mode, or stdscr may raise an internal _curses error
+        # during rendering.  Any of these fall back to a numbered text menu.
+        logger.debug("curses_radiolist: falling back to numbered prompt (%s: %s)", type(e).__name__, e)
         return _radio_numbered_fallback(title, items, selected, cancel_returns)
 
 
@@ -407,7 +422,11 @@ def curses_single_select(
 
     except KeyboardInterrupt:
         return None
-    except Exception:
+    except Exception as e:
+        # curses may be unavailable (Windows), the terminal may refuse to
+        # enter cbreak mode, or stdscr may raise an internal _curses error
+        # during rendering.  Any of these fall back to a numbered text menu.
+        logger.debug("curses_single_select: falling back to numbered prompt (%s: %s)", type(e).__name__, e)
         all_items = list(items) + [cancel_label]
         cancel_idx = len(items)
         return _numbered_single_fallback(title, all_items, cancel_idx)

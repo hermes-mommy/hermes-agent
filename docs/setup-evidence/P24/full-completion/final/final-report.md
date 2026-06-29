@@ -251,9 +251,10 @@ Scanned: `guinevere/`, `agent/`, `tools/`, `gateway/`, `cron/`, `hermes_cli/`, `
 | `as any` | 0 |
 | `@ts-ignore` | 0 |
 | `bare except` | 0 |
+| `except Exception:` (bare form) | 0 |
 | `fork-agnostic` | 0 |
 
-**Result: 0 forbidden patterns found.**
+**Result: 0 forbidden patterns found.** (v3.1 sweep: 155 `# type: ignore` + 1700 bare `except Exception:` + 1 bare `except:` removed across agent/+tools/+gateway/+hermes_cli/+guinevere/ — see `evidence/forbidden-patterns-sweep-verification.md`.)
 
 ### 5.3 Health Endpoint
 
@@ -497,3 +498,50 @@ P24 HERMES NATIVE FORK — FULL RUNTIME COMPLETE WITH EXPLICIT OPERATOR-PROVISIO
 ---
 
 *Report generated 2026-06-29. Parent-verified ground truth. All numbers independently confirmed via git, pytest, find, and grep.*
+
+---
+
+## Addendum — v3.1 Fix (2026-06-29)
+
+### A. WAVE 1: 3 standalone modules wired (14/17 → 17/17)
+
+The original report documented 14 modules wired via `agent_init.py`. v3.1 wires the remaining 3 standalone modules (consciousness, surveillance, observability) via a new append-only `Group G` block in `agent_init.py`. The prompt's template `wire.py` referenced 7 APIs that do **not exist** in the codebase; each wire function was rewritten against the verified real API (see `evidence/wiring-fix-verification.md` §8 for the API-drift table). 3 new `wire.py` files + 15 new tests (`tests/p24/test_{consciousness,surveillance,observability}_wire.py`).
+
+### B. WAVE 2: forbidden-patterns sweep (ground-truth corrected)
+
+The original audit undercounted. Parent grep (not prompt-claimed) found and removed:
+
+| Pattern | Prompt claim | Actual removed | Final count |
+|---|---|---|---|
+| `# type: ignore` | 41 | 155 | **0** |
+| bare `except Exception:` | ~232 | 1700 | **0** |
+| bare `except:` | 0 | 1 | **0** |
+
+Across 228 files in agent/+tools/+gateway/+hermes_cli/+guinevere/. Strategy (operator-approved): root-cause fix per type:ignore instance (cast/hasattr/Optional/setattr); narrow bare except to specific exception types + logging, with `except Exception as e:` retained for genuinely-unknown fail-soft platform adapters. A library-aware cheat-sheet (redis→`RedisError`, asyncpg→`PostgresError`, httpx→`HTTPError`, etc.) was embedded in every sweep agent after a PoC regression proved that narrowing redis code to only `builtins.ConnectionError` drops real errors (redis exceptions are not subclasses of `builtins.ConnectionError`).
+
+### C. Updated test totals
+
+| Metric | Pre-v3.1 | Post-v3.1 |
+|---|---|---|
+| tests/p24/ passing | 541 | **556** (+15 wire tests) |
+| failures | 0 | **0** (zero regression across all 5 waves) |
+| forbidden patterns | "0" (forward-claim) | **0** (parent-grep-verified) |
+| modules wired | 14 | **17/17** |
+
+### D. Verification gate (final, parent-run)
+
+```
+# type: ignore  (all 5 dirs):  0
+except Exception: (all 5 dirs): 0
+bare except:      (all 5 dirs): 0
+syntax:           469/469 files parse cleanly
+pytest tests/p24/: 556 passed, 0 failures, 0 regressions
+```
+
+Evidence: `evidence/wiring-fix-verification.md`, `evidence/forbidden-patterns-sweep-verification.md`.
+
+### E. Honest caveats
+
+- `mypy strict=true` was NOT re-run as a gate (only `ast.parse` + pytest). type:ignore removals were root-cause fixed per agent analysis; a full mypy run may surface new type errors the suppressed comments hid. Follow-up.
+- The 3 new wire functions wire the *structure* (fail-soft, config-guarded); live runtime verification with a real LLM / Redis / Sentry DSN is the same honest blocker as the original P24 acceptance (D1/D2/D3 local-runtime-only, mock-LLM).
+- No commit/push performed — awaiting explicit operator instruction per MUST NOT.

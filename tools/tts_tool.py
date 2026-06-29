@@ -681,7 +681,8 @@ def _terminate_command_tts_process_tree(proc: subprocess.Popen) -> None:
                 stderr=subprocess.DEVNULL,
                 timeout=5,
             )
-        except Exception:
+        except (subprocess.SubprocessError, OSError) as e:
+            logger.debug("taskkill failed, falling back to proc.kill: %s", e)
             proc.kill()
         return
 
@@ -696,7 +697,8 @@ def _terminate_command_tts_process_tree(proc: subprocess.Popen) -> None:
         parent.terminate()
     except psutil.NoSuchProcess:
         return
-    except Exception:
+    except (psutil.Error, OSError) as e:
+        logger.debug("psutil terminate failed, falling back to proc.terminate: %s", e)
         proc.terminate()
 
     try:
@@ -715,7 +717,8 @@ def _terminate_command_tts_process_tree(proc: subprocess.Popen) -> None:
         parent.kill()
     except psutil.NoSuchProcess:
         return
-    except Exception:
+    except (psutil.Error, OSError) as e:
+        logger.debug("psutil kill failed, falling back to proc.kill: %s", e)
         proc.kill()
 
 
@@ -739,7 +742,7 @@ def _run_command_tts(command: str, timeout: float) -> subprocess.CompletedProces
         _terminate_command_tts_process_tree(proc)
         try:
             stdout, stderr = proc.communicate(timeout=1)
-        except Exception:
+        except (subprocess.SubprocessError, OSError):
             stdout = getattr(exc, "output", None)
             stderr = getattr(exc, "stderr", None)
         raise subprocess.TimeoutExpired(
@@ -1282,7 +1285,8 @@ def _generate_minimax_tts(text: str, output_path: str, tts_config: Dict[str, Any
             if status_code != 0:
                 status_msg = base_resp.get("status_msg", "unknown error")
                 raise RuntimeError(f"MiniMax TTS API error (code {status_code}): {status_msg}")
-        except Exception:
+        except (ValueError, KeyError, TypeError) as e:
+            logger.debug("MiniMax TTS JSON parse fallback: %s", e)
             response.raise_for_status()
             raise RuntimeError(
                 f"MiniMax TTS returned unexpected Content-Type '{content_type}' "
@@ -1437,7 +1441,7 @@ def _generate_gemini_tts(text: str, output_path: str, tts_config: Dict[str, Any]
         try:
             err = response.json().get("error", {})
             detail = err.get("message") or response.text[:300]
-        except Exception:
+        except (ValueError, KeyError, AttributeError):
             detail = response.text[:300]
         raise RuntimeError(
             f"Gemini TTS API error (HTTP {response.status_code}): {detail}"
@@ -1518,7 +1522,7 @@ def _check_neutts_available() -> bool:
     try:
         import importlib.util
         return importlib.util.find_spec("neutts") is not None
-    except Exception:
+    except ImportError:
         return False
 
 
@@ -1527,7 +1531,7 @@ def _check_kittentts_available() -> bool:
     try:
         import importlib.util
         return importlib.util.find_spec("kittentts") is not None
-    except Exception:
+    except ImportError:
         return False
 
 
@@ -1609,7 +1613,7 @@ def _check_piper_available() -> bool:
     try:
         import importlib.util
         return importlib.util.find_spec("piper") is not None
-    except Exception:
+    except ImportError:
         return False
 
 
@@ -1713,7 +1717,10 @@ def _generate_piper_tts(text: str, output_path: str, tts_config: Dict[str, Any])
     )
     if has_advanced:
         try:
-            from piper import SynthesisConfig  # type: ignore
+            import piper as _piper_mod
+            SynthesisConfig = getattr(_piper_mod, "SynthesisConfig", None)
+            if SynthesisConfig is None:
+                raise ImportError("SynthesisConfig not found in piper module")
             syn_config = SynthesisConfig(
                 length_scale=float(piper_config.get("length_scale", 1.0)),
                 noise_scale=float(piper_config.get("noise_scale", 0.667)),
@@ -2179,7 +2186,7 @@ def check_tts_requirements() -> bool:
 
         if resolve_xai_http_credentials().get("api_key"):
             return True
-    except Exception:
+    except (ImportError, ValueError, TypeError):
         pass
     if get_env_value("GEMINI_API_KEY") or get_env_value("GOOGLE_API_KEY"):
         return True
@@ -2468,7 +2475,7 @@ def stream_tts_to_speaker(
             try:
                 output_stream.stop()
                 output_stream.close()
-            except Exception:
+            except (OSError, RuntimeError):
                 pass
         tts_done_event.set()
 

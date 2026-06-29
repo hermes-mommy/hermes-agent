@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import binascii
 import json
 import logging
 import time
@@ -106,7 +107,8 @@ def probe_gemini_tier(
         body_text = ""
         try:
             body_text = resp.text or ""
-        except Exception:
+        except (httpx.HTTPError, ValueError, UnicodeDecodeError) as exc:
+            logger.debug("probe_gemini_tier: failed to read 429 response body: %s", exc)
             body_text = ""
         if "free_tier" in body_text.lower():
             return "free"
@@ -199,7 +201,8 @@ def _extract_multimodal_parts(content: Any) -> List[Dict[str, Any]]:
                 header, encoded = url.split(",", 1)
                 mime = header.split(":", 1)[1].split(";", 1)[0]
                 raw = base64.b64decode(encoded)
-            except Exception:
+            except (ValueError, TypeError, binascii.Error) as exc:
+                logger.debug("_extract_multimodal_parts: skipping malformed data URL: %s", exc)
                 continue
             parts.append(
                 {
@@ -703,7 +706,8 @@ def gemini_http_error(response: httpx.Response) -> GeminiAPIError:
     body_json: Dict[str, Any] = {}
     try:
         body_text = response.text
-    except Exception:
+    except (httpx.HTTPError, ValueError, UnicodeDecodeError, TypeError) as exc:
+        logger.debug("gemini_http_error: failed to read response body: %s", exc)
         body_text = ""
     if body_text:
         try:
@@ -838,7 +842,8 @@ class GeminiNativeClient:
         self.is_closed = True
         try:
             self._http.close()
-        except Exception:
+        except Exception as exc:
+            logger.debug("GeminiNativeClient.close: ignoring httpx close error: %s", exc)
             pass
 
     def __enter__(self):

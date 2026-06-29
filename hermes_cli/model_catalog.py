@@ -87,7 +87,8 @@ def _load_catalog_config() -> dict[str, Any]:
     try:
         from hermes_cli.config import load_config
         cfg = load_config() or {}
-    except Exception:
+    except Exception as exc:
+        logger.debug("model_catalog config load failed, using defaults: %s", exc)
         cfg = {}
 
     raw = cfg.get("model_catalog")

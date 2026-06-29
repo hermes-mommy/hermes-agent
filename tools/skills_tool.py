@@ -335,9 +335,9 @@ def _capture_required_environment_variables(
                 entry["prompt"],
                 metadata,
             )
-        except Exception:
+        except Exception as e:
             logger.warning(
-                f"Secret capture callback failed for {entry['name']}", exc_info=True
+                "Secret capture callback failed for %s: %s", entry["name"], e, exc_info=True
             )
             callback_result = {
                 "success": False,
@@ -411,7 +411,8 @@ def _gateway_setup_hint() -> str:
         from gateway.platforms.base import GATEWAY_SECRET_CAPTURE_UNSUPPORTED_MESSAGE
 
         return GATEWAY_SECRET_CAPTURE_UNSUPPORTED_MESSAGE
-    except Exception:
+    except Exception as e:
+        logger.debug("Gateway secret capture constant not available: %s", e)
         return f"Secure secret entry is not available. Load this skill in the local CLI to be prompted, or add the key to {display_hermes_home()}/.env manually."
 
 
@@ -457,8 +458,8 @@ def _get_category_from_path(skill_path: Path) -> Optional[str]:
     try:
         from agent.skill_utils import get_external_skills_dirs
         dirs_to_check.extend(get_external_skills_dirs())
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Could not load external skills dirs: %s", e)
     for skills_dir in dirs_to_check:
         try:
             rel_path = skill_path.relative_to(skills_dir)
@@ -521,7 +522,8 @@ def _get_session_platform() -> str:
     try:
         from gateway.session_context import get_session_env
         return get_session_env("HERMES_SESSION_PLATFORM") or ""
-    except Exception:
+    except Exception as e:
+        logger.debug("Could not resolve session platform: %s", e)
         return ""
 
 
@@ -543,7 +545,8 @@ def _is_skill_disabled(name: str, platform: str = None) -> bool:
             if platform_disabled is not None:
                 return name in platform_disabled
         return name in skills_cfg.get("disabled", [])
-    except Exception:
+    except Exception as e:
+        logger.debug("Could not check disabled skills config: %s", e)
         return False
 
 
@@ -777,8 +780,8 @@ def _serve_plugin_skill(
     parsed_frontmatter: Dict[str, Any] = {}
     try:
         parsed_frontmatter, _ = _parse_frontmatter(content)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Could not parse plugin skill frontmatter: %s", e)
 
     if not skill_matches_platform(parsed_frontmatter):
         return json.dumps(
@@ -816,7 +819,8 @@ def _serve_plugin_skill(
             )
         else:
             banner = f"[Bundle context: This skill is part of the '{namespace}' plugin.]\n\n"
-    except Exception:
+    except Exception as e:
+        logger.debug("Could not load plugin sibling skills for banner: %s", e)
         banner = ""
 
     rendered_content = content
@@ -829,9 +833,9 @@ def _serve_plugin_skill(
                 skill_md.parent,
                 session_id=session_id,
             )
-        except Exception:
+        except Exception as e:
             logger.debug(
-                "Could not preprocess plugin skill %s:%s", namespace, bare, exc_info=True
+                "Could not preprocess plugin skill %s:%s: %s", namespace, bare, e, exc_info=True
             )
 
     return json.dumps(
@@ -971,7 +975,8 @@ def skill_view(
         def _record(sd: Optional[Path], smd: Path) -> None:
             try:
                 key = smd.resolve()
-            except Exception:
+            except Exception as e:
+                logger.debug("Could not resolve skill path %s: %s", smd, e)
                 key = smd
             if key in seen_md:
                 return
@@ -1065,8 +1070,8 @@ def skill_view(
         _trusted_dirs = [SKILLS_DIR.resolve()]
         try:
             _trusted_dirs.extend(d.resolve() for d in all_dirs[1:])
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Could not resolve trusted dirs: %s", e)
         for _td in _trusted_dirs:
             try:
                 skill_md.resolve().relative_to(_td)
@@ -1091,7 +1096,8 @@ def skill_view(
         parsed_frontmatter: Dict[str, Any] = {}
         try:
             parsed_frontmatter, _ = _parse_frontmatter(content)
-        except Exception:
+        except Exception as e:
+            logger.debug("Could not parse skill frontmatter: %s", e)
             parsed_frontmatter = {}
 
         if not skill_matches_platform(parsed_frontmatter):
@@ -1336,10 +1342,11 @@ def skill_view(
                 from tools.env_passthrough import register_env_passthrough
 
                 register_env_passthrough(available_env_names)
-            except Exception:
+            except Exception as e:
                 logger.debug(
-                    "Could not register env passthrough for skill %s",
+                    "Could not register env passthrough for skill %s: %s",
                     skill_name,
+                    e,
                     exc_info=True,
                 )
 
@@ -1357,10 +1364,11 @@ def skill_view(
                 missing_cred_files = register_credential_files(required_cred_files_raw)
                 if missing_cred_files:
                     setup_needed = True
-            except Exception:
+            except Exception as e:
                 logger.debug(
-                    "Could not register credential files for skill %s",
+                    "Could not register credential files for skill %s: %s",
                     skill_name,
+                    e,
                     exc_info=True,
                 )
 
@@ -1374,9 +1382,9 @@ def skill_view(
                     skill_dir,
                     session_id=task_id,
                 )
-            except Exception:
+            except Exception as e:
                 logger.debug(
-                    "Could not preprocess skill content for %s", skill_name, exc_info=True
+                    "Could not preprocess skill content for %s: %s", skill_name, e, exc_info=True
                 )
 
         result = {
@@ -1552,8 +1560,8 @@ def _skill_view_with_bump(args, **kw):
                 # to act on it — that counts as use, not just a browse/view.
                 # Curator's stale timer keys off last_used_at (see agent/curator.py).
                 bump_use(str(resolved))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Could not bump skill usage telemetry: %s", e)
     return result
 
 

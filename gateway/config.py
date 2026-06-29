@@ -167,8 +167,11 @@ class Platform(Enum):
                 cls._value2member_map_[value] = pseudo
                 cls._member_map_[pseudo._name_] = pseudo
                 return pseudo
-        except Exception:
-            pass
+        except Exception as e:
+            # Plugin registry not yet initialised during early import, or
+            # unknown failure inside the registry. Treat as "not registered"
+            # rather than poisoning enum lookup for the whole platform.
+            logger.debug("Platform._missing_ registry lookup for %r failed: %s", value, e)
 
         return None
 
@@ -189,8 +192,10 @@ class Platform(Enum):
                         )
                     ):
                         names.add(child.name.lower())
-        except Exception:
-            pass
+        except Exception as e:
+            # Filesystem scan is best-effort discovery; missing or
+            # restricted plugin directory must not break enum import.
+            logger.debug("Bundled plugin platform scan failed: %s", e)
         return names
 
 
@@ -534,8 +539,14 @@ class GatewayConfig:
                 if entry.validate_config is not None:
                     return entry.validate_config(config)
                 return True
-        except Exception:
-            pass  # Registry not yet initialised during early import
+        except Exception as e:
+            # Registry not yet initialised during early import, or plugin
+            # callback raised. Treat as "not connected" rather than
+            # surfacing the failure to the connectivity probe caller.
+            logger.debug(
+                "Plugin registry lookup for %s failed: %s",
+                platform.value, e,
+            )
 
         return False
     
@@ -1187,7 +1198,11 @@ def _validate_gateway_config(config: "GatewayConfig") -> None:
     try:
         from hermes_cli.auth import has_usable_secret
     except ImportError:
-        has_usable_secret = None  # type: ignore[assignment]
+        # hermes_cli.auth isn't importable in this environment; fall back to
+        # None and skip the placeholder-token check. Explicit annotation
+        # preserves the mypy-witnessed type without using a type-ignore
+        # directive.
+        has_usable_secret: "Optional[Callable[[str, int], bool]]" = None
 
     if has_usable_secret is not None:
         for platform, pconfig in config.platforms.items():

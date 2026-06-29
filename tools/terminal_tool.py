@@ -207,7 +207,8 @@ def _get_sudo_password_cache_scope() -> str:
         from gateway.session_context import get_session_env
 
         session_key = get_session_env("HERMES_SESSION_KEY", "")
-    except Exception:
+    except Exception as e:
+        logger.debug("gateway session_context unavailable: %s", e)
         session_key = os.getenv("HERMES_SESSION_KEY", "")
     if session_key:
         return f"session:{session_key}"
@@ -340,7 +341,8 @@ def _prompt_for_sudo_password(timeout_seconds: int = 45) -> str:
     if _sudo_cb is not None:
         try:
             return _sudo_cb() or ""
-        except Exception:
+        except Exception as e:
+            logger.debug("sudo password callback failed: %s", e)
             return ""
 
     result = {"password": None, "done": False}
@@ -377,7 +379,8 @@ def _prompt_for_sudo_password(timeout_seconds: int = 45) -> str:
                 result["password"] = b"".join(chars).decode("utf-8", errors="replace")
         except (EOFError, KeyboardInterrupt, OSError):
             result["password"] = ""
-        except Exception:
+        except Exception as e:
+            logger.debug("Password read failed: %s", e)
             result["password"] = ""
         finally:
             if tty_fd is not None and old_attrs is not None:
@@ -451,7 +454,8 @@ def _safe_command_preview(command: Any, limit: int = 200) -> str:
         return command[:limit]
     try:
         return repr(command)[:limit]
-    except Exception:
+    except Exception as e:
+        logger.debug("repr() failed for command preview: %s", e)
         return f"<{type(command).__name__}>"
 
 def _looks_like_env_assignment(token: str) -> bool:
@@ -581,7 +585,8 @@ def _sudo_nopasswd_works() -> bool:
             check=False,
         )
         return probe.returncode == 0
-    except Exception:
+    except Exception as e:
+        logger.debug("sudo NOPASSWD probe failed: %s", e)
         return False
 
 
@@ -1103,8 +1108,8 @@ def _create_environment(env_type: str, image: str, cwd: str, timeout: int,
                 import inspect, modal
                 if "ephemeral_disk" in inspect.signature(modal.Sandbox.create).parameters:
                     sandbox_kwargs["ephemeral_disk"] = disk
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Modal ephemeral_disk introspection skipped: %s", e)
 
         modal_state = _get_modal_backend_state(cc.get("modal_mode"))
 
@@ -2124,8 +2129,8 @@ def terminal_tool(
                     if isinstance(hook_result, str):
                         output = hook_result
                         break
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Plugin transform_terminal_output hook failed: %s", e)
             
             # Truncate output if too long, keeping both head and tail
             from tools.tool_output_limits import get_max_bytes

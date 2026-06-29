@@ -41,7 +41,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 from urllib.parse import unquote, urlparse
 
 try:
@@ -49,14 +49,14 @@ try:
     AIOHTTP_AVAILABLE = True
 except ImportError:
     AIOHTTP_AVAILABLE = False
-    aiohttp = None  # type: ignore[assignment]
+    aiohttp = cast(Any, None)
 
 try:
     import httpx
     HTTPX_AVAILABLE = True
 except ImportError:
     HTTPX_AVAILABLE = False
-    httpx = None  # type: ignore[assignment]
+    httpx = cast(Any, None)
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.helpers import MessageDeduplicator
@@ -182,6 +182,7 @@ class WeComAdapter(BasePlatformAdapter):
         self._text_batch_split_delay_seconds = float(os.getenv("HERMES_WECOM_TEXT_BATCH_SPLIT_DELAY_SECONDS", "2.0"))
         self._pending_text_batches: Dict[str, MessageEvent] = {}
         self._pending_text_batch_tasks: Dict[str, asyncio.Task] = {}
+        self._pending_text_batch_last_chunk_len: Dict[str, int] = {}
         self._device_id = uuid.uuid4().hex
         self._last_chat_req_ids: Dict[str, str] = {}
 
@@ -472,8 +473,8 @@ class WeComAdapter(BasePlatformAdapter):
     def _parse_json(raw: Any) -> Optional[Dict[str, Any]]:
         try:
             payload = json.loads(raw)
-        except Exception:
-            logger.debug("Failed to parse WeCom payload: %r", raw)
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            logger.debug("Failed to parse WeCom payload: %s", exc)
             return None
         return payload if isinstance(payload, dict) else None
 
@@ -581,13 +582,12 @@ class WeComAdapter(BasePlatformAdapter):
         key = self._text_batch_key(event)
         existing = self._pending_text_batches.get(key)
         chunk_len = len(event.text or "")
+        self._pending_text_batch_last_chunk_len[key] = chunk_len
         if existing is None:
-            event._last_chunk_len = chunk_len  # type: ignore[attr-defined]
             self._pending_text_batches[key] = event
         else:
             if event.text:
                 existing.text = f"{existing.text}\n{event.text}" if existing.text else event.text
-            existing._last_chunk_len = chunk_len  # type: ignore[attr-defined]
             # Merge any media that might be attached
             if event.media_urls:
                 existing.media_urls.extend(event.media_urls)
@@ -609,8 +609,7 @@ class WeComAdapter(BasePlatformAdapter):
         """
         current_task = asyncio.current_task()
         try:
-            pending = self._pending_text_batches.get(key)
-            last_len = getattr(pending, "_last_chunk_len", 0) if pending else 0
+            last_len = self._pending_text_batch_last_chunk_len.get(key, 0)
             if last_len >= self._SPLIT_THRESHOLD:
                 delay = self._text_batch_split_delay_seconds
             else:
@@ -629,6 +628,7 @@ class WeComAdapter(BasePlatformAdapter):
             if self._pending_text_batch_tasks.get(key) is not current_task:
                 return
             event = self._pending_text_batches.pop(key, None)
+            self._pending_text_batch_last_chunk_len.pop(key, None)
             if not event:
                 return
             logger.info(
@@ -639,6 +639,7 @@ class WeComAdapter(BasePlatformAdapter):
         finally:
             if self._pending_text_batch_tasks.get(key) is current_task:
                 self._pending_text_batch_tasks.pop(key, None)
+            self._pending_text_batch_last_chunk_len.pop(key, None)
 
     @staticmethod
     def _extract_text(body: Dict[str, Any]) -> Tuple[str, Optional[str]]:
@@ -1563,7 +1564,8 @@ def qr_scan_for_bot_info(
         qr_rendered = True
     except ImportError:
         pass
-    except Exception:
+    except Exception as exc:
+        logger.debug("WeCom QR: failed to render QR code in terminal: %s", exc)
         pass
 
     page_url = f"{_QR_CODE_PAGE}{urllib.parse.quote(scode)}"

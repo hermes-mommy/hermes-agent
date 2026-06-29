@@ -243,7 +243,8 @@ def _serialize_slack_blocks_for_agent(blocks: list, max_chars: int = 6000) -> st
 
     try:
         payload = json.dumps(_sanitize(blocks), ensure_ascii=False, indent=2)
-    except Exception:
+    except Exception as _dump_err:
+        logger.debug("[Slack] Block Kit payload serialization failed: %s", _dump_err)
         payload = repr(blocks)
 
     if len(payload) > max_chars:
@@ -386,7 +387,8 @@ class SlackAdapter(BasePlatformAdapter):
 
         try:
             import httpx
-        except Exception:  # pragma: no cover
+        except Exception as _httpx_import_err:  # pragma: no cover - optional dep
+            logger.debug("[Slack] Optional httpx import unavailable: %s", _httpx_import_err)
             httpx = None
 
         if httpx is not None and isinstance(exc, httpx.HTTPStatusError):
@@ -558,8 +560,8 @@ class SlackAdapter(BasePlatformAdapter):
             if self._handler is not None:
                 try:
                     await self._handler.close_async()
-                except Exception:
-                    logger.debug("[%s] Failed to close previous Slack handler", self.name)
+                except Exception as close_err:
+                    logger.debug("[%s] Failed to close previous Slack handler: %s", self.name, close_err)
                 finally:
                     self._handler = None
                     self._app = None
@@ -1063,7 +1065,8 @@ class SlackAdapter(BasePlatformAdapter):
             import httpx as _httpx
             from urllib.parse import unquote as _unquote
             from tools.url_safety import is_safe_url as _is_safe_url
-        except Exception:
+        except Exception as _batch_import_err:
+            logger.debug("[Slack] Optional batch-upload deps unavailable: %s", _batch_import_err)
             await super().send_multiple_images(chat_id, images, metadata, human_delay)
             return
 
@@ -1750,11 +1753,12 @@ class SlackAdapter(BasePlatformAdapter):
 
         try:
             session_store.get_or_create_session(source)
-        except Exception:
+        except Exception as seed_err:
             logger.debug(
-                "[Slack] Failed to seed assistant thread session for %s/%s",
+                "[Slack] Failed to seed assistant thread session for %s/%s: %s",
                 channel_id,
                 thread_ts,
+                seed_err,
                 exc_info=True,
             )
 
@@ -1815,7 +1819,8 @@ class SlackAdapter(BasePlatformAdapter):
                 cmd_name = first_token.split("@", 1)[0].lower()
                 if cmd_name and "/" not in cmd_name and is_gateway_known_command(cmd_name):
                     original_text = "/" + original_text[1:]
-            except Exception:  # pragma: no cover - defensive
+            except Exception as _cmd_resolve_err:  # pragma: no cover - defensive
+                logger.debug("[Slack] Slash command rewrite probe failed: %s", _cmd_resolve_err)
                 pass
 
         text = original_text
@@ -2211,7 +2216,8 @@ class SlackAdapter(BasePlatformAdapter):
                     thread_ts=thread_ts,
                     team_id=team_id,
                 ) or None
-            except Exception:  # pragma: no cover - defensive
+            except Exception as _parent_text_err:  # pragma: no cover - defensive
+                logger.debug("[Slack] Thread parent text fetch failed: %s", _parent_text_err)
                 reply_to_text = None
 
         msg_event = MessageEvent(
@@ -2884,7 +2890,8 @@ class SlackAdapter(BasePlatformAdapter):
 
             session_store._ensure_loaded()
             return session_key in session_store._entries
-        except Exception:
+        except Exception as _session_lookup_err:
+            logger.debug("[Slack] Thread session lookup failed: %s", _session_lookup_err)
             return False
 
     async def _download_slack_file(self, url: str, ext: str, audio: bool = False, team_id: str = "") -> str:

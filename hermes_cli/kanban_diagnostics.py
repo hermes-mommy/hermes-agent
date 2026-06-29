@@ -29,10 +29,13 @@ Design goals:
 
 from __future__ import annotations
 
+import json
+import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Optional
-import json
-import time
+
+logger = logging.getLogger(__name__)
 
 
 # Severity rungs, ordered least → most urgent. The UI colors them
@@ -138,8 +141,14 @@ def _task_field(task, name, default=None):
         # dicts return default via .get. Handle both.
         if hasattr(task, "keys") and name in task.keys():
             return task[name]
-    except Exception:
-        pass
+    except (IndexError, KeyError, TypeError) as e:
+        # Mapping access failed (Row missing column, or a non-mapping
+        # object passed where a Row/dict was expected). Fall through
+        # to the dict/attr fallback below.
+        logger.debug(
+            "kanban_diagnostics: mapping access failed for field %r: %s",
+            name, e,
+        )
     if isinstance(task, dict):
         return task.get(name, default)
     return getattr(task, name, default)
@@ -155,7 +164,13 @@ def _parse_payload(ev) -> dict:
     if isinstance(p, str):
         try:
             return json.loads(p) or {}
-        except Exception:
+        except json.JSONDecodeError as e:
+            # Non-JSON payloads are tolerated (callers may store arbitrary
+            # strings in event.payload). Treat as empty payload and move on.
+            logger.debug(
+                "kanban_diagnostics: event payload is not valid JSON: %s",
+                e,
+            )
             return {}
     return {}
 
@@ -1030,10 +1045,14 @@ def compute_task_diagnostics(
     for rule in _RULES:
         try:
             out.extend(rule(task, events, runs, now_ts, cfg))
-        except Exception:
+        except Exception as e:
             # A broken rule must never crash the dashboard. Rule bugs
             # get caught in tests; in production we'd rather drop the
             # diagnostic than 500 a whole /board request.
+            logger.debug(
+                "kanban_diagnostics: rule %s raised, dropping its diagnostics: %s",
+                getattr(rule, "__name__", repr(rule)), e,
+            )
             continue
     severity_idx = {s: i for i, s in enumerate(SEVERITY_ORDER)}
     out.sort(

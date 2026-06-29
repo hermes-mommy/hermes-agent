@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 
 FILE_MUTATING_TOOL_NAMES = frozenset({"write_file", "patch"})
+
+logger = logging.getLogger(__name__)
 
 
 def file_mutation_result_landed(tool_name: str, result: Any) -> bool:
@@ -15,7 +18,8 @@ def file_mutation_result_landed(tool_name: str, result: Any) -> bool:
         return False
     try:
         data = json.loads(result.strip())
-    except Exception:
+    except (json.JSONDecodeError, ValueError, TypeError) as e:
+        logger.debug("tool result payload not JSON-decodable: %s", e)
         return False
     if not isinstance(data, dict) or data.get("error"):
         return False

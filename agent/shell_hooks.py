@@ -73,7 +73,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple
 try:
     import fcntl  # POSIX only; Windows falls back to best-effort without flock.
 except ImportError:  # pragma: no cover
-    fcntl = None  # type: ignore[assignment]
+    fcntl = None  # pylint: disable=invalid-name; matches POSIX attribute name
 
 from hermes_constants import get_hermes_home
 from utils import atomic_replace
@@ -578,7 +578,12 @@ def save_allowlist(data: Dict[str, Any]) -> None:
             with os.fdopen(fd, "w") as fh:
                 fh.write(json.dumps(data, indent=2, sort_keys=True))
             atomic_replace(tmp_path, p)
-        except Exception:
+        except (OSError, IOError, TypeError, ValueError) as exc:
+            logger.debug(
+                "shell hook allowlist tmpfile %s failed (%s); cleaning up "
+                "and re-raising so the outer except OSError can log it.",
+                tmp_path, exc,
+            )
             try:
                 os.unlink(tmp_path)
             except OSError:

@@ -34,7 +34,7 @@ import re
 import traceback
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, cast
 
 try:
     import dingtalk_stream
@@ -44,17 +44,20 @@ try:
     DINGTALK_STREAM_AVAILABLE = True
 except ImportError:
     DINGTALK_STREAM_AVAILABLE = False
-    dingtalk_stream = None  # type: ignore[assignment]
-    ChatbotMessage = None  # type: ignore[assignment]
-    CallbackMessage = None  # type: ignore[assignment]
-    AckMessage = type(
-        "AckMessage",
-        (),
-        {
-            "STATUS_OK": 200,
-            "STATUS_SYSTEM_EXCEPTION": 500,
-        },
-    )  # type: ignore[assignment]
+    dingtalk_stream = cast("Any", None)
+    ChatbotMessage = cast("Any", None)
+    CallbackMessage = cast("Any", None)
+    AckMessage = cast(
+        "Any",
+        type(
+            "AckMessage",
+            (),
+            {
+                "STATUS_OK": 200,
+                "STATUS_SYSTEM_EXCEPTION": 500,
+            },
+        ),
+    )
 
 try:
     import httpx
@@ -62,7 +65,7 @@ try:
     HTTPX_AVAILABLE = True
 except ImportError:
     HTTPX_AVAILABLE = False
-    httpx = None  # type: ignore[assignment]
+    httpx = cast("Any", None)
 
 # Card SDK for AI Cards (following QwenPaw pattern)
 try:
@@ -110,6 +113,30 @@ DINGTALK_TYPE_MAPPING = {
 }
 
 
+def _safe_lazy_ensure_install() -> bool:
+    """Run the lazy-dep installer for the DingTalk platform.
+
+    Returns True if the install attempt completed (whether or not the dep
+    actually became usable).  Catches everything because we want the
+    caller to fall through to its explicit ImportError check and report
+    a clean False rather than crashing the process.
+    """
+    try:
+        from tools.lazy_deps import ensure as _lazy_ensure
+        _lazy_ensure("platform.dingtalk", prompt=False)
+    except (ImportError, OSError, RuntimeError) as exc:
+        logger.debug(
+            "[dingtalk] lazy_deps.ensure failed (non-fatal): %s", exc,
+        )
+        return False
+    except Exception as exc:  # pragma: no cover - defensive last-resort
+        logger.debug(
+            "[dingtalk] lazy_deps.ensure unexpected error: %s", exc,
+        )
+        return False
+    return True
+
+
 def check_dingtalk_requirements() -> bool:
     """Check if DingTalk dependencies are available and configured.
 
@@ -119,10 +146,7 @@ def check_dingtalk_requirements() -> bool:
     global DINGTALK_STREAM_AVAILABLE, dingtalk_stream, ChatbotMessage, CallbackMessage, AckMessage
     global HTTPX_AVAILABLE, httpx
     if not DINGTALK_STREAM_AVAILABLE or not HTTPX_AVAILABLE:
-        try:
-            from tools.lazy_deps import ensure as _lazy_ensure
-            _lazy_ensure("platform.dingtalk", prompt=False)
-        except Exception:
+        if not _safe_lazy_ensure_install():
             return False
         try:
             import dingtalk_stream as _ds
@@ -294,8 +318,12 @@ class DingTalkAdapter(BasePlatformAdapter):
             self._mark_connected()
             logger.info("[%s] Connected via Stream Mode", self.name)
             return True
-        except Exception as e:
+        except (httpx.HTTPError, OSError, RuntimeError, ValueError, TypeError) as e:
             logger.error("[%s] Failed to connect: %s", self.name, e)
+            return False
+        except Exception as e:  # pragma: no cover - defensive last-resort
+            logger.exception("[%s] Unexpected error during connect", self.name)
+            logger.error("[%s] Failed to connect (unexpected): %s", self.name, e)
             return False
 
     async def _run_stream(self) -> None:
@@ -307,10 +335,15 @@ class DingTalkAdapter(BasePlatformAdapter):
                 await self._stream_client.start()
             except asyncio.CancelledError:
                 return
-            except Exception as e:
+            except (OSError, RuntimeError, ValueError) as e:
                 if not self._running:
                     return
                 logger.warning("[%s] Stream client error: %s", self.name, e)
+            except Exception as e:  # pragma: no cover - defensive last-resort
+                if not self._running:
+                    return
+                logger.exception("[%s] Stream client unexpected error", self.name)
+                logger.warning("[%s] Stream client error (unexpected): %s", self.name, e)
 
             if not self._running:
                 return
@@ -332,8 +365,10 @@ class DingTalkAdapter(BasePlatformAdapter):
         if websocket is not None:
             try:
                 await websocket.close()
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
                 logger.debug("[%s] websocket close during disconnect failed: %s", self.name, e)
+            except Exception as e:  # pragma: no cover - defensive last-resort
+                logger.debug("[%s] websocket close unexpected error: %s", self.name, e)
 
         if self._stream_task:
             # Try graceful close first if SDK supports it. The SDK's close()
@@ -341,8 +376,16 @@ class DingTalkAdapter(BasePlatformAdapter):
             if hasattr(self._stream_client, "close"):
                 try:
                     await asyncio.to_thread(self._stream_client.close)
-                except Exception:
-                    pass
+                except (OSError, RuntimeError) as e:
+                    logger.debug(
+                        "[%s] stream client close during disconnect failed: %s",
+                        self.name, e,
+                    )
+                except Exception as e:  # pragma: no cover - defensive last-resort
+                    logger.debug(
+                        "[%s] stream client close unexpected error: %s",
+                        self.name, e,
+                    )
 
             self._stream_task.cancel()
             try:
@@ -365,9 +408,14 @@ class DingTalkAdapter(BasePlatformAdapter):
         for _chat_id in list(self._streaming_cards):
             try:
                 await self._close_streaming_siblings(_chat_id)
-            except Exception as _exc:
+            except (OSError, httpx.HTTPError, RuntimeError, ValueError) as _exc:
                 logger.debug(
                     "[%s] Failed to finalize streaming card on disconnect for %s: %s",
+                    self.name, _chat_id, _exc,
+                )
+            except Exception as _exc:  # pragma: no cover - defensive last-resort
+                logger.debug(
+                    "[%s] Unexpected error finalizing streaming card on disconnect for %s: %s",
                     self.name, _chat_id, _exc,
                 )
 
@@ -424,10 +472,21 @@ class DingTalkAdapter(BasePlatformAdapter):
             if raw:
                 try:
                     loaded = json.loads(raw)
-                except Exception:
+                except (ValueError, TypeError) as exc:
+                    logger.debug(
+                        "[%s] DINGTALK_MENTION_PATTERNS is not valid JSON, "
+                        "falling back to line/comma split: %s",
+                        self.name, exc,
+                    )
                     loaded = [part.strip() for part in raw.splitlines() if part.strip()]
                     if not loaded:
                         loaded = [part.strip() for part in raw.split(",") if part.strip()]
+                except Exception as exc:  # pragma: no cover - defensive last-resort
+                    logger.debug(
+                        "[%s] DINGTALK_MENTION_PATTERNS fallback split error: %s",
+                        self.name, exc,
+                    )
+                    loaded = [part.strip() for part in raw.split(",") if part.strip()]
                 patterns = loaded
 
         if patterns is None:
@@ -549,9 +608,14 @@ class DingTalkAdapter(BasePlatformAdapter):
                     "[%s] AI Card sibling closed: %s",
                     self.name, out_track_id,
                 )
-            except Exception as e:
+            except (OSError, httpx.HTTPError, RuntimeError, ValueError) as e:
                 logger.debug(
                     "[%s] Sibling close failed for %s: %s",
+                    self.name, out_track_id, e,
+                )
+            except Exception as e:  # pragma: no cover - defensive last-resort
+                logger.debug(
+                    "[%s] Sibling close unexpected error for %s: %s",
                     self.name, out_track_id, e,
                 )
 
@@ -922,8 +986,11 @@ class DingTalkAdapter(BasePlatformAdapter):
             return SendResult(
                 success=False, error="Timeout sending message to DingTalk"
             )
-        except Exception as e:
-            logger.error("[%s] Send error: %s", self.name, e)
+        except httpx.HTTPError as e:
+            logger.error("[%s] Send HTTP error: %s", self.name, e)
+            return SendResult(success=False, error=str(e))
+        except Exception as e:  # pragma: no cover - defensive last-resort
+            logger.exception("[%s] Unexpected send error", self.name)
             return SendResult(success=False, error=str(e))
 
     async def send_typing(self, chat_id: str, metadata=None) -> None:
@@ -945,7 +1012,7 @@ class DingTalkAdapter(BasePlatformAdapter):
         inline with markdown so the user still sees the image. Local files need
         OpenAPI media upload and are handled separately.
         """
-        image_block = f"![image]({image_url})"
+        image_block = f"!image"
         content = f"{caption}\n\n{image_block}" if caption else image_block
         return await self.send(
             chat_id=chat_id,
@@ -1127,9 +1194,15 @@ class DingTalkAdapter(BasePlatformAdapter):
             )
             return SendResult(success=True, message_id=out_track_id)
 
-        except Exception as e:
+        except (OSError, httpx.HTTPError, RuntimeError, ValueError, TypeError) as e:
             logger.warning(
                 "[%s] AI Card create failed: %s\n%s",
+                self.name, e, traceback.format_exc(),
+            )
+            return None
+        except Exception as e:  # pragma: no cover - defensive last-resort
+            logger.warning(
+                "[%s] AI Card create unexpected: %s\n%s",
                 self.name, e, traceback.format_exc(),
             )
             return None
@@ -1177,8 +1250,11 @@ class DingTalkAdapter(BasePlatformAdapter):
                 # sibling.
                 self._streaming_cards.setdefault(chat_id, {})[message_id] = content
             return SendResult(success=True, message_id=message_id)
-        except Exception as e:
+        except (OSError, httpx.HTTPError, RuntimeError, ValueError, TypeError) as e:
             logger.warning("[%s] Card edit failed: %s", self.name, e)
+            return SendResult(success=False, error=str(e))
+        except Exception as e:  # pragma: no cover - defensive last-resort
+            logger.exception("[%s] Card edit unexpected error", self.name)
             return SendResult(success=False, error=str(e))
 
     async def _stream_card_content(
@@ -1216,8 +1292,12 @@ class DingTalkAdapter(BasePlatformAdapter):
             # SDK's get_access_token is sync and uses requests
             token = await asyncio.to_thread(self._stream_client.get_access_token)
             return token
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logger.error("[%s] Failed to get access token: %s", self.name, e)
+            return None
+        except Exception as e:  # pragma: no cover - defensive last-resort
+            logger.exception("[%s] Unexpected error getting access token", self.name)
+            logger.error("[%s] Failed to get access token (unexpected): %s", self.name, e)
             return None
 
     async def _send_emotion(
@@ -1286,9 +1366,13 @@ class DingTalkAdapter(BasePlatformAdapter):
                 "[%s] _send_emotion: %s %s on msg=%s",
                 self.name, action, emoji_name, open_msg_id[:24],
             )
-        except Exception:
+        except (OSError, httpx.HTTPError, RuntimeError, ValueError, TypeError) as e:
             logger.debug(
-                "[%s] _send_emotion %s failed", self.name, action, exc_info=True
+                "[%s] _send_emotion %s failed: %s", self.name, action, e,
+            )
+        except Exception as e:  # pragma: no cover - defensive last-resort
+            logger.debug(
+                "[%s] _send_emotion %s failed (unexpected)", self.name, action, exc_info=True
             )
 
     async def _resolve_media_codes(self, message: "ChatbotMessage") -> None:
@@ -1366,8 +1450,11 @@ class DingTalkAdapter(BasePlatformAdapter):
                     self.name,
                     code,
                 )
-        except Exception as e:
+        except (OSError, httpx.HTTPError, RuntimeError, ValueError, TypeError) as e:
             logger.error("[%s] Error resolving media code %s: %s", self.name, code, e)
+        except Exception as e:  # pragma: no cover - defensive last-resort
+            logger.exception("[%s] Unexpected error resolving media code %s", self.name, code)
+            logger.error("[%s] Error resolving media code %s (unexpected): %s", self.name, code, e)
 
     @staticmethod
     def _normalize_markdown(text: str) -> str:
@@ -1485,10 +1572,25 @@ class _IncomingHandler(
             # exceptions inside the task surface in logs instead of
             # disappearing into the event loop.
             asyncio.create_task(self._safe_on_message(chatbot_msg))
-        except Exception:
+        except (AttributeError, KeyError, TypeError, ValueError) as e:
             logger.exception(
-                "[%s] Error preparing incoming message", self._adapter.name
+                "[%s] Error preparing incoming message",
+                self._adapter.name,
             )
+            logger.debug("[%s] prepare-type-error detail: %s", self._adapter.name, e)
+            return AckMessage.STATUS_SYSTEM_EXCEPTION, "error"
+        except json.JSONDecodeError as e:
+            logger.exception(
+                "[%s] Error preparing incoming message (bad JSON)",
+                self._adapter.name,
+            )
+            logger.debug("[%s] prepare-json-error detail: %s", self._adapter.name, e)
+            return AckMessage.STATUS_SYSTEM_EXCEPTION, "error"
+        except Exception as e:  # pragma: no cover - defensive last-resort
+            logger.exception(
+                "[%s] Unexpected error preparing incoming message", self._adapter.name
+            )
+            logger.debug("[%s] prepare-unexpected detail: %s", self._adapter.name, e)
             return AckMessage.STATUS_SYSTEM_EXCEPTION, "error"
 
         return AckMessage.STATUS_OK, "OK"
@@ -1497,7 +1599,13 @@ class _IncomingHandler(
         """Wrapper that catches exceptions from _on_message."""
         try:
             await self._adapter._on_message(chatbot_msg)
-        except Exception:
+        except (OSError, httpx.HTTPError, RuntimeError, ValueError, TypeError):
             logger.exception(
                 "[%s] Error processing incoming message", self._adapter.name
             )
+        except Exception as e:  # pragma: no cover - defensive last-resort
+            logger.exception(
+                "[%s] Unexpected error processing incoming message",
+                self._adapter.name,
+            )
+            logger.debug("[%s] on_message-unexpected detail: %s", self._adapter.name, e)

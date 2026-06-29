@@ -72,7 +72,7 @@ from hermes_cli.config import cfg_get
 
 try:
     from tools.website_policy import check_website_access
-except Exception:
+except ImportError:
     check_website_access = lambda url: None  # noqa: E731 — fail-open if policy module unavailable
 
 try:
@@ -80,7 +80,7 @@ try:
         is_safe_url as _is_safe_url,
         is_always_blocked_url as _is_always_blocked_url,
     )
-except Exception:
+except ImportError:
     _is_safe_url = lambda url: False  # noqa: E731 — fail-closed: block all if safety module unavailable
     _is_always_blocked_url = lambda url: True  # noqa: E731 — fail-closed on the floor too
 # Browser-provider ABC + registry — PR #25214 moved the per-vendor providers
@@ -205,7 +205,8 @@ def _get_command_timeout() -> int:
     """
     global _cached_command_timeout, _command_timeout_resolved
     if _command_timeout_resolved:
-        return _cached_command_timeout  # type: ignore[return-value]
+        assert _cached_command_timeout is not None  # set above when resolved=True
+        return _cached_command_timeout
 
     _command_timeout_resolved = True
     result = DEFAULT_COMMAND_TIMEOUT
@@ -340,7 +341,8 @@ def _get_dialog_policy_config() -> Tuple[str, float]:
         except (TypeError, ValueError):
             timeout_s = DEFAULT_DIALOG_TIMEOUT_S
         return policy, timeout_s
-    except Exception:
+    except Exception as e:
+        logger.debug("Could not read dialog policy from config: %s", e)
         return DEFAULT_DIALOG_POLICY, DEFAULT_DIALOG_TIMEOUT_S
 
 
@@ -375,8 +377,10 @@ def _ensure_cdp_supervisor(task_id: str) -> None:
     if not cdp_url:
         return
     try:
-        from tools.browser_supervisor import SUPERVISOR_REGISTRY  # type: ignore[import-not-found]
-
+        from tools.browser_supervisor import SUPERVISOR_REGISTRY
+    except ImportError:
+        return
+    try:
         policy, timeout_s = _get_dialog_policy_config()
         SUPERVISOR_REGISTRY.get_or_start(
             task_id=task_id,
@@ -395,8 +399,10 @@ def _ensure_cdp_supervisor(task_id: str) -> None:
 def _stop_cdp_supervisor(task_id: str) -> None:
     """Stop the CDP supervisor for ``task_id`` if one exists. No-op otherwise."""
     try:
-        from tools.browser_supervisor import SUPERVISOR_REGISTRY  # type: ignore[import-not-found]
-
+        from tools.browser_supervisor import SUPERVISOR_REGISTRY
+    except ImportError:
+        return
+    try:
         SUPERVISOR_REGISTRY.stop(task_id)
     except Exception as exc:
         logger.debug("CDP supervisor stop for task=%s failed (non-fatal): %s", task_id, exc)
@@ -462,7 +468,8 @@ def _is_legacy_provider_registry_overridden() -> bool:
                 return True
         # Extra keys not in the default registry → also an override.
         return len(_PROVIDER_REGISTRY) != len(_DEFAULT_PROVIDER_REGISTRY)
-    except Exception:
+    except Exception as e:
+        logger.debug("_is_legacy_provider_registry_overridden check failed: %s", e)
         return False
 
 
@@ -547,10 +554,11 @@ def _get_cloud_provider() -> Optional[CloudBrowserProvider]:
                             "config key spelling).",
                             provider_key,
                         )
-            except Exception:
+            except Exception as e:
                 logger.warning(
-                    "Failed to instantiate explicit cloud_provider %r; will retry on next call",
+                    "Failed to instantiate explicit cloud_provider %r; will retry on next call: %s",
                     provider_key,
+                    e,
                     exc_info=True,
                 )
                 return None
@@ -577,8 +585,8 @@ def _get_cloud_provider() -> Optional[CloudBrowserProvider]:
                 fallback_provider = BrowserbaseProvider()
                 if fallback_provider.is_configured():
                     resolved = fallback_provider
-        except Exception:  # pragma: no cover - defensive: never poison cache
-            logger.debug("Cloud provider auto-detect failed", exc_info=True)
+        except Exception as e:  # pragma: no cover - defensive: never poison cache
+            logger.debug("Cloud provider auto-detect failed: %s", e, exc_info=True)
             return None
 
     if resolved is None:
@@ -951,8 +959,8 @@ def _run_chrome_fallback_command(
         # 5. Tear down the temporary Chrome session.
         try:
             _run_tmp("close", [])
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Chrome fallback cleanup close failed (non-fatal): %s", e)
         # Clean up socket directory
         import shutil as _shutil
         _shutil.rmtree(task_socket_dir, ignore_errors=True)
@@ -1840,8 +1848,8 @@ def _find_agent_browser() -> str:
                 _cached_agent_browser = recheck
                 _agent_browser_resolved = True
                 return recheck
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Lazy browser dependency install failed (non-fatal): %s", e)
 
     _agent_browser_resolved = True
     raise FileNotFoundError(
@@ -2248,7 +2256,8 @@ def _extract_relevant_content(
         extracted = (response.choices[0].message.content or "").strip() or _truncate_snapshot(snapshot_text)
         # Redact any secrets the auxiliary LLM may have echoed back.
         return redact_sensitive_text(extracted)
-    except Exception:
+    except Exception as e:
+        logger.debug("LLM content extraction failed, using truncation fallback: %s", e)
         return _truncate_snapshot(snapshot_text)
 
 
@@ -2538,14 +2547,18 @@ def browser_snapshot(
         # supervisor is attached to this task. No-op otherwise. See
         # website/docs/developer-guide/browser-supervisor.md.
         try:
-            from tools.browser_supervisor import SUPERVISOR_REGISTRY  # type: ignore[import-not-found]
-            _supervisor = SUPERVISOR_REGISTRY.get(effective_task_id)
-            if _supervisor is not None:
-                _sv_snap = _supervisor.snapshot()
-                if _sv_snap.active:
-                    response.update(_sv_snap.to_dict())
-        except Exception as _sv_exc:
-            logger.debug("supervisor snapshot merge failed: %s", _sv_exc)
+            from tools.browser_supervisor import SUPERVISOR_REGISTRY
+        except ImportError:
+            pass
+        else:
+            try:
+                _supervisor = SUPERVISOR_REGISTRY.get(effective_task_id)
+                if _supervisor is not None:
+                    _sv_snap = _supervisor.snapshot()
+                    if _sv_snap.active:
+                        response.update(_sv_snap.to_dict())
+            except Exception as _sv_exc:
+                logger.debug("supervisor snapshot merge failed: %s", _sv_exc)
 
         return json.dumps(response, ensure_ascii=False)
     else:
@@ -2825,43 +2838,45 @@ def _browser_eval(expression: str, task_id: Optional[str] = None) -> str:
     # subprocess path on any error so behaviour is unchanged when no
     # supervisor is running (e.g. plain agent-browser without a CDP backend).
     try:
-        from tools.browser_supervisor import SUPERVISOR_REGISTRY  # type: ignore[import-not-found]
-        supervisor = SUPERVISOR_REGISTRY.get(effective_task_id)
-        if supervisor is not None:
-            sup_result = supervisor.evaluate_runtime(expression)
-            if sup_result.get("ok"):
-                raw_result = sup_result.get("result")
-                # Match the agent-browser path: if the value is a JSON string,
-                # parse it so the model gets structured data.
-                parsed = raw_result
-                if isinstance(raw_result, str):
-                    try:
-                        parsed = json.loads(raw_result)
-                    except (json.JSONDecodeError, ValueError):
-                        pass  # keep as string
-                response = {
-                    "success": True,
-                    "result": parsed,
-                    "result_type": type(parsed).__name__,
-                    "method": "cdp_supervisor",
-                }
-                return json.dumps(response, ensure_ascii=False, default=str)
-            # JS exception is a real failure — surface it instead of falling
-            # through to the subprocess path (which would just re-run and
-            # produce the same exception, but slower).
-            err = sup_result.get("error") or "evaluate_runtime failed"
-            if "supervisor" not in err.lower():
-                # Real JS-side error — return it.
-                return json.dumps({"success": False, "error": err}, ensure_ascii=False)
-            # Supervisor-side failure (loop down, no session) — fall through.
-            logger.debug(
-                "browser_eval: supervisor path unavailable (%s), falling back to subprocess",
-                err,
-            )
+        from tools.browser_supervisor import SUPERVISOR_REGISTRY
     except ImportError:
         pass
-    except Exception as exc:  # pragma: no cover — defensive
-        logger.debug("browser_eval: supervisor path errored (%s), falling back", exc)
+    else:
+        try:
+            supervisor = SUPERVISOR_REGISTRY.get(effective_task_id)
+            if supervisor is not None:
+                sup_result = supervisor.evaluate_runtime(expression)
+                if sup_result.get("ok"):
+                    raw_result = sup_result.get("result")
+                    # Match the agent-browser path: if the value is a JSON string,
+                    # parse it so the model gets structured data.
+                    parsed = raw_result
+                    if isinstance(raw_result, str):
+                        try:
+                            parsed = json.loads(raw_result)
+                        except (json.JSONDecodeError, ValueError):
+                            pass  # keep as string
+                    response = {
+                        "success": True,
+                        "result": parsed,
+                        "result_type": type(parsed).__name__,
+                        "method": "cdp_supervisor",
+                    }
+                    return json.dumps(response, ensure_ascii=False, default=str)
+                # JS exception is a real failure — surface it instead of falling
+                # through to the subprocess path (which would just re-run and
+                # produce the same exception, but slower).
+                err = sup_result.get("error") or "evaluate_runtime failed"
+                if "supervisor" not in err.lower():
+                    # Real JS-side error — return it.
+                    return json.dumps({"success": False, "error": err}, ensure_ascii=False)
+                # Supervisor-side failure (loop down, no session) — fall through.
+                logger.debug(
+                    "browser_eval: supervisor path unavailable (%s), falling back to subprocess",
+                    err,
+                )
+        except Exception as exc:  # pragma: no cover — defensive
+            logger.debug("browser_eval: supervisor path errored (%s), falling back", exc)
 
     # --- Fallback: agent-browser CLI subprocess (original path) -------------
     result = _run_browser_command(effective_task_id, "eval", [expression])
@@ -3217,8 +3232,8 @@ def browser_vision(question: str, annotate: bool = False, task_id: Optional[str]
             _vtemp = _vision_cfg.get("temperature")
             if _vtemp is not None:
                 vision_temperature = float(_vtemp)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Could not read vision config, using defaults: %s", e)
 
         call_kwargs = {
             "task": "vision",
@@ -3465,10 +3480,14 @@ def cleanup_all_browsers() -> None:
 
     # Tear down CDP supervisors for all tasks so background threads exit.
     try:
-        from tools.browser_supervisor import SUPERVISOR_REGISTRY  # type: ignore[import-not-found]
-        SUPERVISOR_REGISTRY.stop_all()
-    except Exception:
+        from tools.browser_supervisor import SUPERVISOR_REGISTRY
+    except ImportError:
         pass
+    else:
+        try:
+            SUPERVISOR_REGISTRY.stop_all()
+        except Exception as e:
+            logger.debug("CDP supervisor stop_all failed (non-fatal): %s", e)
 
     # Reset cached lookups so they are re-evaluated on next use.
     global _cached_agent_browser, _agent_browser_resolved

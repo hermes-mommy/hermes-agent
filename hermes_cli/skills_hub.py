@@ -11,6 +11,7 @@ handler are thin wrappers that parse args and delegate.
 """
 
 import json
+import logging
 import re
 import shutil
 from pathlib import Path
@@ -26,6 +27,7 @@ from hermes_constants import display_hermes_home
 from agent.skill_utils import is_excluded_skill_path
 
 _console = Console()
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -121,18 +123,21 @@ def _resolve_source_meta_and_bundle(identifier: str, sources):
                 meta = src.inspect(identifier)
                 if meta:
                     matched_source = src
-            except Exception:
+            except Exception as e:
+                logger.debug("source %s inspect(%r) failed: %s", getattr(src, "source_id", lambda: src), identifier, e)
                 meta = None
         try:
             bundle = src.fetch(identifier)
-        except Exception:
+        except Exception as e:
+            logger.debug("source %s fetch(%r) failed: %s", getattr(src, "source_id", lambda: src), identifier, e)
             bundle = None
         if bundle:
             matched_source = src
             if meta is None:
                 try:
                     meta = src.inspect(identifier)
-                except Exception:
+                except Exception as e:
+                    logger.debug("source %s inspect(%r) failed: %s", getattr(src, "source_id", lambda: src), identifier, e)
                     meta = None
             break
 
@@ -663,7 +668,8 @@ def do_install(identifier: str, category: str = "", force: bool = False,
         try:
             from agent.prompt_builder import clear_skills_system_prompt_cache
             clear_skills_system_prompt_cache(clear_snapshot=True)
-        except Exception:
+        except Exception as e:
+            logger.debug("cache invalidation after install failed: %s", e)
             pass
     else:
         c.print("[dim]Skill will be available in your next session.[/]")
@@ -741,7 +747,8 @@ def browse_skills(page: int = 1, page_size: int = 20, source: str = "all") -> di
         try:
             limit = _PER_SOURCE_LIMIT.get(sid, 50)
             all_results.extend(src.search("", limit=limit))
-        except Exception:
+        except Exception as e:
+            logger.debug("source %s browse search failed: %s", sid, e)
             continue
     if not all_results:
         return {"items": [], "page": 1, "total_pages": 1, "total": 0}
@@ -1018,7 +1025,8 @@ def do_uninstall(name: str, console: Optional[Console] = None,
             try:
                 from agent.prompt_builder import clear_skills_system_prompt_cache
                 clear_skills_system_prompt_cache(clear_snapshot=True)
-            except Exception:
+            except Exception as e:
+                logger.debug("cache invalidation after uninstall failed: %s", e)
                 pass
         else:
             c.print("[dim]Change will take effect in your next session.[/]")
@@ -1065,7 +1073,8 @@ def do_reset(name: str, restore: bool = False,
         try:
             from agent.prompt_builder import clear_skills_system_prompt_cache
             clear_skills_system_prompt_cache(clear_snapshot=True)
-        except Exception:
+        except Exception as e:
+            logger.debug("cache invalidation after reset failed: %s", e)
             pass
     else:
         c.print("[dim]Change will take effect in your next session.[/]")
@@ -1110,7 +1119,8 @@ def do_repair_official(name: str, restore: bool = False,
         try:
             from agent.prompt_builder import clear_skills_system_prompt_cache
             clear_skills_system_prompt_cache(clear_snapshot=True)
-        except Exception:
+        except Exception as e:
+            logger.debug("cache invalidation after repair_official failed: %s", e)
             pass
 
 
@@ -1256,7 +1266,8 @@ def _github_publish(skill_path: Path, skill_name: str, target_repo: str,
             headers=headers, timeout=15,
         )
         default_branch = resp.json().get("default_branch", "main")
-    except Exception:
+    except httpx.HTTPError as e:
+        logger.debug("github: failed to fetch default_branch for %s: %s", target_repo, e)
         default_branch = "main"
 
     # 3. Get the base tree SHA

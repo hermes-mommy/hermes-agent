@@ -29,10 +29,14 @@ sort it out.  Python doesn't get that luxury.
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
+from typing import Any, Optional
 
 __all__ = ["configure_windows_stdio", "is_windows"]
+
+logger = logging.getLogger(__name__)
 
 
 _CONFIGURED = False
@@ -56,14 +60,37 @@ def _flip_console_code_page_to_utf8() -> None:
     try:
         import ctypes
 
-        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
-        # Best-effort; if there's no console attached these just fail silently.
-        kernel32.SetConsoleCP(65001)
-        kernel32.SetConsoleOutputCP(65001)
-    except Exception:
-        # ctypes import, missing kernel32, or non-Windows — any failure here
-        # is non-fatal.  We've still reconfigured Python's own streams below.
-        pass
+        kernel32 = _load_kernel32(ctypes)
+        if kernel32 is None:
+            # Non-Windows or ctypes has no windll attribute — nothing to flip.
+            logger.debug("kernel32 unavailable; skipping console code-page flip")
+            return
+        # Best-effort; if there's no console attached these just fail silently,
+        # but we now log at debug level so an actual problem isn't invisible.
+        try:
+            kernel32.SetConsoleCP(65001)
+            kernel32.SetConsoleOutputCP(65001)
+        except OSError as e:
+            logger.debug("SetConsoleCP / SetConsoleOutputCP failed: %s", e)
+    except ImportError as e:
+        # ctypes not importable (extremely unusual).
+        logger.debug("ctypes import failed; skipping console code-page flip: %s", e)
+    except AttributeError as e:
+        # windll attribute missing on non-Windows / unusual ctypes builds.
+        logger.debug("ctypes.windll unavailable; skipping console code-page flip: %s", e)
+
+
+def _load_kernel32(ctypes_module: Any) -> Optional[Any]:
+    """Return ``ctypes.windll.kernel32`` or None if unavailable.
+
+    Typed shim so the call site stays free of dynamic-attribute silencing
+    — ``ctypes.windll`` carries attributes that mypy strict cannot resolve.
+    Returning ``Optional[Any]`` keeps the caller type-clean.
+    """
+    windll = getattr(ctypes_module, "windll", None)
+    if windll is None:
+        return None
+    return getattr(windll, "kernel32", None)
 
 
 def _reconfigure_stream(stream, *, encoding: str = "utf-8", errors: str = "replace") -> None:
@@ -78,8 +105,12 @@ def _reconfigure_stream(stream, *, encoding: str = "utf-8", errors: str = "repla
         if reconfigure is None:
             return
         reconfigure(encoding=encoding, errors=errors)
-    except Exception:
-        pass
+    except (AttributeError, ValueError, OSError) as e:
+        # Stream is not a TextIOWrapper (AttributeError), encoding is
+        # unsupported (ValueError), or an OS-level error happened while
+        # swapping the underlying buffer (OSError).  All of these are
+        # non-fatal — the surrounding code can still operate on the stream.
+        logger.debug("Stream reconfigure failed for %r: %s", stream, e)
 
 
 def configure_windows_stdio() -> bool:

@@ -13,6 +13,7 @@ concurrently under distinct configurations).
 
 import hashlib
 import json
+import logging
 import os
 import signal
 import subprocess
@@ -22,6 +23,8 @@ from pathlib import Path
 from hermes_constants import get_hermes_home
 from typing import Any, Optional
 from utils import atomic_json_write
+
+logger = logging.getLogger(__name__)
 
 if sys.platform == "win32":
     import msvcrt
@@ -151,15 +154,20 @@ def _read_process_cmdline(pid: int) -> Optional[str]:
     except (OSError, subprocess.TimeoutExpired):
         pass
 
-    # Windows fallback: psutil (already used by _pid_exists)
+    # Windows fallback: psutil (already used by _pid_exists).
+    # psutil ships its own type stubs (psutil-stubs package on PyPI), so the
+    # import works under mypy strict without an annotation override. If the
+    # import or any of the process lookups fail (no psutil installed, PID
+    # vanished, permission denied, etc.) we log and fall through to returning
+    # None — this is a best-effort health probe, not a correctness gate.
     try:
-        import psutil  # type: ignore
+        import psutil
         proc = psutil.Process(pid)
         cmdline_parts = proc.cmdline()
         if cmdline_parts:
             return " ".join(cmdline_parts)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("psutil cmdline probe failed for pid=%s: %s", pid, e)
 
     return None
 
@@ -297,12 +305,13 @@ def _cleanup_invalid_pid_path(pid_path: Path, *, cleanup_stale: bool) -> None:
         return
     try:
         pid_path.unlink(missing_ok=True)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("stale pid file cleanup failed (%s): %s", pid_path, e)
     try:
         _get_gateway_lock_path(pid_path).unlink(missing_ok=True)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("stale gateway-lock cleanup failed (%s): %s",
+                     _get_gateway_lock_path(pid_path), e)
 
 
 def _write_gateway_lock_record(handle) -> None:
@@ -355,7 +364,7 @@ def _pid_exists(pid: int) -> bool:
     scaffold phase before ``psutil`` is pip-installed.
     """
     try:
-        import psutil  # type: ignore
+        import psutil
         return bool(psutil.pid_exists(int(pid)))
     except ImportError:
         pass  # Fall through to stdlib fallback.
@@ -363,7 +372,12 @@ def _pid_exists(pid: int) -> bool:
     if _IS_WINDOWS:
         try:
             import ctypes
-            kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+            # The stubs package does not model Windows DLL dynamic attributes
+            # (ctypes.windll.kernel32 resolves only at runtime on Windows).
+            # Type the binding as Any so callers can treat it as a real Library
+            # object without needing an annotation override per attribute.
+            _windll: Any = ctypes.windll
+            kernel32 = _windll.kernel32
             # Pin return types — default ctypes restype is c_int (signed),
             # which mangles WAIT_* DWORD return codes into negative numbers.
             kernel32.OpenProcess.restype = ctypes.c_void_p
@@ -493,7 +507,8 @@ def write_pid_file() -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(record)
-    except Exception:
+    except Exception as e:
+        logger.exception("failed to write gateway pid file %s: %s", path, e)
         try:
             path.unlink(missing_ok=True)
         except OSError:
@@ -571,8 +586,8 @@ def remove_pid_file() -> None:
                 # PID file belongs to a different process — leave it alone.
                 return
         path.unlink(missing_ok=True)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("remove_pid_file failed for %s: %s", _get_pid_path(), e)
 
 
 def acquire_scoped_lock(scope: str, identity: str, metadata: Optional[dict[str, Any]] = None) -> tuple[bool, Optional[dict[str, Any]]]:
@@ -669,7 +684,8 @@ def acquire_scoped_lock(scope: str, identity: str, metadata: Optional[dict[str, 
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(record, handle)
-    except Exception:
+    except Exception as e:
+        logger.exception("failed to write scoped lock file %s: %s", lock_path, e)
         try:
             lock_path.unlink(missing_ok=True)
         except OSError:

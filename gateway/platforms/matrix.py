@@ -37,7 +37,7 @@ from dataclasses import dataclass
 
 from html import escape as _html_escape
 from pathlib import Path
-from typing import Any, Dict, Optional, Set
+from typing import Any, Callable, Dict, Optional, Set, cast
 
 try:
     from mautrix.types import (
@@ -57,41 +57,45 @@ except ImportError:
     # check_matrix_requirements() will return False and the adapter
     # won't be instantiated in production, but tests may exercise
     # adapter methods so stubs must have the right attributes.
-    ContentURI = EventID = RoomID = SyncToken = UserID = str  # type: ignore[misc,assignment]
+    # Aliases typed as Any so mypy accepts both NewType and plain
+    # str at call sites; class attrs are explicitly annotated.
+    _StubAny = Any
 
-    class _EventTypeStub:  # type: ignore[no-redef]
-        ROOM_MESSAGE = "m.room.message"
-        REACTION = "m.reaction"
-        ROOM_ENCRYPTED = "m.room.encrypted"
-        ROOM_NAME = "m.room.name"
+    ContentURI = EventID = RoomID = SyncToken = UserID = _StubAny
 
-    EventType = _EventTypeStub  # type: ignore[misc,assignment]
+    class _EventTypeStub:
+        ROOM_MESSAGE: str = "m.room.message"
+        REACTION: str = "m.reaction"
+        ROOM_ENCRYPTED: str = "m.room.encrypted"
+        ROOM_NAME: str = "m.room.name"
 
-    class _PaginationDirectionStub:  # type: ignore[no-redef]
-        BACKWARD = "b"
-        FORWARD = "f"
+    EventType = _EventTypeStub
 
-    PaginationDirection = _PaginationDirectionStub  # type: ignore[misc,assignment]
+    class _PaginationDirectionStub:
+        BACKWARD: str = "b"
+        FORWARD: str = "f"
 
-    class _PresenceStateStub:  # type: ignore[no-redef]
-        ONLINE = "online"
-        OFFLINE = "offline"
-        UNAVAILABLE = "unavailable"
+    PaginationDirection = _PaginationDirectionStub
 
-    PresenceState = _PresenceStateStub  # type: ignore[misc,assignment]
+    class _PresenceStateStub:
+        ONLINE: str = "online"
+        OFFLINE: str = "offline"
+        UNAVAILABLE: str = "unavailable"
 
-    class _RoomCreatePresetStub:  # type: ignore[no-redef]
-        PRIVATE = "private_chat"
-        PUBLIC = "public_chat"
-        TRUSTED_PRIVATE = "trusted_private_chat"
+    PresenceState = _PresenceStateStub
 
-    RoomCreatePreset = _RoomCreatePresetStub  # type: ignore[misc,assignment]
+    class _RoomCreatePresetStub:
+        PRIVATE: str = "private_chat"
+        PUBLIC: str = "public_chat"
+        TRUSTED_PRIVATE: str = "trusted_private_chat"
 
-    class _TrustStateStub:  # type: ignore[no-redef]
-        UNVERIFIED = 0
-        VERIFIED = 1
+    RoomCreatePreset = _RoomCreatePresetStub
 
-    TrustState = _TrustStateStub  # type: ignore[misc,assignment]
+    class _TrustStateStub:
+        UNVERIFIED: int = 0
+        VERIFIED: int = 1
+
+    TrustState = _TrustStateStub
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import (
@@ -269,7 +273,9 @@ def check_matrix_requirements() -> bool:
     except Exception as exc:  # pragma: no cover — defensive
         logger.debug("Matrix: lazy_deps lookup failed: %s", exc)
         missing = ()
-        ensure_and_bind = None  # type: ignore[assignment]
+        ensure_and_bind = cast(
+            "Optional[Callable[..., Any]]", None
+        )
 
     if missing or ensure_and_bind is None:
         def _import():
@@ -477,6 +483,7 @@ class MatrixAdapter(BasePlatformAdapter):
         )
         self._pending_text_batches: Dict[str, MessageEvent] = {}
         self._pending_text_batch_tasks: Dict[str, asyncio.Task] = {}
+        self._pending_batch_extra: Dict[str, Dict[str, int]] = {}
 
         # Matrix reaction-based dangerous command approvals.
         self._approval_reaction_map = {
@@ -617,8 +624,12 @@ class MatrixAdapter(BasePlatformAdapter):
                 logger.info(
                     "Matrix: deleted stale device %s from server", client.device_id
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "Matrix: could not delete stale device %s from server: %s",
+                    client.device_id,
+                    exc,
+                )
             try:
                 await olm.share_keys()
             except Exception as exc:
@@ -992,8 +1003,8 @@ class MatrixAdapter(BasePlatformAdapter):
         if self._client:
             try:
                 await self._client.api.session.close()
-            except Exception:
-                pass
+            except (aiohttp.ClientError, OSError, asyncio.TimeoutError) as exc:
+                logger.debug("Matrix: HTTP session close failed during disconnect: %s", exc)
             self._client = None
 
         logger.info("Matrix: disconnected")
@@ -1088,8 +1099,8 @@ class MatrixAdapter(BasePlatformAdapter):
                 )
                 if name_evt and hasattr(name_evt, "name") and name_evt.name:
                     name = name_evt.name
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Matrix: get_state_event(ROOM_NAME) failed for %s: %s", chat_id, exc)
 
         return {"name": name, "type": chat_type}
 
@@ -1104,16 +1115,16 @@ class MatrixAdapter(BasePlatformAdapter):
         if self._client:
             try:
                 await self._client.set_typing(RoomID(chat_id), timeout=30000)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Matrix: send_typing failed for %s: %s", chat_id, exc)
 
     async def stop_typing(self, chat_id: str) -> None:
         """Clear the typing indicator."""
         if self._client:
             try:
                 await self._client.set_typing(RoomID(chat_id), timeout=0)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Matrix: stop_typing failed for %s: %s", chat_id, exc)
 
 
     async def edit_message(
@@ -1343,7 +1354,12 @@ class MatrixAdapter(BasePlatformAdapter):
             if state_store:
                 try:
                     room_encrypted = bool(await state_store.is_encrypted(RoomID(room_id)))
-                except Exception:
+                except Exception as exc:
+                    logger.debug(
+                        "Matrix: is_encrypted() lookup failed for %s: %s (assuming plaintext)",
+                        room_id,
+                        exc,
+                    )
                     room_encrypted = False
                 if room_encrypted:
                     try:
@@ -2297,14 +2313,14 @@ class MatrixAdapter(BasePlatformAdapter):
         existing = self._pending_text_batches.get(key)
         chunk_len = len(event.text or "")
         if existing is None:
-            event._last_chunk_len = chunk_len  # type: ignore[attr-defined]
+            self._pending_batch_extra[key] = {"last_chunk_len": chunk_len}
             self._pending_text_batches[key] = event
         else:
             if event.text:
                 existing.text = (
                     f"{existing.text}\n{event.text}" if existing.text else event.text
                 )
-            existing._last_chunk_len = chunk_len  # type: ignore[attr-defined]
+            self._pending_batch_extra[key] = {"last_chunk_len": chunk_len}
             if event.media_urls:
                 existing.media_urls.extend(event.media_urls)
                 existing.media_types.extend(event.media_types)
@@ -2321,7 +2337,8 @@ class MatrixAdapter(BasePlatformAdapter):
         current_task = asyncio.current_task()
         try:
             pending = self._pending_text_batches.get(key)
-            last_len = getattr(pending, "_last_chunk_len", 0) if pending else 0
+            extra = self._pending_batch_extra.get(key) or {}
+            last_len = extra.get("last_chunk_len", 0) if pending else 0
             if last_len >= self._SPLIT_THRESHOLD:
                 delay = self._text_batch_split_delay_seconds
             else:
@@ -2527,8 +2544,8 @@ class MatrixAdapter(BasePlatformAdapter):
                 members = await state_store.get_members(room_id)
                 if members and len(members) == 2:
                     return True
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Matrix: state_store.get_members failed for %s: %s", room_id, exc)
         return False
 
     async def _refresh_dm_cache(self) -> None:
@@ -2705,8 +2722,13 @@ class MatrixAdapter(BasePlatformAdapter):
                 member = await state_store.get_member(room_id, user_id)
                 if member and getattr(member, "displayname", None):
                     return member.displayname
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(
+                    "Matrix: state_store.get_member failed for %s/%s: %s",
+                    room_id,
+                    user_id,
+                    exc,
+                )
         # Strip the @...:server format to just the localpart.
         if user_id.startswith("@") and ":" in user_id:
             return user_id[1:].split(":")[0]

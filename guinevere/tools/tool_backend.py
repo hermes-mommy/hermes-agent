@@ -23,6 +23,25 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Redis and asyncpg raise their OWN exception hierarchies, which are NOT
+# subclasses of builtins ConnectionError/OSError. Catch them explicitly in the
+# fail-soft durable-queue paths so a downed Redis/PG returns False instead of
+# raising. When the package is absent, a sentinel that matches nothing is fine
+# (the import-guarded code never raises those errors then).
+try:
+    from redis.exceptions import RedisError as _RedisError
+except ImportError:  # pragma: no cover - redis optional
+
+    class _RedisError(Exception):
+        """Sentinel: redis absent; no redis error can be raised."""
+
+try:
+    from asyncpg.exceptions import PostgresError as _PostgresError
+except ImportError:  # pragma: no cover - asyncpg optional
+
+    class _PostgresError(Exception):
+        """Sentinel: asyncpg absent; no asyncpg error can be raised."""
+
 # ---------------------------------------------------------------------------
 # Risk labels — L1-L3 only.  L4 DELETED per ADR-062.
 # ---------------------------------------------------------------------------
@@ -119,7 +138,8 @@ class _DurableQueue:
                 "tool_audit_queue", json.dumps(record.__dict__, default=str)
             )
             return True
-        except Exception:
+        except (ImportError, ModuleNotFoundError, ConnectionError, TimeoutError, OSError, ValueError, _RedisError) as e:
+            logger.debug("durable_queue.redis.fail action_id=%s error=%s", record.action_id, e)
             self._redis = None
 
         # Try PG (slow path)
@@ -149,7 +169,8 @@ class _DurableQueue:
                 json.dumps(record.output, default=str) if record.output else None,
             )
             return True
-        except Exception:
+        except (ImportError, ModuleNotFoundError, ConnectionError, TimeoutError, OSError, ValueError, _PostgresError) as e:
+            logger.debug("durable_queue.pg.fail action_id=%s error=%s", record.action_id, e)
             self._pg_conn = None
 
         # Fail-soft: neither available — logged, not raised.
@@ -287,6 +308,7 @@ class ToolRegistry:
         try:
             result = await backend.dispatch(action, args)
         except Exception as exc:
+            logger.error("tool dispatch failed backend=%s action=%s: %s", backend_name, action, exc, exc_info=True)
             result = {"ok": False, "error": str(exc)}
         elapsed_ms = (time.monotonic() - t0) * 1000
 
@@ -322,8 +344,8 @@ class ToolRegistry:
         # Best-effort durable queue (fail-soft)
         try:
             await _queue.enqueue(record)
-        except Exception:
-            logger.debug("durable_queue.enqueue failed (fail-soft)")
+        except Exception as e:
+            logger.debug("durable_queue.enqueue failed (fail-soft) action_id=%s error=%s", action_id, e)
 
         result["action_id"] = action_id
         result["audit_hash"] = chain

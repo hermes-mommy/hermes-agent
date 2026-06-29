@@ -224,7 +224,8 @@ def _discord_tools_loaded() -> bool:
         cfg = load_config()
         enabled = _get_platform_tools(cfg, "discord", include_default_mcp_servers=False)
         return "discord" in enabled or "discord_admin" in enabled
-    except Exception:
+    except Exception as e:
+        logger.debug("discord-tools config lookup failed; defaulting to False: %s", e)
         return False
 
 
@@ -256,7 +257,8 @@ def build_session_context_prompt(
             entry = platform_registry.get(context.source.platform.value)
             if entry and entry.pii_safe:
                 _is_pii_safe = True
-        except Exception:
+        except Exception as e:
+            logger.debug("platform_registry lookup failed; falling back to built-in PII-safe set: %s", e)
             pass
     redact_pii = redact_pii and _is_pii_safe
     lines = [
@@ -845,7 +847,8 @@ class SessionStore:
         if self._db:
             try:
                 return self._db.session_count() > 1
-            except Exception:
+            except Exception as e:
+                logger.debug("Session DB session_count() failed; falling through to heuristic: %s", e)
                 pass  # fall through to heuristic
         # Fallback: check if sessions.json was loaded with existing data.
         # This covers the rare case where the DB is unavailable.

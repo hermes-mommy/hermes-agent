@@ -113,15 +113,15 @@ def _xai_credentials_present() -> bool:
 
         _read_xai_oauth_tokens()
         return True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("xAI OAuth token check failed; fallthrough to API key: %s", e)
     try:
         from tools.xai_http import get_env_value as _xai_get_env_value
 
         if str(_xai_get_env_value("XAI_API_KEY") or "").strip():
             return True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("xAI API key env check failed; fallthrough to os.environ: %s", e)
     return bool(str(os.environ.get("XAI_API_KEY") or "").strip())
 
 # Platform-scoped toolsets: only appear in the `hermes tools` checklist for
@@ -167,8 +167,8 @@ def _get_effective_configurable_toolsets():
                 continue
             seen.add(entry[0])
             result.append(entry)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Plugin toolset discovery failed: %s", e)
     return result
 
 
@@ -178,7 +178,8 @@ def _get_plugin_toolset_keys() -> set:
         from hermes_cli.plugins import discover_plugins, get_plugin_toolsets
         discover_plugins()  # idempotent — ensures plugins are loaded
         return {ts_key for ts_key, _, _ in get_plugin_toolsets()}
-    except Exception:
+    except Exception as e:
+        logger.debug("Plugin toolset key discovery failed: %s", e)
         return set()
 
 # Platform display config — derived from the canonical registry so every
@@ -601,8 +602,9 @@ def _check_cua_driver_asset_for_arch() -> bool:
                 "    See: https://github.com/trycua/cua/issues/1493"
             )
             return False
-    except Exception:
+    except Exception as e:
         # Network / API failure — proceed and let the installer handle it.
+        logger.debug("CUA release API check failed: %s", e)
         pass
     return True
 
@@ -657,7 +659,8 @@ def install_cua_driver(upgrade: bool = False) -> bool:
                 capture_output=True, text=True, timeout=5,
             ).stdout.strip()
             _print_success(f"    {driver_cmd} already installed: {version or 'unknown version'}")
-        except Exception:
+        except Exception as e:
+            logger.debug("cua-driver --version check failed for installed detection: %s", e)
             _print_success(f"    {driver_cmd} already installed.")
         _print_info("    Grant macOS permissions if not done yet:")
         _print_info("      System Settings > Privacy & Security > Accessibility")
@@ -679,7 +682,8 @@ def install_cua_driver(upgrade: bool = False) -> bool:
                 [driver_cmd, "--version"],
                 capture_output=True, text=True, timeout=5,
             ).stdout.strip()
-        except Exception:
+        except Exception as e:
+            logger.debug("cua-driver --version baseline check failed: %s", e)
             before = ""
     else:
         before = ""
@@ -695,8 +699,8 @@ def install_cua_driver(upgrade: bool = False) -> bool:
                 _print_success(f"    {driver_cmd} upgraded: {before} → {after}")
             elif after:
                 _print_info(f"    {driver_cmd} up to date: {after}")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("cua-driver --version after-upgrade check failed: %s", e)
     return ok
 
 
@@ -1004,7 +1008,8 @@ def _run_post_setup(post_setup_key: str):
         try:
             from hermes_cli.auth import get_xai_oauth_auth_status
             oauth_logged_in = bool(get_xai_oauth_auth_status().get("logged_in"))
-        except Exception:
+        except Exception as e:
+            logger.debug("xAI OAuth status probe failed; treating as not logged in: %s", e)
             oauth_logged_in = False
         existing_api_key = get_env_value("XAI_API_KEY")
 
@@ -1435,7 +1440,8 @@ def _toolset_has_keys(
 
             _provider, client, _model = resolve_vision_provider_client()
             return client is not None
-        except Exception:
+        except Exception as e:
+            logger.debug("Vision provider resolution failed; treating as unconfigured: %s", e)
             return False
 
     if ts_key in {"web", "image_gen", "tts", "browser"}:
@@ -1492,8 +1498,8 @@ def _estimate_tool_tokens() -> Dict[str, int]:
     try:
         import tiktoken
         enc = tiktoken.get_encoding("cl100k_base")
-    except Exception:
-        logger.debug("tiktoken unavailable; skipping tool token estimation")
+    except Exception as e:
+        logger.debug("tiktoken unavailable; skipping tool token estimation: %s", e)
         _tool_token_cache = {}
         return _tool_token_cache
 
@@ -1501,8 +1507,8 @@ def _estimate_tool_tokens() -> Dict[str, int]:
         # Trigger full tool discovery (imports all tool modules).
         import model_tools  # noqa: F401
         from tools.registry import registry
-    except Exception:
-        logger.debug("Tool registry unavailable; skipping token estimation")
+    except Exception as e:
+        logger.debug("Tool registry unavailable; skipping token estimation: %s", e)
         _tool_token_cache = {}
         return _tool_token_cache
 
@@ -1617,14 +1623,16 @@ def _plugin_image_gen_providers() -> list[dict]:
 
         _ensure_plugins_discovered()
         providers = list_providers()
-    except Exception:
+    except Exception as e:
+        logger.debug("Image-gen plugin registry unavailable: %s", e)
         return []
 
     rows: list[dict] = []
     for provider in providers:
         try:
             schema = provider.get_setup_schema()
-        except Exception:
+        except Exception as e:
+            logger.debug("Image-gen provider get_setup_schema failed; skipping: %s", e)
             continue
         if not isinstance(schema, dict):
             continue
@@ -1655,14 +1663,16 @@ def _plugin_video_gen_providers() -> list[dict]:
 
         _ensure_plugins_discovered()
         providers = list_providers()
-    except Exception:
+    except Exception as e:
+        logger.debug("Video-gen plugin registry unavailable: %s", e)
         return []
 
     rows: list[dict] = []
     for provider in providers:
         try:
             schema = provider.get_setup_schema()
-        except Exception:
+        except Exception as e:
+            logger.debug("Video-gen provider get_setup_schema failed; skipping: %s", e)
             continue
         if not isinstance(schema, dict):
             continue
@@ -1708,7 +1718,8 @@ def _plugin_web_search_providers() -> list[dict]:
 
         _ensure_plugins_discovered()
         providers = _list_web_providers()
-    except Exception:
+    except Exception as e:
+        logger.debug("Web-search plugin registry unavailable: %s", e)
         return []
 
     rows: list[dict] = []
@@ -1718,7 +1729,8 @@ def _plugin_web_search_providers() -> list[dict]:
             continue
         try:
             schema = provider.get_setup_schema()
-        except Exception:
+        except Exception as e:
+            logger.debug("Web-search provider get_setup_schema failed; skipping: %s", e)
             continue
         if not isinstance(schema, dict):
             continue
@@ -1763,7 +1775,8 @@ def _plugin_browser_providers() -> list[dict]:
 
         _ensure_plugins_discovered()
         providers = _list_browser_providers()
-    except Exception:
+    except Exception as e:
+        logger.debug("Browser plugin registry unavailable: %s", e)
         return []
 
     rows: list[dict] = []
@@ -1773,7 +1786,8 @@ def _plugin_browser_providers() -> list[dict]:
             continue
         try:
             schema = provider.get_setup_schema()
-        except Exception:
+        except Exception as e:
+            logger.debug("Browser provider get_setup_schema failed; skipping: %s", e)
             continue
         if not isinstance(schema, dict):
             continue
@@ -1814,7 +1828,8 @@ def _plugin_tts_providers() -> list[dict]:
 
         _ensure_plugins_discovered()
         providers = list_providers()
-    except Exception:
+    except Exception as e:
+        logger.debug("TTS plugin registry unavailable: %s", e)
         return []
 
     rows: list[dict] = []
@@ -1827,7 +1842,8 @@ def _plugin_tts_providers() -> list[dict]:
             continue
         try:
             schema = provider.get_setup_schema()
-        except Exception:
+        except Exception as e:
+            logger.debug("TTS provider get_setup_schema failed; skipping: %s", e)
             continue
         if not isinstance(schema, dict):
             continue
@@ -1956,7 +1972,8 @@ def _post_setup_already_installed(post_setup_key: str) -> bool:
         return True
     try:
         return bool(predicate())
-    except Exception:
+    except Exception as e:
+        logger.debug("post-setup predicate raised; treating as installed: %s", e)
         return True
 
 
@@ -2003,9 +2020,11 @@ def _toolset_needs_configuration_prompt(
                 try:
                     if provider.is_available():
                         return False
-                except Exception:
+                except Exception as e:
+                    logger.debug("Image-gen provider is_available failed; continuing: %s", e)
                     continue
-        except Exception:
+        except Exception as e:
+            logger.debug("Image-gen registry lookup failed for needs_configuration: %s", e)
             pass
         return True
     if ts_key == "video_gen":
@@ -2020,9 +2039,11 @@ def _toolset_needs_configuration_prompt(
                 try:
                     if provider.is_available():
                         return False
-                except Exception:
+                except Exception as e:
+                    logger.debug("Video-gen provider is_available failed; continuing: %s", e)
                     continue
-        except Exception:
+        except Exception as e:
+            logger.debug("Video-gen registry lookup failed for needs_configuration: %s", e)
             pass
         return True
 
@@ -2094,7 +2115,8 @@ def _configure_tool_category(
                     force_fresh=force_fresh,
                 ).nous_auth_present
             )
-        except Exception:
+        except Exception as e:
+            logger.debug("Nous subscription feature probe failed; treating as not logged in: %s", e)
             _nous_logged_in = False
 
         provider_choices = []
@@ -2337,14 +2359,16 @@ def _plugin_image_gen_catalog(plugin_name: str):
 
         _ensure_plugins_discovered()
         provider = get_provider(plugin_name)
-    except Exception:
+    except Exception as e:
+        logger.debug("Image-gen catalog get_provider failed: %s", e)
         return {}, None
     if provider is None:
         return {}, None
     try:
         models = provider.list_models() or []
         default = provider.default_model()
-    except Exception:
+    except Exception as e:
+        logger.debug("Image-gen provider list_models failed: %s", e)
         return {}, None
     catalog = {m["id"]: m for m in models if isinstance(m, dict) and "id" in m}
     return catalog, default
@@ -2432,14 +2456,16 @@ def _plugin_video_gen_catalog(plugin_name: str):
 
         _ensure_plugins_discovered()
         provider = get_provider(plugin_name)
-    except Exception:
+    except Exception as e:
+        logger.debug("Video-gen catalog get_provider failed: %s", e)
         return {}, None
     if provider is None:
         return {}, None
     try:
         models = provider.list_models() or []
         default = provider.default_model()
-    except Exception:
+    except Exception as e:
+        logger.debug("Video-gen provider list_models failed: %s", e)
         return {}, None
     catalog = {m["id"]: m for m in models if isinstance(m, dict) and "id" in m}
     return catalog, default
@@ -2634,7 +2660,8 @@ def _configure_provider(
                     force_fresh=force_fresh,
                 )
                 _show_portal_hint = not _features.nous_auth_present
-        except Exception:
+        except Exception as e:
+            logger.debug("Nous subscription managed-sibling probe failed for BYOK hint: %s", e)
             _show_portal_hint = False
 
     if _show_portal_hint:
@@ -2811,7 +2838,8 @@ def _toolset_enabled_for_reconfigure(ts_key: str, config: dict) -> bool:
                 platform,
                 include_default_mcp_servers=False,
             )
-        except Exception:
+        except Exception as e:
+            logger.debug("Platform toolset resolution failed for reconfigure check: %s", e)
             continue
         if ts_key in enabled:
             return True

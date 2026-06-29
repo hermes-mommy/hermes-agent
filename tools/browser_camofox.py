@@ -87,7 +87,8 @@ def check_camofox_available() -> bool:
                 pass
             _vnc_url_checked = True
         return resp.status_code == 200
-    except Exception:
+    except Exception as e:
+        logger.debug("Camofox health check failed: %s", e)
         return False
 
 
@@ -376,8 +377,8 @@ def camofox_navigate(url: str, task_id: Optional[str] = None) -> str:
                 snapshot_text = _truncate_snapshot(snapshot_text)
             result["snapshot"] = snapshot_text
             result["element_count"] = snap_data.get("refsCount", 0)
-        except Exception:
-            pass  # Navigation succeeded; snapshot is a bonus
+        except Exception as e:
+            logger.debug("Post-navigation snapshot failed (non-fatal): %s", e)
 
         return json.dumps(result)
     except requests.HTTPError as e:
@@ -621,8 +622,8 @@ def camofox_vision(question: str, annotate: bool = False,
                     params={"userId": session["user_id"]},
                 )
                 annotation_context = f"\n\nAccessibility tree (element refs for interaction):\n{snap_data.get('snapshot', '')[:3000]}"
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Vision annotation snapshot failed (non-fatal): %s", e)
 
         # Redact secrets from annotation context before sending to vision LLM.
         # The screenshot image itself cannot be redacted, but at least the
@@ -643,7 +644,8 @@ def camofox_vision(question: str, annotate: bool = False,
             _vision_cfg = cfg_get(_cfg, "auxiliary", "vision", default={})
             _vision_timeout = float(_vision_cfg.get("timeout", 120))
             _vision_temperature = float(_vision_cfg.get("temperature", 0.1))
-        except Exception:
+        except Exception as e:
+            logger.debug("Vision config load failed, using defaults: %s", e)
             _vision_timeout = 120.0
             _vision_temperature = 0.1
 

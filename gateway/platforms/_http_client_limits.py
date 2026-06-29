@@ -29,18 +29,26 @@ Override via ``HERMES_GATEWAY_HTTPX_KEEPALIVE_EXPIRY`` /
 from __future__ import annotations
 
 import os
+import types
 
+# ``httpx`` is an optional dependency. Announce the public alias as
+# `ModuleType | None` up-front so the import-guard fallback can assign
+# ``None`` without a mypy ``type: ignore`` workaround.
+httpx: types.ModuleType | None = None
 try:
-    import httpx
+    import httpx as _httpx_module
 except ImportError:  # pragma: no cover — optional dep
-    httpx = None  # type: ignore[assignment]
+    _httpx_module = None
+if _httpx_module is not None:
+    httpx = _httpx_module
+del _httpx_module
 
 
 _DEFAULT_KEEPALIVE_EXPIRY_S = 2.0
 _DEFAULT_MAX_KEEPALIVE = 10
 
 
-def platform_httpx_limits() -> "httpx.Limits | None":
+def platform_httpx_limits() -> httpx.Limits | None:
     """Return ``httpx.Limits`` tuned for persistent platform-adapter clients.
 
     Returns ``None`` when httpx isn't importable, so callers can fall

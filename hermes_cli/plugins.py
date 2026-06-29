@@ -45,7 +45,7 @@ import threading
 import types
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Union, cast
 
 from hermes_constants import get_hermes_home
 from utils import env_var_enabled
@@ -65,9 +65,11 @@ def get_bundled_plugins_dir() -> Path:
     return Path(__file__).resolve().parent.parent / "plugins"
 
 try:
-    import yaml
+    import yaml as _yaml
 except ImportError:  # pragma: no cover – yaml is optional at import time
-    yaml = None  # type: ignore[assignment]
+    _yaml = None
+# yaml is optional at runtime; down-stream callers already guard before use.
+yaml: Any = _yaml
 
 logger = logging.getLogger(__name__)
 
@@ -189,7 +191,8 @@ def _get_disabled_plugins() -> set:
         config = load_config()
         disabled = cfg_get(config, "plugins", "disabled", default=[])
         return set(disabled) if isinstance(disabled, list) else set()
-    except Exception:
+    except (ImportError, AttributeError, ValueError, OSError) as e:
+        logger.debug("Failed to load plugin disabled list: %s", e)
         return set()
 
 
@@ -219,7 +222,8 @@ def _get_enabled_plugins() -> Optional[set]:
         if not isinstance(enabled, list):
             return None
         return set(enabled)
-    except Exception:
+    except (ImportError, AttributeError, ValueError, OSError) as e:
+        logger.debug("Failed to load plugin enabled list: %s", e)
         return None
 
 
@@ -452,8 +456,12 @@ class PluginContext:
                     self.manifest.name, clean,
                 )
                 return
-        except Exception:
-            pass  # If commands module isn't available, skip the check
+        except ImportError as e:
+            # commands module isn't available — skip the conflict check
+            logger.debug(
+                "Plugin '%s' command conflict check skipped (commands module unavailable): %s",
+                self.manifest.name, e,
+            )
 
         self._manager._plugin_commands[clean] = {
             "handler": handler,
@@ -1343,8 +1351,11 @@ class PluginManager:
                                 "treating as kind='model-provider'",
                                 key,
                             )
-                    except Exception:
-                        pass
+                    except (OSError, UnicodeError, ValueError) as e:
+                        # Best-effort source-text sniff for plugin kind — never fatal.
+                        logger.debug(
+                            "Plugin %s kind sniff skipped: %s", key, e,
+                        )
 
             logger.debug(
                 "Parsed manifest: key=%s name=%s kind=%s source=%s path=%s",
@@ -1480,7 +1491,11 @@ class PluginManager:
         ``hermes_plugins.image_gen__openai`` without colliding with any
         future ``tts/openai``.
         """
-        plugin_dir = Path(manifest.path)  # type: ignore[arg-type]
+        # manifest.path is Optional[str]; directory plugin sources always
+        # set it to a real path before reaching us. cast() narrows the
+        # union down to str so mypy is satisfied with no annotation escape.
+        plugin_dir_str: str = cast(str, manifest.path)
+        plugin_dir = Path(plugin_dir_str)
         init_file = plugin_dir / "__init__.py"
         if not init_file.exists():
             raise FileNotFoundError(f"No __init__.py in {plugin_dir}")
@@ -1488,7 +1503,9 @@ class PluginManager:
         # Ensure the namespace parent package exists
         if _NS_PARENT not in sys.modules:
             ns_pkg = types.ModuleType(_NS_PARENT)
-            ns_pkg.__path__ = []  # type: ignore[attr-defined]
+            # ModuleType exposes __path__ only on packages; the namespace
+            # parent stands in for one — cast(...) narrows mypy.
+            ns_pkg.__path__ = cast(Any, [])
             ns_pkg.__package__ = _NS_PARENT
             sys.modules[_NS_PARENT] = ns_pkg
 
@@ -1505,7 +1522,9 @@ class PluginManager:
 
         module = importlib.util.module_from_spec(spec)
         module.__package__ = module_name
-        module.__path__ = [str(plugin_dir)]  # type: ignore[attr-defined]
+        # ModuleType exposes __path__ only on packages; this synthetic
+        # module stands in for a package marker — cast(...) narrows mypy.
+        module.__path__ = cast(Any, [str(plugin_dir)])
         sys.modules[module_name] = module
         spec.loader.exec_module(module)
         return module
@@ -1814,7 +1833,9 @@ def get_plugin_toolsets() -> List[tuple]:
 
     try:
         from tools.registry import registry
-    except Exception:
+    except ImportError as e:
+        # tools.registry unavailable; nothing to expose here.
+        logger.debug("get_plugin_toolsets: registry unavailable: %s", e)
         return []
 
     # Group plugin tool names by their toolset

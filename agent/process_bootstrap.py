@@ -23,12 +23,15 @@ unchanged.
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 import urllib.request
 from typing import Optional
 
 from utils import base_url_hostname, normalize_proxy_url
+
+logger = logging.getLogger(__name__)
 
 
 # Cached at module level so we only pay the OpenAI SDK import cost once
@@ -136,8 +139,12 @@ def _get_proxy_for_base_url(base_url: Optional[str]) -> Optional[str]:
     try:
         if urllib.request.proxy_bypass_environment(host):
             return None
-    except Exception:
-        pass
+    except (ValueError, OSError) as e:
+        # proxy_bypass_environment can raise OSError on malformed proxy
+        # config / bad hostname, and ValueError on parse errors. We treat
+        # both as fail-soft: best-effort to honor NO_PROXY, but never
+        # crash agent boot over a proxy decision.
+        logger.debug("proxy_bypass_environment failed for %s: %s", host, e)
 
     return proxy
 

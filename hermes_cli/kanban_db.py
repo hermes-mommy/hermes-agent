@@ -698,7 +698,8 @@ class Task:
                 parsed = json.loads(row["skills"])
                 if isinstance(parsed, list):
                     skills_value = [str(s) for s in parsed if s]
-            except Exception:
+            except (json.JSONDecodeError, TypeError, ValueError) as e:
+                _log.debug("Skills blob unparseable for task row: %s", e)
                 skills_value = None
         return cls(
             id=row["id"],
@@ -791,7 +792,8 @@ class Run:
     def from_row(cls, row: sqlite3.Row) -> "Run":
         try:
             meta = json.loads(row["metadata"]) if row["metadata"] else None
-        except Exception:
+        except (json.JSONDecodeError, TypeError, ValueError) as e:
+            _log.debug("Run.metadata unparseable: %s", e)
             meta = None
         return cls(
             id=int(row["id"]),
@@ -1321,7 +1323,8 @@ def connect(
                     conn.executescript(SCHEMA_SQL)
                     _migrate_add_optional_columns(conn)
                     _INITIALIZED_PATHS.add(resolved)
-        except Exception:
+        except (sqlite3.Error, OSError) as e:
+            _log.warning("Kanban connect() failed mid-init, closing conn: %s", e)
             conn.close()
             raise
     return conn
@@ -1358,8 +1361,8 @@ def connect_closing(
     finally:
         try:
             conn.close()
-        except Exception:
-            pass
+        except (sqlite3.Error, OSError) as e:
+            _log.debug("close() on kanban conn failed (ignored): %s", e)
 
 
 def init_db(
@@ -1664,8 +1667,8 @@ def _check_file_length_invariant(conn: sqlite3.Connection) -> None:
             )
     except sqlite3.DatabaseError:
         raise
-    except Exception:
-        pass  # I/O errors during check are non-fatal; let normal ops continue
+    except OSError as e:
+        _log.debug("I/O error during torn-extend check (non-fatal): %s", e)
 
 
 @contextlib.contextmanager
@@ -1683,7 +1686,12 @@ def write_txn(conn: sqlite3.Connection):
     conn.execute("BEGIN IMMEDIATE")
     try:
         yield conn
-    except Exception:
+    except Exception as exc:
+        # Body raised an exception — ROLLBACK to release locks. We MUST
+        # catch broadly (any exception in user code reaches here) but
+        # a name-bound `as e` keeps us compliant with the no-bare-except
+        # rule; we re-raise so the caller still sees the original error.
+        _log.debug("write_txn body raised, rolling back: %s", exc)
         try:
             conn.execute("ROLLBACK")
         except sqlite3.OperationalError:
@@ -1721,7 +1729,8 @@ def _claimer_id() -> str:
     import socket
     try:
         host = socket.gethostname() or "unknown"
-    except Exception:
+    except (socket.gaierror, OSError) as e:
+        _log.debug("socket.gethostname() failed; using 'unknown': %s", e)
         host = "unknown"
     return f"{host}:{os.getpid()}"
 
@@ -2252,7 +2261,8 @@ def list_events(conn: sqlite3.Connection, task_id: str) -> list[Event]:
     for r in rows:
         try:
             payload = json.loads(r["payload"]) if r["payload"] else None
-        except Exception:
+        except (json.JSONDecodeError, TypeError, ValueError) as e:
+            _log.debug("Event payload unparseable: %s", e)
             payload = None
         out.append(
             Event(
@@ -3374,8 +3384,8 @@ def _cleanup_workspace(conn: sqlite3.Connection, task_id: str) -> None:
         # Also kill the tmux session for the worker that owned this task,
         # if the tmux session is now dead (worker process exited).
         _cleanup_worker_tmux(conn, task_id)
-    except Exception:
-        pass  # best-effort — never block completion
+    except (OSError, shutil.Error, subprocess.SubprocessError) as e:
+        _log.debug("Workspace cleanup best-effort failed: %s", e)
 
 
 def _cleanup_worker_tmux(conn: sqlite3.Connection, task_id: str) -> None:
@@ -3400,8 +3410,8 @@ def _cleanup_worker_tmux(conn: sqlite3.Connection, task_id: str) -> None:
                 capture_output=True, timeout=5,
             )
             _log.debug("Killed stale tmux session: %s", session)
-    except Exception:
-        pass  # best-effort — never block completion
+    except (OSError, subprocess.SubprocessError, FileNotFoundError) as e:
+        _log.debug("tmux cleanup best-effort failed: %s", e)
 
 
 # ---------------------------------------------------------------------------
@@ -3484,9 +3494,9 @@ def _maybe_emit_scratch_tip(
                 conn, task_id, "tip_scratch_workspace",
                 {"message": _SCRATCH_TIP_MESSAGE},
             )
-    except Exception:
+    except (sqlite3.Error, OSError, TypeError, ValueError) as e:
         # Best-effort — never block the spawn loop over a help message.
-        pass
+        _log.debug("scratch tip best-effort failed: %s", e)
     finally:
         _mark_scratch_tip_shown()
 
@@ -4379,8 +4389,8 @@ def _classify_worker_exit(pid: int) -> "tuple[str, Optional[int]]":
             return ("nonzero_exit", code)
         if os.WIFSIGNALED(raw):
             return ("signaled", os.WTERMSIG(raw))
-    except Exception:
-        pass
+    except (OSError, ValueError, AttributeError) as e:
+        _log.debug("Worker exit decode failed: %s", e)
     return ("unknown", None)
 
 
@@ -4402,8 +4412,8 @@ def reap_worker_zombies() -> "list[int]":
                     break
                 _record_worker_exit(pid, status)
                 reaped.append(pid)
-        except Exception:
-            pass
+        except (ChildProcessError, OSError) as e:
+            _log.debug("reap_worker_zombies loop error: %s", e)
     return reaped
 
 
@@ -4986,7 +4996,7 @@ def detect_crashed_workers(conn: sqlite3.Connection) -> list[str]:
     # Keeps the public return type (``list[str]``) stable for direct callers
     # and tests that destructure the result; ``dispatch_once`` reads this
     # side-channel attribute to populate ``DispatchResult.auto_blocked``.
-    detect_crashed_workers._last_auto_blocked = auto_blocked  # type: ignore[attr-defined]
+    setattr(detect_crashed_workers, "_last_auto_blocked", auto_blocked)
     return crashed
 
 
@@ -5297,8 +5307,9 @@ def has_spawnable_ready(conn: sqlite3.Connection) -> bool:
         return False
     try:
         from hermes_cli.profiles import profile_exists  # local import: avoids cycle
-    except Exception:
+    except (ImportError, AttributeError) as e:
         # Can't introspect — assume spawnable, preserve legacy behavior.
+        _log.debug("has_spawnable_ready: profile_exists import failed: %s", e)
         return True
     for row in rows:
         if profile_exists(row["assignee"]):
@@ -5323,7 +5334,8 @@ def has_spawnable_review(conn: sqlite3.Connection) -> bool:
         return False
     try:
         from hermes_cli.profiles import profile_exists  # local import: avoids cycle
-    except Exception:
+    except (ImportError, AttributeError) as e:
+        _log.debug("has_spawnable_review: profile_exists import failed: %s", e)
         return True
     for row in rows:
         if profile_exists(row["assignee"]):
@@ -5444,10 +5456,11 @@ def dispatch_once(
         # the task would loop back to ``ready`` on next tick, and we'd
         # burn CPU forever (#kanban-dispatcher-crash-loop 2026-05-05).
         try:
-            from hermes_cli.profiles import profile_exists  # local import: avoids cycle
-        except Exception:
-            profile_exists = None  # type: ignore[assignment]
-        if profile_exists is not None and not profile_exists(row["assignee"]):
+            from hermes_cli.profiles import profile_exists as _profile_exists  # local import: avoids cycle
+        except (ImportError, AttributeError) as e:
+            _log.debug("dispatch_once profile_exists import failed: %s", e)
+            _profile_exists = None
+        if _profile_exists is not None and not _profile_exists(row["assignee"]):
             # Bucket separately from skipped_unassigned: the operator
             # cannot fix this by assigning a profile (the assignee IS the
             # intended owner — a terminal lane). Health telemetry uses
@@ -5550,10 +5563,11 @@ def dispatch_once(
             result.skipped_unassigned.append(row["id"])
             continue
         try:
-            from hermes_cli.profiles import profile_exists
-        except Exception:
-            profile_exists = None  # type: ignore[assignment]
-        if profile_exists is not None and not profile_exists(row["assignee"]):
+            from hermes_cli.profiles import profile_exists as _profile_exists
+        except ImportError as exc:
+            _log.debug("profiles module unavailable, skipping spawn check: %s", exc)
+            _profile_exists = None
+        if _profile_exists is not None and not _profile_exists(row["assignee"]):
             result.skipped_nonspawnable.append(row["id"])
             continue
         if dry_run:
@@ -5626,7 +5640,8 @@ def worker_log_rotation_config(kanban_cfg: Optional[dict] = None) -> tuple[int, 
             from hermes_cli.config import load_config
 
             kanban_cfg = (load_config().get("kanban") or {})
-        except Exception:
+        except (ImportError, AttributeError, KeyError, ValueError, OSError) as exc:
+            _log.debug("kanban config load failed, using empty config: %s", exc)
             kanban_cfg = {}
     max_bytes = _positive_int(
         (kanban_cfg or {}).get("worker_log_rotate_bytes"),
@@ -6086,12 +6101,11 @@ def run_daemon(
             if on_tick is not None:
                 try:
                     on_tick(res)
-                except Exception:
-                    pass
-        except Exception:
+                except Exception as exc:
+                    _log.debug("on_tick callback raised, ignoring: %s", exc)
+        except Exception as exc:
             # Don't let any single tick kill the daemon.
-            import traceback
-            traceback.print_exc()
+            _log.exception("kanban daemon tick failed (isolated): %s", exc)
         stop_event.wait(timeout=interval)
 
 
@@ -6197,8 +6211,8 @@ def build_worker_context(conn: sqlite3.Connection, task_id: str) -> str:
                 try:
                     meta_str = json.dumps(run.metadata, ensure_ascii=False, sort_keys=True)
                     lines.append(f"_metadata_: `{_cap(meta_str)}`")
-                except Exception:
-                    pass
+                except (TypeError, ValueError) as exc:
+                    _log.debug("metadata serialization failed, omitting: %s", exc)
             lines.append("")
 
     # Parents: prefer the most-recent 'completed' run's summary + metadata,
@@ -6237,8 +6251,8 @@ def build_worker_context(conn: sqlite3.Connection, task_id: str) -> str:
                 try:
                     meta_str = json.dumps(run.metadata, ensure_ascii=False, sort_keys=True)
                     body_lines.append(f"_metadata_: `{_cap(meta_str)}`")
-                except Exception:
-                    pass
+                except (TypeError, ValueError) as exc:
+                    _log.debug("metadata serialization failed, omitting: %s", exc)
             lines.extend(body_lines)
             lines.append("")
 
@@ -6494,7 +6508,8 @@ def unseen_events_for_sub(
     for r in rows:
         try:
             payload = json.loads(r["payload"]) if r["payload"] else None
-        except Exception:
+        except (json.JSONDecodeError, TypeError, ValueError) as e:
+            _log.debug("Event payload unparseable: %s", e)
             payload = None
         out.append(Event(
             id=r["id"], task_id=r["task_id"], kind=r["kind"],
@@ -6712,7 +6727,8 @@ def list_profiles_on_disk() -> list[str]:
         from hermes_constants import get_default_hermes_root
         default_root = get_default_hermes_root()
         profiles_dir = default_root / "profiles"
-    except Exception:
+    except ImportError as exc:
+        _log.debug("hermes_constants unavailable, cannot list on-disk profiles: %s", exc)
         return []
 
     names: set[str] = set()

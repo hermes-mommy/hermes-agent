@@ -33,11 +33,15 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from abc import ABC, abstractmethod
-from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple
+from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple, cast, TYPE_CHECKING
 
 import sys
 
 import httpx
+
+if TYPE_CHECKING:
+    import websockets as _websockets_typing  # noqa: F401  (only for type checker)
+    import websockets.exceptions as _websockets_exc_typing  # noqa: F401
 
 try:
     import websockets
@@ -45,7 +49,7 @@ try:
     WEBSOCKETS_AVAILABLE = True
 except ImportError:
     WEBSOCKETS_AVAILABLE = False
-    websockets = None  # type: ignore[assignment]
+    websockets: Any = None
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import (
@@ -1055,8 +1059,8 @@ class InboundPipeline:
                     continue
                 try:
                     await handler(ctx, next_fn)
-                except Exception:
-                    logger.error("[InboundPipeline] middleware [%s] error", name, exc_info=True)
+                except Exception as e:
+                    logger.error("[InboundPipeline] middleware [%s] error: %s", name, e, exc_info=True)
                     raise
                 return
             # End of chain — nothing more to do
@@ -1089,7 +1093,8 @@ class DecodeMiddleware(InboundMiddleware):
             if isinstance(msg_content, str):
                 try:
                     msg_content = json.loads(msg_content)
-                except Exception:
+                except (json.JSONDecodeError, TypeError, ValueError) as e:
+                    logger.debug("convert_json_msg_body: failed to parse msg_content JSON: %s", e)
                     msg_content = {"text": msg_content}
             result.append({"msg_type": msg_type, "msg_content": msg_content or {}})
         return result
@@ -1150,7 +1155,8 @@ class DecodeMiddleware(InboundMiddleware):
         """Decode a single raw frame into (push_dict, decoded_via) or (None, '')."""
         try:
             conn_json = json.loads(data.decode("utf-8"))
-        except Exception:
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError, TypeError) as e:
+            logger.debug("[%s] JSON-decode failed for inbound frame: %s", adapter.name, e)
             conn_json = None
 
         if isinstance(conn_json, dict):
@@ -1160,7 +1166,8 @@ class DecodeMiddleware(InboundMiddleware):
         else:
             try:
                 push = decode_inbound_push(data)
-            except Exception:
+            except (ValueError, TypeError, KeyError, AttributeError) as e:
+                logger.debug("[%s] Protobuf-decode failed for inbound frame: %s", adapter.name, e)
                 push = None
             if push:
                 return push, "protobuf"
@@ -1371,7 +1378,8 @@ class RecallGuardMiddleware(InboundMiddleware):
                 sid = store.get_or_create_session(
                     cls._build_source(adapter, group_code, from_account),
                 ).session_id
-            except Exception:
+            except Exception as e:
+                logger.warning("[%s] Recall redact: get_or_create_session failed: %s", adapter.name, e)
                 return
             # Poll until the recalled content appears in transcript — the
             # interrupted turn hasn't finished writing yet when scheduled.
@@ -1379,7 +1387,8 @@ class RecallGuardMiddleware(InboundMiddleware):
                 await asyncio.sleep(0.5)
                 try:
                     transcript = store.load_transcript(sid)
-                except Exception:
+                except Exception as e:
+                    logger.debug("[%s] Recall redact: load_transcript failed: %s", adapter.name, e)
                     continue
                 for entry in transcript:
                     if entry.get("role") == "user" and entry.get("content") == recalled_text:
@@ -1667,7 +1676,8 @@ class ExtractContentMiddleware(InboundMiddleware):
             query = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
             ids = query.get("resourceId") or query.get("resourceid") or []
             return str(ids[0]).strip() if ids else ""
-        except Exception:
+        except (ValueError, TypeError, AttributeError) as e:
+            logger.debug("_parse_resource_id: urlparse failed: %s", e)
             return ""
 
     @classmethod
@@ -2309,7 +2319,8 @@ class MediaResolveMiddleware(InboundMiddleware):
         """
         try:
             parsed = urllib.parse.urlparse(url)
-        except Exception:
+        except (ValueError, TypeError, AttributeError) as e:
+            logger.debug("_resolve_download_url: urlparse failed: %s", e)
             return url
 
         query = urllib.parse.parse_qs(parsed.query)
@@ -2320,7 +2331,8 @@ class MediaResolveMiddleware(InboundMiddleware):
 
         try:
             return await MediaResolveMiddleware._fetch_resource_url(adapter, resource_id)
-        except Exception:
+        except (httpx.HTTPError, OSError, RuntimeError, ValueError) as e:
+            logger.warning("[%s] _resolve_download_url: fetch_resource_url failed: %s", adapter.name, e)
             return url
 
     @classmethod
@@ -2691,8 +2703,8 @@ class DispatchMiddleware(InboundMiddleware):
                     await dispatch_fn()
                     while session_key in adapter._active_sessions:
                         await asyncio.sleep(0.1)
-                except Exception:
-                    logger.exception("[%s] Group queue consumer error", adapter.name)
+                except Exception as e:
+                    logger.exception("[%s] Group queue consumer error: %s", adapter.name, e)
         finally:
             adapter._group_queues.pop(session_key, None)
 
@@ -2784,7 +2796,8 @@ class ConnectionManager:
         if callable(open_attr):
             try:
                 return bool(open_attr())
-            except Exception:
+            except Exception as e:
+                logger.debug("is_connected: open_attr() raised: %s", e)
                 return False
         return False
 
@@ -2819,8 +2832,8 @@ class ConnectionManager:
                 if open_attr is True or (callable(open_attr) and open_attr()):
                     logger.debug("[%s] Already connected, skipping connect()", adapter.name)
                     return True
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("[%s] Idempotency check raised: %s", adapter.name, e)
 
         # Acquire platform-scoped lock to prevent duplicate connections
         if not adapter._acquire_platform_lock(
@@ -2843,7 +2856,7 @@ class ConnectionManager:
             # Step 2: Open WebSocket connection (disable built-in ping/pong)
             logger.info("[%s] Connecting to %s", adapter.name, adapter._ws_url)
             self._ws = await asyncio.wait_for(
-                websockets.connect(  # type: ignore[attr-defined]
+                websockets.connect(
                     adapter._ws_url,
                     ping_interval=None,
                     ping_timeout=None,
@@ -2966,7 +2979,8 @@ class ConnectionManager:
 
                 try:
                     msg = decode_conn_msg(bytes(raw))
-                except Exception:
+                except (ValueError, TypeError, KeyError, AttributeError) as e:
+                    logger.debug("[%s] decode_conn_msg failed during AUTH_BIND: %s", adapter.name, e)
                     continue
 
                 head = msg.get("head", {})
@@ -3058,13 +3072,13 @@ class ConnectionManager:
         """Read WS frames and dispatch by cmd_type."""
         adapter = self._adapter
         try:
-            async for raw in self._ws:  # type: ignore[union-attr]
+            async for raw in self._ws:
                 if not isinstance(raw, (bytes, bytearray)):
                     continue
                 await self._handle_frame(bytes(raw))
         except asyncio.CancelledError:
             pass
-        except websockets.exceptions.ConnectionClosed as close_exc:  # type: ignore[union-attr]
+        except websockets.exceptions.ConnectionClosed as close_exc:
             close_code = getattr(close_exc, 'code', None)
             logger.warning(
                 "[%s] WebSocket connection closed: code=%s reason=%s",
@@ -3191,15 +3205,15 @@ class ConnectionManager:
                 )
                 if from_account:
                     return f"{from_account}:{group_code}"
-        except Exception:
-            pass
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError, TypeError, AttributeError) as e:
+            logger.debug("_extract_sender_key: JSON probe failed: %s", e)
         # Protobuf: try decode_inbound_push for sender info
         try:
             push = decode_inbound_push(raw_data)
             if push:
                 return f"{push.get('from_account', '')}:{push.get('group_code', '')}"
-        except Exception:
-            pass
+        except (ValueError, TypeError, KeyError, AttributeError) as e:
+            logger.debug("_extract_sender_key: protobuf probe failed: %s", e)
         # Fallback: unique key (no aggregation)
         return f"__unknown_{id(raw_data)}"
 
@@ -3284,8 +3298,6 @@ class ConnectionManager:
             return result
         except asyncio.TimeoutError:
             raise
-        except Exception:
-            raise
         finally:
             self._pending_acks.pop(req_id, None)
 
@@ -3330,7 +3342,7 @@ class ConnectionManager:
                     adapter._bot_id = str(token_data["bot_id"])
 
                 self._ws = await asyncio.wait_for(
-                    websockets.connect(  # type: ignore[attr-defined]
+                    cast(Any, websockets).connect(
                         adapter._ws_url,
                         ping_interval=None,
                         ping_timeout=None,
@@ -3389,8 +3401,8 @@ class ConnectionManager:
         if ws is not None:
             try:
                 await ws.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("[%s] _cleanup_ws: ws.close raised: %s", self._adapter.name, e)
 
 class MediaSendHandler(ABC):
     """Abstract base class for media send strategies.
@@ -3892,7 +3904,8 @@ class HeartbeatManager:
 
         except asyncio.CancelledError:
             cancelled = True
-        except Exception:
+        except Exception as e:
+            logger.debug("[%s] ReplyHeartbeat worker error: %s", self._adapter.name, e)
             cancelled = False
         else:
             cancelled = False
@@ -3900,8 +3913,8 @@ class HeartbeatManager:
             if not cancelled:
                 try:
                     await self.send_heartbeat_once(chat_id, WS_HEARTBEAT_FINISH)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("[%s] ReplyHeartbeat worker FINISH failed: %s", self._adapter.name, e)
             self._reply_heartbeat_tasks.pop(chat_id, None)
             self._reply_hb_last_active.pop(chat_id, None)
 
@@ -3917,8 +3930,8 @@ class HeartbeatManager:
         if send_finish:
             try:
                 await self.send_heartbeat_once(chat_id, WS_HEARTBEAT_FINISH)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("[%s] ReplyHeartbeat stop FINISH failed: %s", self._adapter.name, e)
 
     async def close(self) -> None:
         """Cancel all reply heartbeat tasks."""
@@ -4071,8 +4084,8 @@ class MessageSender:
         if self._on_send_finish:
             try:
                 await self._on_send_finish(chat_id)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("[%s] _on_send_finish callback failed: %s", adapter.name, e)
         return SendResult(success=True)
 
     async def send_media(
@@ -4687,8 +4700,8 @@ class YuanbaoAdapter(BasePlatformAdapter):
         """Send "typing" status heartbeat (RUNNING). Delegates to OutboundManager."""
         try:
             await self._outbound.start_typing(chat_id)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("[%s] send_typing failed: %s", self.name, e)
 
     async def stop_typing(self, chat_id: str) -> None:
         """Stop the RUNNING heartbeat loop without sending FINISH immediately.
@@ -4698,8 +4711,8 @@ class YuanbaoAdapter(BasePlatformAdapter):
         """
         try:
             await self._outbound.stop_typing(chat_id, send_finish=False)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("[%s] stop_typing failed: %s", self.name, e)
 
     async def _process_message_background(self, event, session_key: str) -> None:
         """Wrap base class processing with a slow-response notifier."""

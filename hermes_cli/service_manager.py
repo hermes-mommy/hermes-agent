@@ -16,9 +16,12 @@ profile create/delete hooks (Phase 4) and the s6 dispatch path in
 """
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
+
+logger = logging.getLogger(__name__)
 
 ServiceManagerKind = Literal["systemd", "launchd", "windows", "s6", "none"]
 
@@ -829,7 +832,15 @@ class S6ServiceManager:
             _seed_supervise_skeleton(tmp_dir)
 
             tmp_dir.rename(svc_dir)
-        except Exception:
+        except Exception as e:
+            # Cleanup-then-rethrow for file-system failures during slot
+            # assembly. Use the bare-Exception catch so a single failure
+            # type doesn't bypass cleanup. Re-raises so the caller still
+            # sees the original error; we only log for forensics.
+            logger.debug(
+                "register_profile_gateway: wiping partial slot %s after %s: %s",
+                tmp_dir, type(e).__name__, e,
+            )
             shutil.rmtree(tmp_dir, ignore_errors=True)
             raise
 

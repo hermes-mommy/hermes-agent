@@ -17,6 +17,7 @@ Usage examples::
     hermes logs --since 30m -f     # follow, starting 30 min ago
 """
 
+import logging
 import re
 import sys
 import time
@@ -25,6 +26,8 @@ from pathlib import Path
 from typing import Optional, Sequence
 
 from hermes_constants import get_hermes_home, display_hermes_home
+
+logger = logging.getLogger(__name__)
 
 # Known log files (name → filename)
 LOG_FILES = {
@@ -320,12 +323,23 @@ def _read_last_n_lines(path: Path, n: int) -> list:
                     continue
                 try:
                     decoded.append(raw.decode("utf-8", errors="replace") + "\n")
-                except Exception:
+                except (UnicodeDecodeError, LookupError, TypeError, ValueError) as e:
+                    # Fail-soft: fallback to latin-1 which accepts any byte
+                    logger.debug(
+                        "utf-8 decode failed for line in %s, falling back to latin-1: %s",
+                        path, e,
+                    )
                     decoded.append(raw.decode("latin-1") + "\n")
             return decoded[-n:]
 
-    except Exception:
-        # Fallback: read entire file
+    except (OSError, ValueError, OverflowError) as e:
+        # Fail-soft: chunked reading failed (e.g. stat() race, seek on non-regular
+        # file, integer overflow); fall back to naive whole-file read so we still
+        # produce output rather than crashing the CLI.
+        logger.debug(
+            "chunked tail-read failed for %s, falling back to whole-file read: %s",
+            path, e,
+        )
         with open(path, "r", encoding="utf-8", errors="replace") as f:
             all_lines = f.readlines()
         return all_lines[-n:]

@@ -11,9 +11,17 @@ import re
 import threading
 from collections import OrderedDict
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, Callable, Optional, cast
 
 from hermes_constants import get_hermes_home, get_skills_dir, is_wsl
-from typing import Optional
+
+if TYPE_CHECKING:
+    # Importing ``tools.*`` is heavy and only needed when a remote backend is
+    # actually configured. We declare the names we use here purely for the
+    # type checker; the runtime imports at the use site are guarded and
+    # typed via ``typing.cast`` so call sites stay clean.
+    from tools.terminal_tool import _get_env_config
+    from tools.environments import get_environment
 
 from agent.skill_utils import (
     extract_skill_conditions,
@@ -664,16 +672,20 @@ def _probe_remote_backend(env_type: str) -> str | None:
     try:
         # Import locally: tools/ imports are heavy and only relevant when a
         # non-local backend is actually configured.
-        from tools.terminal_tool import _get_env_config  # type: ignore
-        from tools.environments import get_environment  # type: ignore
+        from tools.terminal_tool import _get_env_config
+        from tools.environments import get_environment
     except Exception as e:
         logger.debug("Backend probe unavailable (import failed): %s", e)
         _BACKEND_PROBE_CACHE[cache_key] = ""
         return None
 
     try:
-        config = _get_env_config()
-        env = get_environment(config)
+        # Typed via the module's TYPE_CHECKING block above; runtime imports
+        # are guarded so we cast to keep the type checker happy.
+        _get_env_config_typed = cast(Callable[[], Any], _get_env_config)
+        _get_environment_typed = cast(Callable[[Any], Any], get_environment)
+        config = _get_env_config_typed()
+        env = _get_environment_typed(config)
         # Single-line POSIX probe — works on any Unixy backend. Wrapped in
         # `2>/dev/null` so a missing binary doesn't pollute the output.
         probe_cmd = (
@@ -866,7 +878,11 @@ def _load_skills_snapshot(skills_dir: Path) -> Optional[dict]:
         return None
     try:
         snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
-    except Exception:
+    except (OSError, ValueError) as e:
+        # json.JSONDecodeError and UnicodeDecodeError are ValueError subclasses;
+        # filesystem errors are OSError. Any other failure here is a genuine
+        # bug — let it propagate.
+        logger.debug("Could not read skills prompt snapshot from %s: %s", snapshot_path, e)
         return None
     if not isinstance(snapshot, dict):
         return None

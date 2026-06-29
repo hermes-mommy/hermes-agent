@@ -69,8 +69,10 @@ def _warn_config_parse_failure(config_path: Path, exc: Exception) -> None:
     try:
         sys.stderr.write(f"⚠️  hermes config: {msg}\n")
         sys.stderr.flush()
-    except Exception:
-        pass
+    except (OSError, ValueError) as e:
+        # OSError: stderr closed/redirected/EPIPE. ValueError: I/O on closed stream.
+        # This is best-effort user prompting — never fatal, never logged noisily.
+        logger.debug("Could not write config-parse warning to stderr: %s", e)
 
 _IS_WINDOWS = platform.system() == "Windows"
 _ENV_VAR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -3242,7 +3244,9 @@ def get_missing_skill_config_vars() -> List[Dict[str, Any]]:
     """
     try:
         from agent.skill_utils import discover_all_skill_config_vars, SKILL_CONFIG_PREFIX
-    except Exception:
+    except ImportError as e:
+        # agent.skill_utils is optional; absent (older installs) -> no skill-config prompting.
+        logger.debug("agent.skill_utils unavailable: %s", e)
         return []
 
     try:
@@ -3505,7 +3509,11 @@ def get_custom_provider_context_length(
     if custom_providers is None:
         try:
             custom_providers = get_compatible_custom_providers(config)
-        except Exception:
+        except (ValueError, KeyError, TypeError, AttributeError, OSError) as e:
+            # get_compatible_custom_providers reads/validates the user config;
+            # only structural/IO errors are expected — anything else (e.g.
+            # an unexpected RuntimeError) is a real bug, not data drift.
+            logger.debug("custom_providers lookup failed; falling back to raw config: %s", e)
             if config is None:
                 return None
             raw = config.get("custom_providers")
@@ -3599,7 +3607,8 @@ def validate_config_structure(config: Optional[Dict[str, Any]] = None) -> List["
     if config is None:
         try:
             config = load_config()
-        except Exception:
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            logger.debug("validate_config_structure: load_config failed: %s", e)
             return [ConfigIssue("error", "Could not load config.yaml", "Run 'hermes setup' to create a valid config")]
 
     issues: List[ConfigIssue] = []
@@ -3741,7 +3750,8 @@ def print_config_warnings(config: Optional[Dict[str, Any]] = None) -> None:
     """
     try:
         issues = validate_config_structure(config)
-    except Exception:
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        logger.debug("print_config_warnings: validation failed: %s", e)
         return
     if not issues:
         return
@@ -3766,7 +3776,8 @@ def warn_deprecated_cwd_env_vars(config: Optional[Dict[str, Any]] = None) -> Non
     if config is None:
         try:
             config = load_config()
-        except Exception:
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            logger.debug("warn_deprecated_cwd_env_vars: load_config failed: %s", e)
             return
 
     terminal_cfg = config.get("terminal", {})
@@ -3817,8 +3828,8 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
         fixes = sanitize_env_file()
         if fixes and not quiet:
             print(f"  ✓ Repaired .env file ({fixes} corrupted entries fixed)")
-    except Exception:
-        pass  # best-effort; don't block migration on sanitize failure
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        logger.debug("migrate_config: sanitize_env_file failed (best-effort): %s", e)
 
     # Check config version
     current_ver, latest_ver = check_config_version()
@@ -3871,8 +3882,8 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
                 save_env_value("ANTHROPIC_TOKEN", "")
                 if not quiet:
                     print("  ✓ Cleared ANTHROPIC_TOKEN from .env (no longer used)")
-        except Exception:
-            pass
+        except (OSError, ValueError) as e:
+            logger.debug("migrate_config: ANTHROPIC_TOKEN clear failed (best-effort): %s", e)
 
     # ── Version 11 → 12: migrate custom_providers list → providers dict ──
     if current_ver < 12:
@@ -3904,7 +3915,8 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
                         from urllib.parse import urlparse
                         parsed = urlparse(old_url)
                         key = (parsed.hostname or "endpoint").replace(".", "-")
-                    except Exception:
+                    except (ValueError, AttributeError) as e:
+                        logger.debug("migrate_config: urlparse fallback for key generation: %s", e)
                         key = f"endpoint-{migrated_count}"
 
                 # Don't overwrite existing entries
@@ -3949,8 +3961,8 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
                     save_env_value(dead_var, "")
                     if not quiet:
                         print(f"  ✓ Cleared {dead_var} from .env (no longer used — config.yaml is source of truth)")
-            except Exception:
-                pass
+            except (OSError, ValueError) as e:
+                logger.debug("migrate_config: clearing %s from .env failed (best-effort): %s", dead_var, e)
 
     # ── Version 13 → 14: migrate legacy flat stt.model to provider section ──
     # Old configs (and cli-config.yaml.example) had a flat `stt.model` key
@@ -4115,13 +4127,15 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
                         try:
                             with open(manifest_file, encoding="utf-8") as _mf:
                                 manifest = yaml.safe_load(_mf) or {}
-                        except Exception:
+                        except (OSError, ValueError, yaml.YAMLError) as e:
+                            logger.debug("migrate_config: failed to read plugin manifest %s: %s", manifest_file, e)
                             manifest = {}
                         name = manifest.get("name") or child.name
                         if name in disabled_set:
                             continue
                         grandfathered.append(name)
-            except Exception:
+            except (OSError, ValueError, yaml.YAMLError) as e:
+                logger.debug("migrate_config: plugin grandfather scan failed: %s", e)
                 grandfathered = []
 
             plugins_cfg["enabled"] = grandfathered
@@ -4353,7 +4367,8 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
             config = load_config()
             try:
                 from agent.skill_utils import SKILL_CONFIG_PREFIX
-            except Exception:
+            except (ImportError, ModuleNotFoundError) as e:
+                logger.debug("migrate_config: agent.skill_utils not available, using default prefix: %s", e)
                 SKILL_CONFIG_PREFIX = "skills.config"
             for var in missing_skill_config:
                 default = var.get("default", "")
@@ -4871,7 +4886,8 @@ def load_env() -> Dict[str, str]:
         cache_key = (str(env_path), mtime, size)
     except FileNotFoundError:
         cache_key = (str(env_path), None, None)
-    except Exception:
+    except OSError as e:
+        logger.debug("get_all_env_vars: stat() failed for cache key: %s", e)
         cache_key = None
 
     if cache_key is not None and _env_cache is not None:
@@ -5432,8 +5448,8 @@ def show_config():
                 skill_name = var.get("skill", "")
                 display_val = str(value) if value else color("(not set)", Colors.DIM)
                 print(f"  {key:<20s} {display_val}  {color(f'[{skill_name}]', Colors.DIM)}")
-    except Exception:
-        pass
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        logger.debug("show_config: skill settings display failed: %s", e)
 
     print()
     print(color("─" * 60, Colors.DIM))
@@ -5515,7 +5531,8 @@ def set_config_value(key: str, value: str):
         try:
             with open(config_path, encoding="utf-8") as f:
                 user_config = yaml.safe_load(f) or {}
-        except Exception:
+        except (OSError, ValueError, yaml.YAMLError) as e:
+            logger.debug("set_config_value: failed to read raw config: %s", e)
             user_config = {}
     
     # Handle nested keys (e.g., "tts.provider") including numeric list
@@ -5744,8 +5761,8 @@ def _inject_profile_env_vars() -> None:
                     "category": "provider",
                     "advanced": True,
                 }
-    except Exception:
-        pass
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+        logger.debug("_inject_profile_env_vars: failed to inject profile env vars: %s", e)
 
 
 # Eagerly inject so that OPTIONAL_ENV_VARS is fully populated at import time.
@@ -5786,7 +5803,7 @@ def _inject_platform_plugin_env_vars() -> None:
         return
     _platform_plugin_env_vars_injected = True
     try:
-        import yaml  # type: ignore
+        # yaml already imported at module top
 
         # Resolve the bundled plugins dir from this file's location so the
         # injector works regardless of CWD.
@@ -5805,7 +5822,8 @@ def _inject_platform_plugin_env_vars() -> None:
             try:
                 with open(manifest_path, "r", encoding="utf-8") as f:
                     manifest = yaml.safe_load(f) or {}
-            except Exception:
+            except (OSError, ValueError, yaml.YAMLError) as e:
+                logger.debug("_inject_platform_plugin_env_vars: failed to read %s: %s", manifest_path, e)
                 continue
             label = manifest.get("label") or manifest.get("name") or child.name
             # Merge required + optional env var declarations.
@@ -5841,8 +5859,8 @@ def _inject_platform_plugin_env_vars() -> None:
                     "password": is_secret,
                     "category": meta.get("category") or "messaging",
                 }
-    except Exception:
-        pass
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+        logger.debug("_inject_platform_plugin_env_vars: plugin env injection failed: %s", e)
 
 
 # Eagerly inject so that platform plugin env vars show up in the setup wizard.

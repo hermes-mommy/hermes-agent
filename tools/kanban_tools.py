@@ -55,7 +55,8 @@ def _profile_has_kanban_toolset() -> bool:
         cfg = load_config()
         toolsets = cfg.get("toolsets", [])
         return "kanban" in toolsets
-    except Exception:
+    except Exception as e:
+        logger.debug("kanban config load failed: %s", e)
         return False
 
 

@@ -233,7 +233,8 @@ def _allow_lazy_installs() -> bool:
     try:
         from hermes_cli.config import load_config
         cfg = load_config()
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to load config for lazy-install check: %s", e)
         return True
     sec = cfg.get("security") or {}
     val = sec.get("allow_lazy_installs", True)
@@ -297,7 +298,8 @@ def _is_satisfied(spec: str) -> bool:
         installed = version(pkg)
     except PackageNotFoundError:
         return False
-    except Exception:
+    except Exception as e:
+        logger.debug("Unexpected error looking up metadata for %s: %s", pkg, e)
         return False
 
     spec_tail = _specifier_from_spec(spec)
@@ -335,7 +337,8 @@ def _is_present(spec: str) -> bool:
         return True
     except PackageNotFoundError:
         return False
-    except Exception:
+    except Exception as e:
+        logger.debug("Unexpected error looking up presence for %s: %s", pkg, e)
         return False
 
 
@@ -481,10 +484,11 @@ def ensure(feature: str, *, prompt: bool = True) -> None:
     # just installed something the cache may not see it without a refresh.
     try:
         import importlib.metadata as _md
-        if hasattr(_md, "_cache_clear"):
-            _md._cache_clear()  # type: ignore[attr-defined]
-    except Exception:
-        pass
+        cache_clear = getattr(_md, "_cache_clear", None)
+        if cache_clear is not None:
+            cache_clear()
+    except Exception as e:
+        logger.debug("metadata cache clear skipped: %s", e)
 
     still_missing = feature_missing(feature)
     if still_missing:

@@ -226,7 +226,8 @@ def _is_backend_available(backend: str) -> bool:
         try:
             from tools.xai_http import has_xai_credentials
             return has_xai_credentials()
-        except Exception:
+        except Exception as e:
+            logger.debug("xai credentials probe failed: %s", e)
             return False
     return False
 

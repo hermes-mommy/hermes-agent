@@ -25,8 +25,11 @@ Behaviour:
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 # Path is resolved relative to this module so it works regardless of cwd —
 # matches the pattern used by ``banner._resolve_repo_dir``.
@@ -44,7 +47,8 @@ def get_build_sha(short: int = 8) -> Optional[str]:
         if not _BUILD_SHA_FILE.is_file():
             return None
         sha = _BUILD_SHA_FILE.read_text(encoding="utf-8").strip()
-    except Exception:
+    except Exception as e:
+        logger.debug("failed to read %s: %s", _BUILD_SHA_FILE, e)
         return None
     if not sha:
         return None

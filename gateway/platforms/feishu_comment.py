@@ -987,8 +987,10 @@ def _resolve_model_and_runtime() -> Tuple[str, dict]:
         try:
             from hermes_cli.models import get_default_model_for_provider
             model = get_default_model_for_provider(runtime_kwargs["provider"])
-        except Exception:
-            pass
+        except Exception as e:
+            # Fail-soft: hermes_cli may be unavailable or function may fail;
+            # calling code still returns (model, runtime_kwargs) without default.
+            logger.debug("[Feishu-Comment] _resolve_model_and_runtime: default-model lookup failed: %s", e)
 
     return model, runtime_kwargs
 

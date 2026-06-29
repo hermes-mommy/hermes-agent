@@ -71,7 +71,8 @@ def _guard_agent_created_enabled() -> bool:
             cfg_get(cfg, "skills", "guard_agent_created"),
             default=False,
         )
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to read guard_agent_created config: %s", e)
         return False
 
 
@@ -156,8 +157,8 @@ def _pinned_guard(name: str) -> Optional[str]:
                 f"Patches and edits are allowed on pinned skills; only "
                 f"deletion is blocked."
             )
-    except Exception:
-        logger.debug("pinned-guard lookup failed for %s", name, exc_info=True)
+    except Exception as e:
+        logger.debug("pinned-guard lookup failed for %s: %s", name, e, exc_info=True)
     return None
 
 
@@ -308,12 +309,14 @@ def _find_skill_in_other_profiles(name: str) -> List[Tuple[str, Path]]:
     try:
         from hermes_constants import get_default_hermes_root
         from agent.skill_utils import is_excluded_skill_path
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to import skill_utils for cross-profile lookup: %s", e)
         return matches
 
     try:
         root = get_default_hermes_root()
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to resolve default hermes root: %s", e)
         return matches
 
     # Collect (profile_name, skills_dir) for every profile EXCEPT the
@@ -460,8 +463,9 @@ def _atomic_write_text(file_path: Path, content: str, encoding: str = "utf-8") -
         with os.fdopen(fd, "w", encoding=encoding) as f:
             f.write(content)
         atomic_replace(temp_path, file_path)
-    except Exception:
+    except Exception as e:
         # Clean up temp file on error
+        logger.debug("Atomic write to %s failed: %s", file_path, e)
         try:
             os.unlink(temp_path)
         except OSError:
@@ -619,8 +623,8 @@ def _patch_skill(
         try:
             from tools.fuzzy_match import format_no_match_hint
             err_msg += format_no_match_hint(match_error, match_count, old_string, content)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to format no-match hint: %s", e)
         return {
             "success": False,
             "error": err_msg,
@@ -869,8 +873,8 @@ def skill_manage(
         try:
             from agent.prompt_builder import clear_skills_system_prompt_cache
             clear_skills_system_prompt_cache(clear_snapshot=True)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to clear skills prompt cache: %s", e)
         # Curator telemetry: bump patch_count on edit/patch/write_file (the actions
         # that mutate an existing skill's guidance), drop the record on delete.
         # Only mark a skill as agent-created when the background self-improvement
@@ -887,8 +891,8 @@ def skill_manage(
                 bump_patch(name)
             elif action == "delete":
                 forget(name)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Skill usage telemetry update failed: %s", e)
 
     return json.dumps(result, ensure_ascii=False)
 

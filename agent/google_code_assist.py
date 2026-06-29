@@ -161,8 +161,13 @@ def _post_json(
         detail = ""
         try:
             detail = exc.read().decode("utf-8", errors="replace")
-        except Exception:
-            pass
+        except Exception as e:
+            # Fail-soft: if the error body can't be read/decoded, fall back to
+            # an empty detail string so the outer except can still surface a
+            # useful CodeAssistError. Decode/socket failures (OSError,
+            # UnicodeDecodeError, AttributeError) are all expected here.
+            logger.debug("Could not decode HTTPError body for logging: %s", e)
+            detail = ""
         # Special case: VPC-SC violation should be distinguishable
         if _is_vpc_sc_violation(detail):
             raise CodeAssistError(

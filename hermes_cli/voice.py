@@ -252,8 +252,8 @@ def _beeps_enabled() -> bool:
         voice_cfg = load_config().get("voice", {})
         if isinstance(voice_cfg, dict):
             return bool(voice_cfg.get("beep_enabled", True))
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("voice config lookup failed; using beep_default=True: %s", exc)
     return True
 
 
@@ -349,8 +349,8 @@ def stop_and_transcribe() -> Optional[str]:
         try:
             if os.path.isfile(wav_path):
                 os.unlink(wav_path)
-        except Exception:
-            pass
+        except (OSError,) as cleanup_err:
+            logger.debug("failed to unlink push-to-talk wav: %s", cleanup_err)
 
     # transcribe_recording returns {"success": bool, "transcript": str, ...}
     # — matches cli.py:_voice_stop_and_transcribe's result.get("transcript").
@@ -438,8 +438,8 @@ def start_continuous(
     if on_status:
         try:
             on_status("listening")
-        except Exception:
-            pass
+        except Exception as cb_err:
+            logger.debug("start_continuous on_status callback raised: %s", cb_err)
 
     return True
 
@@ -478,8 +478,11 @@ def stop_continuous(force_transcribe: bool = False) -> None:
             if on_status:
                 try:
                     on_status("transcribing")
-                except Exception:
-                    pass
+                except Exception as cb_err:
+                    logger.debug(
+                        "stop_continuous on_status('transcribing') callback raised: %s",
+                        cb_err,
+                    )
             try:
                 wav_path = rec.stop()
             except Exception as e:
@@ -530,8 +533,11 @@ def stop_continuous(force_transcribe: bool = False) -> None:
                         if should_halt and on_silent_limit:
                             try:
                                 on_silent_limit()
-                            except Exception:
-                                pass
+                            except Exception as cb_err:
+                                logger.debug(
+                                    "stop_transcribe_and_cleanup on_silent_limit callback raised: %s",
+                                    cb_err,
+                                )
 
                     _play_beep(frequency=660, count=2)
                     with _continuous_lock:
@@ -539,8 +545,11 @@ def stop_continuous(force_transcribe: bool = False) -> None:
                     if on_status:
                         try:
                             on_status("idle")
-                        except Exception:
-                            pass
+                        except Exception as cb_err:
+                            logger.debug(
+                                "stop_transcribe_and_cleanup on_status('idle') callback raised: %s",
+                                cb_err,
+                            )
 
             threading.Thread(target=_transcribe_and_cleanup, daemon=True).start()
             return
@@ -562,8 +571,10 @@ def stop_continuous(force_transcribe: bool = False) -> None:
     if on_status:
         try:
             on_status("idle")
-        except Exception:
-            pass
+        except Exception as cb_err:
+            logger.debug(
+                "stop_continuous on_status('idle') callback raised: %s", cb_err
+            )
 
 
 def is_continuous_active() -> bool:
@@ -599,8 +610,11 @@ def _continuous_on_silence() -> None:
     if on_status:
         try:
             on_status("transcribing")
-        except Exception:
-            pass
+        except Exception as cb_err:
+            logger.debug(
+                "_continuous_on_silence on_status('transcribing') callback raised: %s",
+                cb_err,
+            )
 
     wav_path = rec.stop()
     # Peak RMS is the critical diagnostic when stop() returns None despite
@@ -640,8 +654,10 @@ def _continuous_on_silence() -> None:
             try:
                 if os.path.isfile(wav_path):
                     os.unlink(wav_path)
-            except Exception:
-                pass
+            except (OSError,) as cleanup_err:
+                logger.debug(
+                    "_continuous_on_silence failed to unlink wav: %s", cleanup_err
+                )
 
     with _continuous_lock:
         if not _continuous_active:
@@ -669,17 +685,26 @@ def _continuous_on_silence() -> None:
         if on_silent_limit:
             try:
                 on_silent_limit()
-            except Exception:
-                pass
+            except Exception as cb_err:
+                logger.debug(
+                    "_continuous_on_silence on_silent_limit callback raised: %s",
+                    cb_err,
+                )
         try:
             rec.cancel()
-        except Exception:
-            pass
+        except (OSError, RuntimeError) as cancel_err:
+            logger.debug(
+                "_continuous_on_silence rec.cancel raised during halt: %s",
+                cancel_err,
+            )
         if on_status:
             try:
                 on_status("idle")
-            except Exception:
-                pass
+            except Exception as cb_err:
+                logger.debug(
+                    "_continuous_on_silence on_status('idle') callback raised (halt path): %s",
+                    cb_err,
+                )
         return
 
     # CLI parity (cli.py:10619-10621): wait for any in-flight TTS to
@@ -713,15 +738,21 @@ def _continuous_on_silence() -> None:
             if on_status:
                 try:
                     on_status("idle")
-                except Exception:
-                    pass
+                except Exception as cb_err:
+                    logger.debug(
+                        "_continuous_on_silence on_status('idle') callback raised (restart-fail path): %s",
+                        cb_err,
+                    )
             return
 
         if on_status:
             try:
                 on_status("listening")
-            except Exception:
-                pass
+            except Exception as cb_err:
+                logger.debug(
+                    "_continuous_on_silence on_status('listening') callback raised: %s",
+                    cb_err,
+                )
     else:
         # Do not auto-restart. Clean up state and notify idle.
         _debug("_continuous_on_silence: auto_restart=False, stopping loop")
@@ -730,8 +761,11 @@ def _continuous_on_silence() -> None:
         if on_status:
             try:
                 on_status("idle")
-            except Exception:
-                pass
+            except Exception as cb_err:
+                logger.debug(
+                    "_continuous_on_silence on_status('idle') callback raised (no-restart path): %s",
+                    cb_err,
+                )
 
 
 # ── TTS API ──────────────────────────────────────────────────────────

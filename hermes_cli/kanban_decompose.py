@@ -36,10 +36,12 @@ Design notes
 
 from __future__ import annotations
 
+import importlib
 import json
 import logging
 import os
 import re
+import sqlite3
 from dataclasses import dataclass
 from typing import Optional
 
@@ -173,7 +175,8 @@ def _load_config() -> dict:
     try:
         from hermes_cli.config import load_config
         return load_config() or {}
-    except Exception:
+    except Exception as exc:
+        logger.debug("decompose: load_config failed: %s", exc)
         return {}
 
 
@@ -189,12 +192,13 @@ def _resolve_orchestrator_profile(cfg: dict) -> str:
         try:
             if profiles_mod.profile_exists(explicit):
                 return explicit
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("decompose: profile_exists(%r) failed: %s", explicit, exc)
     # Fall back to the active default profile.
     try:
         return profiles_mod.get_active_profile_name() or "default"
-    except Exception:
+    except Exception as exc:
+        logger.debug("decompose: get_active_profile_name failed: %s", exc)
         return "default"
 
 
@@ -206,11 +210,12 @@ def _resolve_default_assignee(cfg: dict) -> str:
         try:
             if profiles_mod.profile_exists(explicit):
                 return explicit
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("decompose: profile_exists(%r) failed: %s", explicit, exc)
     try:
         return profiles_mod.get_active_profile_name() or "default"
-    except Exception:
+    except Exception as exc:
+        logger.debug("decompose: get_active_profile_name failed: %s", exc)
         return "default"
 
 
@@ -298,11 +303,10 @@ def decompose_task(
     roster, valid_names = _build_roster()
 
     try:
-        from agent.auxiliary_client import (  # type: ignore
-            get_auxiliary_extra_body,
-            get_text_auxiliary_client,
-        )
-    except Exception as exc:
+        _aux_module = importlib.import_module("agent.auxiliary_client")
+        get_auxiliary_extra_body = getattr(_aux_module, "get_auxiliary_extra_body")
+        get_text_auxiliary_client = getattr(_aux_module, "get_text_auxiliary_client")
+    except (ImportError, AttributeError) as exc:
         logger.debug("decompose: auxiliary client import failed: %s", exc)
         return DecomposeOutcome(task_id, False, "auxiliary client unavailable")
 
@@ -343,7 +347,8 @@ def decompose_task(
 
     try:
         raw = resp.choices[0].message.content or ""
-    except Exception:
+    except Exception as exc:
+        logger.debug("decompose: could not read response content: %s", exc)
         raw = ""
 
     parsed = _extract_json_blob(raw)
@@ -450,7 +455,7 @@ def decompose_task(
             )
     except ValueError as exc:
         return DecomposeOutcome(task_id, False, f"DB rejected graph: {exc}")
-    except Exception as exc:
+    except sqlite3.Error as exc:
         logger.exception("decompose: DB error on task %s", task_id)
         return DecomposeOutcome(task_id, False, f"DB error: {type(exc).__name__}")
 

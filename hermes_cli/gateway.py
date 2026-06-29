@@ -144,11 +144,12 @@ def _get_parent_pid(pid: int) -> int | None:
     if pid <= 1:
         return None
     try:
-        import psutil  # type: ignore
+        import psutil
         return psutil.Process(pid).ppid() or None
     except ImportError:
         pass
-    except Exception:
+    except (OSError, psutil.Error) as e:
+        logger.debug("psutil parent-lookup failed for pid %s: %s", pid, e)
         return None
     # Fallback: shell out to ps (POSIX only — bare ``ps`` doesn't exist on Windows).
     if not shutil.which("ps"):
@@ -418,7 +419,8 @@ def _scan_gateway_pids(exclude_pids: set[int], all_profiles: bool = False) -> li
                         except (OSError, PermissionError):
                             continue
                     _found_via_proc = True
-                except Exception:
+                except (OSError, ValueError) as e:
+                    logger.debug("/proc scan failed: %s", e)
                     pass
 
             if not _found_via_proc:
@@ -486,7 +488,7 @@ def _filter_venv_launcher_stubs(pids: list[int]) -> list[int]:
     on Windows by the caller because the stub pattern is Windows-specific.
     """
     try:
-        import psutil  # type: ignore
+        import psutil
     except ImportError:
         return pids
 
@@ -527,7 +529,8 @@ def find_gateway_pids(exclude_pids: set | None = None, all_profiles: bool = Fals
             from gateway.status import get_running_pid
 
             _append_unique_pid(pids, get_running_pid(), _exclude)
-        except Exception:
+        except (OSError, ImportError) as e:
+            logger.debug("read profile PID failed: %s", e)
             pass
     for pid in _get_service_pids():
         _append_unique_pid(pids, pid, _exclude)
@@ -545,14 +548,16 @@ def find_profile_gateway_processes(
     try:
         from gateway.status import get_running_pid
         from hermes_cli.profiles import list_profiles
-    except Exception:
+    except (ImportError, AttributeError) as e:
+        logger.debug("profile-list import failed: %s", e)
         return processes
 
     seen: set[int] = set()
     for profile in list_profiles():
         try:
             pid = get_running_pid(profile.path / "gateway.pid", cleanup_stale=False)
-        except Exception:
+        except (OSError, ValueError) as e:
+            logger.debug("get_running_pid failed for profile %s: %s", profile.name, e)
             continue
         if pid is None or pid <= 0 or pid in _exclude or pid in seen:
             continue
@@ -781,7 +786,8 @@ def _read_gateway_runtime_status() -> dict | None:
         from gateway.status import read_runtime_status
 
         state = read_runtime_status()
-    except Exception:
+    except (OSError, ValueError, TypeError) as e:
+        logger.debug("read_runtime_status failed: %s", e)
         return None
     return state if isinstance(state, dict) else None
 
@@ -822,7 +828,8 @@ def _wait_for_systemd_service_restart(
             from gateway.status import get_running_pid
 
             new_pid = get_running_pid()
-        except Exception:
+        except (OSError, ValueError) as e:
+            logger.debug("get_running_pid failed: %s", e)
             new_pid = None
         if not new_pid:
             new_pid = _systemd_main_pid_from_props(props)
@@ -908,7 +915,8 @@ def _recover_pending_systemd_restart(system: bool = False, previous_pid: int | N
 
     try:
         from gateway.status import read_runtime_status
-    except Exception:
+    except (ImportError, AttributeError) as e:
+        logger.debug("read_runtime_status import failed: %s", e)
         return False
 
     runtime_state = read_runtime_status() or {}
@@ -991,7 +999,8 @@ def get_gateway_runtime_snapshot(system: bool = False) -> GatewayRuntimeSnapshot
                     manager="s6 (container supervisor)",
                     gateway_pids=gateway_pids,
                 )
-        except Exception:
+        except (ImportError, AttributeError, OSError) as e:
+            logger.debug("service_manager detection failed: %s", e)
             pass  # Fall through to the legacy label on any detection error.
         return GatewayRuntimeSnapshot(
             manager="docker (foreground)",
@@ -1063,7 +1072,8 @@ def _print_other_profiles_gateway_status() -> None:
         print("Other profiles:")
         for proc in other_processes:
             print(f"  ✓ {proc.profile:<16s} — PID {proc.pid}")
-    except Exception:
+    except (ImportError, AttributeError, OSError) as e:
+        logger.debug("other-profiles status failed: %s", e)
         pass
 
 
@@ -1076,7 +1086,8 @@ def _gateway_list() -> None:
     """
     try:
         from hermes_cli.profiles import list_profiles, get_active_profile_name
-    except Exception:
+    except (ImportError, AttributeError) as e:
+        logger.debug("profiles import failed: %s", e)
         print("Unable to list profiles.")
         return
 
@@ -1100,7 +1111,8 @@ def _gateway_list() -> None:
                 pid = get_running_pid(prof.path / "gateway.pid", cleanup_stale=False)
                 if pid:
                     parts.append(f"PID {pid}")
-            except Exception:
+            except (OSError, ValueError) as e:
+                logger.debug("get_running_pid failed: %s", e)
                 pass
         else:
             parts.append("not running")
@@ -1155,7 +1167,8 @@ def stop_profile_gateway() -> bool:
     try:
         from gateway.status import write_planned_stop_marker
         write_planned_stop_marker(pid)
-    except Exception:
+    except (ImportError, AttributeError, OSError) as e:
+        logger.debug("write_planned_stop_marker failed: %s", e)
         pass
 
     try:
@@ -1913,7 +1926,8 @@ def get_systemd_linger_status() -> tuple[bool | None, str]:
         try:
             import pwd
             username = pwd.getpwuid(os.getuid()).pw_name  # windows-footgun: ok — POSIX loginctl helper, never invoked on Windows
-        except Exception:
+        except (ImportError, KeyError, OSError) as e:
+            logger.debug("pwd username lookup failed: %s", e)
             return None, "could not determine current user"
 
     try:
@@ -2578,7 +2592,8 @@ def systemd_stop(system: bool = False):
         pid = get_running_pid(cleanup_stale=False)
         if pid is not None:
             write_planned_stop_marker(pid)
-    except Exception:
+    except (ImportError, AttributeError, OSError) as e:
+        logger.debug("stop-marker setup failed: %s", e)
         pass
     try:
         _run_systemctl(["stop", get_service_name()], system=system, check=True, timeout=90)
@@ -2990,7 +3005,8 @@ def launchd_stop():
         pid = get_running_pid(cleanup_stale=False)
         if pid is not None:
             write_planned_stop_marker(pid)
-    except Exception:
+    except (ImportError, AttributeError, OSError) as e:
+        logger.debug("stop-marker setup failed: %s", e)
         pass
     # bootout unloads the service definition so KeepAlive doesn't respawn
     # the process.  A plain `kill SIGTERM` only signals the process — launchd
@@ -3201,13 +3217,14 @@ def run_gateway(verbose: int = 0, quiet: bool = False, replace: bool = False):
         # handlers above.
         try:
             import ctypes
-            kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+            kernel32 = getattr(ctypes.windll, "kernel32", None)
             # BOOL SetConsoleCtrlHandler(NULL, Add)  —  Add=TRUE means
             # "install the NULL handler", which has the documented
             # effect of ignoring Ctrl+C. Called twice for defense in
             # depth: once before any Python import could have flipped
             # our disposition, once as our last word.
-            kernel32.SetConsoleCtrlHandler(None, 1)
+            if kernel32 is not None:
+                kernel32.SetConsoleCtrlHandler(None, 1)
         except (OSError, AttributeError):
             pass
 
@@ -3222,7 +3239,8 @@ def run_gateway(verbose: int = 0, quiet: bool = False, replace: bool = False):
     if supports_systemd_services():
         try:
             refresh_systemd_unit_if_needed(system=False)
-        except Exception:
+        except (OSError, RuntimeError, subprocess.SubprocessError) as e:
+            logger.debug("refresh_systemd_unit_if_needed failed: %s", e)
             pass  # best-effort; don't block gateway startup
     
     from gateway.run import start_gateway
@@ -3272,7 +3290,8 @@ def run_gateway(verbose: int = 0, quiet: bool = False, replace: bool = False):
             import json as _json
             with open(log_dir / "gateway-exit-diag.log", "a", encoding="utf-8") as f:
                 f.write(_json.dumps(line, default=str) + "\n")
-        except Exception:
+        except (OSError, TypeError, ValueError) as e:
+            logger.debug("exit-diagnostic write failed: %s", e)
             pass  # never let the diagnostic itself crash the gateway
 
     _exit_diag(
@@ -3724,7 +3743,8 @@ def _all_platforms() -> list[dict]:
 
     try:
         from gateway.platform_registry import platform_registry
-    except Exception:
+    except (ImportError, AttributeError) as e:
+        logger.debug("platform_registry import failed: %s", e)
         return platforms
 
     for entry in platform_registry.all_entries():
@@ -3757,7 +3777,8 @@ def _platform_status(platform: dict) -> str:
                 from gateway.config import PlatformConfig
                 synthetic = PlatformConfig(enabled=True)
                 configured = bool(entry.is_connected(synthetic))
-            except Exception:
+            except (ImportError, AttributeError, TypeError, ValueError) as e:
+                logger.debug("is_connected hook failed: %s", e)
                 configured = False
         else:
             # No is_connected hook — fall back to check_fn as a coarse
@@ -3767,7 +3788,8 @@ def _platform_status(platform: dict) -> str:
             # report the platform as ready.
             try:
                 configured = bool(entry.check_fn())
-            except Exception:
+            except (ImportError, AttributeError, TypeError, ValueError) as e:
+                logger.debug("check_fn failed: %s", e)
                 configured = False
         return "configured" if configured else "not configured"
 
@@ -3824,7 +3846,8 @@ def _runtime_health_lines() -> list[str]:
     """Summarize the latest persisted gateway runtime health state."""
     try:
         from gateway.status import read_runtime_status
-    except Exception:
+    except (ImportError, AttributeError) as e:
+        logger.debug("read_runtime_status import failed: %s", e)
         return []
 
     state = read_runtime_status()

@@ -117,7 +117,12 @@ def _load_dashboard_section() -> dict:
     """
     try:
         from hermes_cli.config import load_config
-    except Exception:
+    except ImportError as import_err:
+        _log.debug(
+            "dashboard-auth.prefix: load_config import unavailable (%s); "
+            "falling back to env-only configuration",
+            import_err,
+        )
         return {}
     try:
         cfg = load_config()

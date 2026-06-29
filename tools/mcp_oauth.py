@@ -56,7 +56,7 @@ logger = logging.getLogger(__name__)
 # Lazy imports -- MCP SDK with OAuth support is optional
 # ---------------------------------------------------------------------------
 
-_OAUTH_AVAILABLE=False
+_OAUTH_AVAILABLE = False
 try:
     from mcp.client.auth import OAuthClientProvider
     from mcp.shared.auth import (
@@ -65,15 +65,11 @@ try:
         OAuthMetadata,
         OAuthToken,
     )
+    from pydantic import AnyUrl
 
-    _OAUTH_AVAILABLE=True
+    _OAUTH_AVAILABLE = True
 except ImportError:
     logger.debug("MCP OAuth types not available -- OAuth MCP auth disabled")
-
-try:
-    from pydantic import AnyUrl
-except ImportError:
-    AnyUrl = None  # type: ignore[assignment, misc]
 
 
 # ---------------------------------------------------------------------------
@@ -442,7 +438,8 @@ async def _redirect_handler(authorization_url: str) -> None:
                 print("  (Browser opened automatically.)\n", file=sys.stderr)
             else:
                 print("  (Could not open browser — please open the URL manually.)\n", file=sys.stderr)
-        except Exception:
+        except Exception as exc:
+            logger.debug("webbrowser.open failed: %s", exc)
             print("  (Could not open browser — please open the URL manually.)\n", file=sys.stderr)
     else:
         print("  (Headless environment detected — open the URL manually.)\n", file=sys.stderr)

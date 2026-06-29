@@ -48,7 +48,8 @@ def _skin_color(key: str, fallback: str) -> str:
     try:
         from hermes_cli.skin_engine import get_active_skin
         return get_active_skin().get_color(key, fallback)
-    except Exception:
+    except (ImportError, AttributeError) as e:
+        logger.debug("Skin color probe failed for %r: %s", key, e)
         return fallback
 
 
@@ -57,7 +58,8 @@ def _skin_branding(key: str, fallback: str) -> str:
     try:
         from hermes_cli.skin_engine import get_active_skin
         return get_active_skin().get_branding(key, fallback)
-    except Exception:
+    except (ImportError, AttributeError) as e:
+        logger.debug("Skin branding probe failed for %r: %s", key, e)
         return fallback
 
 
@@ -106,7 +108,8 @@ def get_available_skills() -> Dict[str, List[str]]:
     try:
         from tools.skills_tool import _find_all_skills
         all_skills = _find_all_skills()  # already filtered
-    except Exception:
+    except (ImportError, AttributeError, TypeError) as e:
+        logger.debug("Skills plugin loader failed: %s", e)
         return {}
 
     skills_by_category: Dict[str, List[str]] = {}
@@ -141,7 +144,8 @@ def _check_via_rev(local_rev: str) -> Optional[int]:
             ["git", "ls-remote", _UPSTREAM_REPO_URL, "refs/heads/main"],
             capture_output=True, text=True, timeout=10,
         )
-    except Exception:
+    except (subprocess.SubprocessError, OSError) as e:
+        logger.debug("git ls-remote failed: %s", e)
         return None
     if result.returncode != 0 or not result.stdout:
         return None
@@ -159,7 +163,8 @@ def _check_via_local_git(repo_dir: Path) -> Optional[int]:
             capture_output=True, timeout=10,
             cwd=str(repo_dir),
         )
-    except Exception:
+    except (subprocess.SubprocessError, OSError) as e:
+        logger.debug("git fetch failed (offline/timeout?): %s", e)
         pass  # Offline or timeout — use stale refs, that's fine
 
     try:
@@ -170,7 +175,8 @@ def _check_via_local_git(repo_dir: Path) -> Optional[int]:
         )
         if result.returncode == 0:
             return int(result.stdout.strip())
-    except Exception:
+    except (subprocess.SubprocessError, OSError, ValueError) as e:
+        logger.debug("git rev-list failed: %s", e)
         pass
     return None
 
@@ -188,6 +194,7 @@ def _version_tuple(v: str) -> tuple[int, ...]:
 
 def _fetch_pypi_latest(package: str = "hermes-agent") -> Optional[str]:
     """Fetch the latest version of a package from PyPI. Returns None on failure."""
+    import urllib.error
     try:
         import urllib.request
         url = f"https://pypi.org/pypi/{package}/json"
@@ -195,7 +202,8 @@ def _fetch_pypi_latest(package: str = "hermes-agent") -> Optional[str]:
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read())
             return data.get("info", {}).get("version")
-    except Exception:
+    except (urllib.error.URLError, urllib.error.HTTPError, OSError, json.JSONDecodeError, ValueError) as e:
+        logger.debug("PyPI latest-fetch failed for %r: %s", package, e)
         return None
 
 
@@ -213,7 +221,8 @@ def check_via_pypi() -> Optional[int]:
         if _version_tuple(latest) > _version_tuple(VERSION):
             return 1
         return 0
-    except Exception:
+    except (TypeError, ValueError) as e:
+        logger.debug("Version-compare fallback (string mismatch): %s", e)
         return 1 if latest != VERSION else 0
 
 
@@ -242,7 +251,8 @@ def check_for_updates() -> Optional[int]:
                 and cached.get("rev") == embedded_rev
             ):
                 return cached.get("behind")
-    except Exception:
+    except (OSError, ValueError, json.JSONDecodeError, TypeError) as e:
+        logger.debug("Update-check cache read failed: %s", e)
         pass
 
     if embedded_rev:
@@ -261,7 +271,8 @@ def check_for_updates() -> Optional[int]:
 
     try:
         cache_file.write_text(json.dumps({"ts": now, "behind": behind, "rev": embedded_rev}))
-    except Exception:
+    except (OSError, TypeError) as e:
+        logger.debug("Update-check cache write failed: %s", e)
         pass
 
     return behind
@@ -291,7 +302,8 @@ def _git_short_hash(repo_dir: Path, rev: str) -> Optional[str]:
             timeout=5,
             cwd=str(repo_dir),
         )
-    except Exception:
+    except (subprocess.SubprocessError, OSError) as e:
+        logger.debug("git rev-parse failed for %r: %s", rev, e)
         return None
     if result.returncode != 0:
         return None
@@ -320,7 +332,8 @@ def get_git_banner_state(repo_dir: Optional[Path] = None) -> Optional[dict]:
             baked = get_build_sha(short=8)
             if baked:
                 return {"upstream": baked, "local": baked, "ahead": 0}
-        except Exception:
+        except (ImportError, AttributeError, TypeError) as e:
+            logger.debug("Baked-build-sha probe failed: %s", e)
             pass
         return None
 
@@ -334,7 +347,8 @@ def get_git_banner_state(repo_dir: Optional[Path] = None) -> Optional[dict]:
             baked = get_build_sha(short=8)
             if baked:
                 return {"upstream": baked, "local": baked, "ahead": 0}
-        except Exception:
+        except (ImportError, AttributeError, TypeError) as e:
+            logger.debug("Baked-build-sha probe failed: %s", e)
             pass
         return None
 
@@ -349,7 +363,8 @@ def get_git_banner_state(repo_dir: Optional[Path] = None) -> Optional[dict]:
         )
         if result.returncode == 0:
             ahead = int((result.stdout or "0").strip() or "0")
-    except Exception:
+    except (subprocess.SubprocessError, OSError, ValueError) as e:
+        logger.debug("git rev-list (ahead) failed: %s", e)
         ahead = 0
 
     return {"upstream": upstream, "local": local, "ahead": max(ahead, 0)}
@@ -383,7 +398,8 @@ def get_latest_release_tag(repo_dir: Optional[Path] = None) -> Optional[tuple]:
             timeout=3,
             cwd=str(repo_dir),
         )
-    except Exception:
+    except (subprocess.SubprocessError, OSError) as e:
+        logger.debug("git describe failed: %s", e)
         _latest_release_cache = ()
         return None
 
@@ -530,7 +546,8 @@ def build_welcome_banner(console: Console, model: str, cwd: str,
         from hermes_cli.skin_engine import get_active_skin
         _bskin = get_active_skin()
         _hero = _bskin.banner_hero if hasattr(_bskin, 'banner_hero') and _bskin.banner_hero else HERMES_CADUCEUS
-    except Exception:
+    except (ImportError, AttributeError, TypeError) as e:
+        logger.debug("Skin hero probe failed: %s", e)
         _bskin = None
         _hero = HERMES_CADUCEUS
     left_lines = ["", _hero, ""]
@@ -612,7 +629,8 @@ def build_welcome_banner(console: Console, model: str, cwd: str,
     try:
         from tools.mcp_tool import get_mcp_status
         mcp_status = get_mcp_status()
-    except Exception:
+    except (ImportError, AttributeError, TypeError, ValueError) as e:
+        logger.debug("MCP status probe failed: %s", e)
         mcp_status = []
 
     if mcp_status:
@@ -666,7 +684,8 @@ def build_welcome_banner(console: Console, model: str, cwd: str,
                 f"[bold {accent}]Runtime:[/] [{text}]codex app-server[/] "
                 f"[dim {dim}](terminal/file ops/MCP run inside codex)[/]"
             )
-    except Exception:
+    except Exception as e:
+        logger.debug("Runtime-indicator probe failed: %s", e)
         pass
     # Show active profile name when not 'default'
     try:
@@ -674,7 +693,8 @@ def build_welcome_banner(console: Console, model: str, cwd: str,
         _profile_name = get_active_profile_name()
         if _profile_name and _profile_name != "default":
             right_lines.append(f"[bold {accent}]Profile:[/] [{text}]{_profile_name}[/]")
-    except Exception:
+    except Exception as e:
+        logger.debug("Active-profile probe failed: %s", e)
         pass  # Never break the banner over a profiles.py bug
 
     right_lines.append(f"[dim {dim}]{' · '.join(summary_parts)}[/]")
@@ -699,7 +719,8 @@ def build_welcome_banner(console: Console, model: str, cwd: str,
                 if managed_cmd:
                     line += f"[dim yellow] — run [bold]{managed_cmd}[/bold][/]"
                 right_lines.append(line)
-    except Exception:
+    except Exception as e:
+        logger.debug("Banner update-check failed: %s", e)
         pass  # Never break the banner over an update check
 
     right_content = "\n".join(right_lines)

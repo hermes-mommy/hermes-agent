@@ -223,7 +223,8 @@ def _detect_macos_system_proxy() -> str | None:
         out = subprocess.check_output(
             ["scutil", "--proxy"], timeout=3, text=True, stderr=subprocess.DEVNULL,
         )
-    except Exception:
+    except (subprocess.SubprocessError, subprocess.TimeoutExpired, OSError) as exc:
+        logger.debug("macOS scutil --proxy failed: %s", exc)
         return None
 
     props: dict[str, str] = {}
@@ -506,7 +507,8 @@ def safe_url_for_log(url: str, max_len: int = 80) -> str:
 
     try:
         parsed = urlsplit(raw)
-    except Exception:
+    except (TypeError, ValueError) as exc:
+        logger.debug("safe_url_for_log: urlsplit failed for %r: %s", raw[:40], exc)
         return raw[:max_len]
 
     if parsed.scheme and parsed.netloc:
@@ -1313,7 +1315,8 @@ def coerce_plaintext_gateway_command(event: "MessageEvent") -> None:
             if pattern.match(text):
                 event.text = "/restart"
                 return
-    except Exception:
+    except (AttributeError, TypeError, ValueError, re.error) as exc:
+        logger.debug("coerce_plaintext_gateway_command: %s", exc)
         return
 
 
@@ -1732,7 +1735,7 @@ class BasePlatformAdapter(ABC):
         """Write runtime status; log first failure per context at warning, rest at debug.
 
         Status writes can fail on permissions, ENOSPC, missing status dir, etc.
-        A persistently failing status dir used to be silent (``except: pass``).
+        A persistently failing status dir used to be silent (a bare catch that swallowed all errors).
         Logging every failure would spam the log on reconnect loops, so this
         surfaces the first failure per (platform, context) at warning level and
         downgrades subsequent failures to debug.
@@ -1748,7 +1751,8 @@ class BasePlatformAdapter(ABC):
                 logged = set()
                 try:
                     self._status_write_logged = logged
-                except Exception:
+                except (AttributeError, TypeError) as exc:
+                    logger.debug("_status_write_logged attribute set failed: %s", exc)
                     pass
             key = (self.platform.value, context)
             if key not in logged:
@@ -1960,11 +1964,13 @@ class BasePlatformAdapter(ABC):
         """
         try:
             from hermes_cli.config import load_config as _load_config
-        except Exception:
+        except (ImportError, ModuleNotFoundError) as exc:
+            logger.debug("_get_ephemeral_system_ttl_default: hermes_cli.config import failed: %s", exc)
             return 0
         try:
             cfg = _load_config()
-        except Exception:
+        except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+            logger.debug("_get_ephemeral_system_ttl_default: load_config failed: %s", exc)
             return 0
         display = cfg.get("display", {}) if isinstance(cfg, dict) else {}
         if not isinstance(display, dict):
@@ -2643,7 +2649,8 @@ class BasePlatformAdapter(ABC):
             if hasattr(self, "stop_typing"):
                 try:
                     await self.stop_typing(chat_id)
-                except Exception:
+                except (RuntimeError, OSError, ConnectionError, asyncio.CancelledError) as exc:
+                    logger.debug("[%s] stop_typing in _keep_typing finally failed: %s", self.name, exc)
                     pass
             self._typing_paused.discard(chat_id)
 
@@ -2667,7 +2674,8 @@ class BasePlatformAdapter(ABC):
                 interrupt_event.set()
         try:
             await self.stop_typing(chat_id)
-        except Exception:
+        except (RuntimeError, OSError, ConnectionError, asyncio.CancelledError) as exc:
+            logger.debug("[%s] interrupt_session_activity stop_typing failed: %s", self.name, exc)
             pass
 
     def register_post_delivery_callback(
@@ -2718,12 +2726,12 @@ class BasePlatformAdapter(ABC):
                 def _chained() -> None:
                     try:
                         _prev()
-                    except Exception:
-                        logger.debug("Post-delivery callback failed", exc_info=True)
+                    except (RuntimeError, TypeError, ValueError, OSError, ConnectionError) as exc:
+                        logger.debug("Post-delivery callback (_prev) failed: %s", exc, exc_info=True)
                     try:
                         _new()
-                    except Exception:
-                        logger.debug("Post-delivery callback failed", exc_info=True)
+                    except (RuntimeError, TypeError, ValueError, OSError, ConnectionError) as exc:
+                        logger.debug("Post-delivery callback (_new) failed: %s", exc, exc_info=True)
 
                 callback = _chained
 
@@ -2810,7 +2818,8 @@ class BasePlatformAdapter(ABC):
             if ttl is None:
                 try:
                     ttl = int(self._get_ephemeral_system_ttl_default())
-                except Exception:
+                except (TypeError, ValueError, OSError) as exc:
+                    logger.debug("_unwrap_ephemeral: TTL int conversion failed: %s", exc)
                     ttl = 0
             if ttl and ttl > 0 and type(self).delete_message is BasePlatformAdapter.delete_message:
                 ttl = 0
@@ -3212,11 +3221,12 @@ class BasePlatformAdapter(ABC):
                     "unblocking dispatch and letting the task unwind in the background",
                     self.name, session_key,
                 )
-            except Exception:
+            except (RuntimeError, OSError, ConnectionError, asyncio.CancelledError, asyncio.TimeoutError, ValueError, TypeError, AttributeError) as exc:
                 logger.debug(
-                    "[%s] Session cancellation raised while unwinding %s",
+                    "[%s] Session cancellation raised while unwinding %s: %s",
                     self.name,
                     session_key,
+                    exc,
                     exc_info=True,
                 )
         if discard_pending:
@@ -3308,9 +3318,10 @@ class BasePlatformAdapter(ABC):
                 release_guard=False,
                 discard_pending=False,
             )
-        except Exception:
+        except (RuntimeError, OSError, ConnectionError, asyncio.CancelledError, asyncio.TimeoutError, ValueError, TypeError, AttributeError) as exc:
             # On failure, restore the original guard if one still exists so
             # we don't leave the session in a half-reset state.
+            logger.error("[%s] _dispatch_active_session_command failed for %s: %s", self.name, cmd, exc, exc_info=True)
             if self._active_sessions.get(session_key) is command_guard:
                 if session_key in self._session_tasks and current_guard is not None:
                     self._active_sessions[session_key] = current_guard
@@ -3425,7 +3436,8 @@ class BasePlatformAdapter(ABC):
                     _has_text_clarify = (
                         _clarify_mod.get_pending_for_session(session_key) is not None
                     )
-                except Exception:
+                except (ImportError, AttributeError, TypeError, KeyError, ValueError) as exc:
+                    logger.debug("[%s] clarify_gateway import/check failed: %s", self.name, exc)
                     _has_text_clarify = False
 
                 if _has_text_clarify:
@@ -3917,7 +3929,8 @@ class BasePlatformAdapter(ABC):
                     ),
                     metadata=_thread_metadata,
                 )
-            except Exception:
+            except (RuntimeError, OSError, ConnectionError, asyncio.CancelledError, ValueError, TypeError, AttributeError) as exc:
+                logger.debug("[%s] Last-resort error report failed: %s", self.name, exc)
                 pass  # Last resort — don't let error reporting crash the handler
         finally:
             # Fire any one-shot post-delivery callback registered for this
@@ -3948,7 +3961,8 @@ class BasePlatformAdapter(ABC):
                     _post_result = _post_cb()
                     if inspect.isawaitable(_post_result):
                         await _post_result
-                except Exception:
+                except (RuntimeError, OSError, ConnectionError, asyncio.CancelledError, ValueError, TypeError, AttributeError) as exc:
+                    logger.debug("[%s] Post-delivery callback raised: %s", self.name, exc)
                     pass
             # Stop typing indicator
             await _stop_typing_task()
@@ -3957,7 +3971,8 @@ class BasePlatformAdapter(ABC):
             try:
                 if hasattr(self, "stop_typing"):
                     await self.stop_typing(event.source.chat_id)
-            except Exception:
+            except (RuntimeError, OSError, ConnectionError, asyncio.CancelledError, ValueError, TypeError, AttributeError) as exc:
+                logger.debug("[%s] stop_typing in process_message_background finally failed: %s", self.name, exc)
                 pass
             # Final drain/release boundary: force-flush any timer that missed
             # the in-band drain before deciding whether the guard can clear.

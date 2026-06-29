@@ -251,7 +251,12 @@ def _register_service(scandir: Path, profile: str, *, start: bool) -> None:
         if service_dir.exists():
             shutil.rmtree(service_dir)
         tmp_dir.replace(service_dir)
-    except Exception:
+    except OSError as exc:
+        # Cleanup a half-built tmp slot before letting the original
+        # error propagate; we never want a partial slot visible to
+        # s6-svscan (matches the cont-init.d safety contract).
+        log.exception("failed to publish s6 service slot for profile=%r; sweeping tmp", profile)
+        log.debug("tmp dir sweep failure context: %s", exc)
         shutil.rmtree(tmp_dir, ignore_errors=True)
         raise
 

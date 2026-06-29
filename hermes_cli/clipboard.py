@@ -70,7 +70,8 @@ def _macos_has_image() -> bool:
             capture_output=True, text=True, timeout=3,
         )
         return "«class PNGf»" in info.stdout or "«class TIFF»" in info.stdout
-    except Exception:
+    except Exception as e:
+        logger.debug("osascript clipboard info probe failed: %s", e)
         return False
 
 
@@ -264,7 +265,8 @@ def _find_powershell() -> str | None:
                 return name
         except FileNotFoundError:
             continue
-        except Exception:
+        except Exception as e:
+            logger.debug("%s probe failed: %s", name, e)
             continue
     return None
 
@@ -340,8 +342,8 @@ def _wayland_has_image() -> bool:
         )
     except FileNotFoundError:
         logger.debug("wl-paste not installed — Wayland clipboard unavailable")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("wl-paste clipboard image check failed: %s", e)
     return False
 
 
@@ -458,8 +460,8 @@ def _xclip_has_image() -> bool:
         return r.returncode == 0 and "image/png" in r.stdout
     except FileNotFoundError:
         pass
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("xclip clipboard image check failed: %s", e)
     return False
 
 
@@ -476,7 +478,8 @@ def _xclip_save(dest: Path) -> bool:
     except FileNotFoundError:
         logger.debug("xclip not installed — X11 clipboard image paste unavailable")
         return False
-    except Exception:
+    except Exception as e:
+        logger.debug("xclip clipboard image check failed: %s", e)
         return False
 
     # Extract PNG data

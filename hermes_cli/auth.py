@@ -41,7 +41,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Callable, Dict, FrozenSet, List, Optional, Tuple
+from typing import Any, Callable, Dict, FrozenSet, List, Optional, Tuple, cast
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
@@ -56,11 +56,11 @@ logger = logging.getLogger(__name__)
 
 try:
     import fcntl
-except Exception:
+except ImportError:
     fcntl = None
 try:
     import msvcrt
-except Exception:
+except ImportError:
     msvcrt = None
 
 # =============================================================================
@@ -489,8 +489,10 @@ try:
         for _alias in _pp.aliases:
             if _alias not in PROVIDER_REGISTRY:
                 PROVIDER_REGISTRY[_alias] = PROVIDER_REGISTRY[_pp.name]
-except Exception:
-    pass
+except (ImportError, AttributeError) as e:
+    # providers/ plugin not installed or missing list_providers() — fall back to
+    # the hardcoded PROVIDER_REGISTRY above; safe to ignore plugin-shape errors.
+    logger.debug("providers plugin registry discovery unavailable: %s", e)
 
 
 # =============================================================================
@@ -590,8 +592,10 @@ def _resolve_api_key_provider_secret(
                 return get_copilot_api_token(token), source
         except ValueError as exc:
             logger.warning("Copilot token validation failed: %s", exc)
-        except Exception:
-            pass
+        except (ImportError, AttributeError, OSError, RuntimeError) as e:
+            # copilot_auth plugin missing or its token resolver crashed —
+            # fail-soft so the recommended API-key fallback below still works.
+            logger.debug("Copilot token resolver unavailable: %s", e)
         return "", ""
 
     from hermes_cli.config import get_env_value
@@ -612,8 +616,10 @@ def _resolve_api_key_provider_secret(
                 key = str(key).strip()
                 if has_usable_secret(key):
                     return key, f"credential_pool:{provider_id}"
-    except Exception:
-        pass
+    except (ImportError, AttributeError, OSError, ValueError) as e:
+        # credential_pool plugin missing or pool file unreadable —
+        # fail-soft so the env-var path above still produces a result.
+        logger.debug("Credential pool fallback unavailable for %s: %s", provider_id, e)
 
     return "", ""
 
@@ -671,7 +677,7 @@ def detect_zai_endpoint(api_key: str, timeout: float = 8.0) -> Optional[Dict[str
                         "label": label,
                     }
                 logger.debug("Z.AI endpoint probe: %s model=%s returned %s", ep_id, model, resp.status_code)
-            except Exception as exc:
+            except (httpx.HTTPError, OSError, json.JSONDecodeError, ValueError, AttributeError) as exc:
                 logger.debug("Z.AI endpoint probe: %s model=%s failed: %s", ep_id, model, exc)
     return None
 
@@ -777,7 +783,10 @@ def _parse_retry_after_seconds(headers: Any) -> Optional[int]:
         return None
     try:
         raw = headers.get("retry-after")
-    except Exception:
+    except AttributeError:
+        # Defensive: ``headers`` may be a list of tuples / a custom mapping
+        # without ``.get`` — fall through to the int() try below which also
+        # handles non-string values.
         return None
     if raw is None:
         return None
@@ -835,8 +844,11 @@ def _format_nous_entitlement_auth_error(error: AuthError) -> str:
         )
         if message:
             return message
-    except Exception:
-        pass
+    except (ImportError, AttributeError, OSError, RuntimeError, ValueError) as e:
+        # Portal account helper missing, network down, or returned garbage —
+        # fall back to the generic billing message so the caller still gets
+        # actionable guidance.
+        logger.debug("Nous Portal entitlement enrichment unavailable: %s", e)
     return f"{error} Check credits or billing in Nous Portal, then retry."
 
 
@@ -880,7 +892,10 @@ def _auth_file_path() -> Path:
         real_home_auth = (Path.home() / ".hermes" / "auth.json").resolve(strict=False)
         try:
             resolved = path.resolve(strict=False)
-        except Exception:
+        except OSError as exc:
+            # Filesystem refused the resolve (sandbox namespacing, missing
+            # parents); treat as not-equal and proceed without the seat belt.
+            logger.debug("Could not resolve auth path under pytest guard: %s", exc)
             resolved = path
         if resolved == real_home_auth:
             raise RuntimeError(
@@ -904,13 +919,14 @@ def _global_auth_file_path() -> Optional[Path]:
     try:
         from hermes_constants import get_default_hermes_root
         global_root = get_default_hermes_root()
-    except Exception:
+    except ImportError:
         return None
     profile_home = get_hermes_home()
     try:
         if profile_home.resolve(strict=False) == global_root.resolve(strict=False):
             return None
-    except Exception:
+    except OSError as exc:
+        logger.debug("Profile/global root resolve failed; falling back to string compare: %s", exc)
         if profile_home == global_root:
             return None
     # No pytest seat belt here: this is a pure read-only path, and
@@ -948,13 +964,16 @@ def _load_global_auth_store() -> Dict[str, Any]:
             try:
                 if global_path.resolve(strict=False) == real_root.resolve(strict=False):
                     return {}
-            except Exception:
-                pass
+            except OSError as exc:
+                # Filesystem refused the resolve; safest is to refuse reading
+                # the user's real auth.json under pytest.
+                logger.debug("Pytest seat-belt resolve failed on global path: %s", exc)
     try:
         return _load_auth_store(global_path)
-    except Exception:
+    except (OSError, ValueError, json.JSONDecodeError, AttributeError) as e:
         # A malformed global store must not break profile reads. The
         # profile's own auth store is still authoritative.
+        logger.debug("Global auth store unreadable; treating as empty: %s", e)
         return {}
 
 
@@ -1063,13 +1082,16 @@ def _load_auth_store(auth_file: Optional[Path] = None) -> Dict[str, Any]:
 
     try:
         raw = json.loads(auth_file.read_text())
-    except Exception as exc:
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError, ValueError) as exc:
         corrupt_path = auth_file.with_suffix(".json.corrupt")
         try:
             import shutil
             shutil.copy2(auth_file, corrupt_path)
-        except Exception:
-            pass
+        except OSError as copy_exc:
+            logger.warning(
+                "auth: could not preserve corrupt copy of %s at %s: %s",
+                auth_file, corrupt_path, copy_exc,
+            )
         logger.warning(
             "auth: failed to parse %s (%s) — starting with empty store. "
             "Corrupt file preserved at %s",
@@ -1296,7 +1318,10 @@ def is_source_suppressed(provider_id: str, source: str) -> bool:
         auth_store = _load_auth_store()
         suppressed = auth_store.get("suppressed_sources", {})
         return source in suppressed.get(provider_id, [])
-    except Exception:
+    except (OSError, ValueError, json.JSONDecodeError, AttributeError, TypeError) as e:
+        # Profile/global auth store unreadable — "not suppressed" is the
+        # safe default so we don't accidentally block reseeding.
+        logger.debug("is_source_suppressed: store unreadable (%s); treating as not suppressed", e)
         return False
 
 
@@ -1366,8 +1391,8 @@ def is_provider_explicitly_configured(provider_id: str) -> bool:
         active = (auth_store.get("active_provider") or "").strip().lower()
         if active and active == normalized:
             return True
-    except Exception:
-        pass
+    except (OSError, ValueError, json.JSONDecodeError, AttributeError, TypeError) as e:
+        logger.debug("is_provider_explicitly_configured[auth]: %s", e)
 
     # 2. Check config.yaml model.provider
     try:
@@ -1378,8 +1403,8 @@ def is_provider_explicitly_configured(provider_id: str) -> bool:
             cfg_provider = (model_cfg.get("provider") or "").strip().lower()
             if cfg_provider == normalized:
                 return True
-    except Exception:
-        pass
+    except (ImportError, OSError, ValueError, yaml.YAMLError, AttributeError, TypeError) as e:
+        logger.debug("is_provider_explicitly_configured[config]: %s", e)
 
     # 3. Check provider-specific env vars
     # Exclude CLAUDE_CODE_OAUTH_TOKEN — it's set by Claude Code itself,
@@ -1474,7 +1499,9 @@ def _get_config_hint_for_unknown_provider(provider_name: str) -> str:
             if first_hint:
                 lines.append(f"    → {first_hint}")
         return "\n".join(lines)
-    except Exception:
+    except (ImportError, OSError, ValueError, yaml.YAMLError, AttributeError, TypeError) as e:
+        # Best-effort hint — never block resolution with a diagnostic crash.
+        logger.debug("_get_config_hint_for_unknown_provider unavailable: %s", e)
         return ""
 
 
@@ -1540,8 +1567,8 @@ def resolve_provider(
             for _alias in _pp.aliases:
                 if _alias not in _PROVIDER_ALIASES:
                     _PROVIDER_ALIASES[_alias] = _pp.name
-    except Exception:
-        pass
+    except (ImportError, AttributeError) as e:
+        logger.debug("Provider alias discovery unavailable: %s", e)
     normalized = _PROVIDER_ALIASES.get(normalized, normalized)
 
     if normalized == "openrouter":
@@ -1572,7 +1599,7 @@ def resolve_provider(
             status = get_auth_status(active)
             if status.get("logged_in"):
                 return active
-    except Exception as e:
+    except (OSError, ValueError, json.JSONDecodeError, AttributeError, KeyError) as e:
         logger.debug("Could not detect active auth provider: %s", e)
 
     if has_usable_secret(os.getenv("OPENAI_API_KEY")) or has_usable_secret(os.getenv("OPENROUTER_API_KEY")):
@@ -1625,7 +1652,7 @@ def _parse_iso_timestamp(value: Any) -> Optional[float]:
         text = text[:-1] + "+00:00"
     try:
         parsed = datetime.fromisoformat(text)
-    except Exception:
+    except (ValueError, TypeError):
         return None
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
@@ -1642,7 +1669,7 @@ def _is_expiring(expires_at_iso: Any, skew_seconds: int) -> bool:
 def _coerce_ttl_seconds(expires_in: Any) -> int:
     try:
         ttl = int(expires_in)
-    except Exception:
+    except (TypeError, ValueError):
         ttl = 0
     return max(0, ttl)
 
@@ -1697,7 +1724,10 @@ def _validate_nous_inference_url_from_network(url: Optional[str]) -> Optional[st
         return None
     try:
         parsed = urlparse(cleaned)
-    except Exception:
+    except ValueError:
+        # urlparse is robust in practice; ValueError is the only documented
+        # failure mode (extremely malformed input). Other errors here would
+        # indicate a bug — let them propagate.
         return None
     if parsed.scheme != "https":
         logger.warning(
@@ -1723,7 +1753,10 @@ def _decode_jwt_claims(token: Any) -> Dict[str, Any]:
     try:
         raw = base64.urlsafe_b64decode(payload.encode("utf-8"))
         claims = json.loads(raw.decode("utf-8"))
-    except Exception:
+    except (ValueError, json.JSONDecodeError, UnicodeDecodeError) as e:
+        # All invalid JWT shapes land here (bad padding, non-base64 chars,
+        # non-UTF8 payload, non-JSON body). Caller treats {} as "no claims".
+        logger.debug("JWT payload decode failed: %s", e)
         return {}
     return claims if isinstance(claims, dict) else {}
 
@@ -1902,8 +1935,10 @@ def _nous_jwt_expires_at(token: Any, fallback_expires_at: Any = None) -> Optiona
     if isinstance(exp, (int, float)):
         try:
             return datetime.fromtimestamp(float(exp), tz=timezone.utc).isoformat()
-        except Exception:
-            pass
+        except (OSError, ValueError, OverflowError) as exp_exc:
+            # Bad epoch value (NaN, inf, year > 9999, etc.). Fall through to
+            # the caller's fallback_expires_at.
+            logger.debug("_nous_jwt_expires_at: fromtimestamp failed: %s", exp_exc)
     return fallback_expires_at if isinstance(fallback_expires_at, str) else None
 
 
@@ -1999,7 +2034,7 @@ def _read_qwen_cli_tokens() -> Dict[str, Any]:
         )
     try:
         data = json.loads(auth_path.read_text(encoding="utf-8"))
-    except Exception as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise AuthError(
             f"Failed to read Qwen CLI credentials from {auth_path}: {exc}",
             provider="qwen-oauth",
@@ -2048,7 +2083,7 @@ def _save_qwen_cli_tokens(tokens: Dict[str, Any]) -> Path:
 def _qwen_access_token_is_expiring(expiry_date_ms: Any, skew_seconds: int = QWEN_ACCESS_TOKEN_REFRESH_SKEW_SECONDS) -> bool:
     try:
         expiry_ms = int(expiry_date_ms)
-    except Exception:
+    except (TypeError, ValueError):
         return True
     return (time.time() + max(0, int(skew_seconds))) * 1000 >= expiry_ms
 
@@ -2076,7 +2111,7 @@ def _refresh_qwen_cli_tokens(tokens: Dict[str, Any], timeout_seconds: float = 20
             },
             timeout=timeout_seconds,
         )
-    except Exception as exc:
+    except (httpx.HTTPError, OSError, ValueError) as exc:
         raise AuthError(
             f"Qwen OAuth refresh failed: {exc}",
             provider="qwen-oauth",
@@ -2094,7 +2129,7 @@ def _refresh_qwen_cli_tokens(tokens: Dict[str, Any], timeout_seconds: float = 20
 
     try:
         payload = response.json()
-    except Exception as exc:
+    except (json.JSONDecodeError, ValueError) as exc:
         raise AuthError(
             f"Qwen OAuth refresh returned invalid JSON: {exc}",
             provider="qwen-oauth",
@@ -2111,7 +2146,7 @@ def _refresh_qwen_cli_tokens(tokens: Dict[str, Any], timeout_seconds: float = 20
     expires_in = payload.get("expires_in")
     try:
         expires_in_seconds = int(expires_in)
-    except Exception:
+    except (TypeError, ValueError):
         expires_in_seconds = 6 * 60 * 60
 
     refreshed = {
@@ -2586,9 +2621,10 @@ def _make_xai_callback_handler(expected_path: str) -> tuple[type[BaseHTTPRequest
                         incoming["error"],
                         (incoming["error_description"] or "")[:200],
                     )
-            except Exception:
-                # Logging must never break the OAuth flow.
-                pass
+            except (KeyError, TypeError, AttributeError) as log_exc:
+                # Logging must never break the OAuth flow — the OAuth flow
+                # itself doesn't depend on this observability output.
+                logger.debug("xAI loopback callback logging skipped: %s", log_exc)
 
             # Treat a hit on the callback path with neither `code` nor `error`
             # as a missing OAuth callback (e.g. xAI's auth backend failed to
@@ -2770,7 +2806,7 @@ def _spotify_exchange_code_for_tokens(
             },
             timeout=timeout_seconds,
         )
-    except Exception as exc:
+    except (httpx.HTTPError, OSError, ValueError) as exc:
         raise AuthError(
             f"Spotify token exchange failed: {exc}",
             provider="spotify",
@@ -2822,7 +2858,7 @@ def _refresh_spotify_oauth_state(
             },
             timeout=timeout_seconds,
         )
-    except Exception as exc:
+    except (httpx.HTTPError, OSError, ValueError) as exc:
         raise AuthError(
             f"Spotify token refresh failed: {exc}",
             provider="spotify",
@@ -2960,8 +2996,10 @@ def _spotify_interactive_setup(redirect_uri_hint: str) -> str:
     if not _is_remote_session():
         try:
             webbrowser.open(SPOTIFY_DASHBOARD_URL)
-        except Exception:
-            pass
+        except (webbrowser.Error, OSError) as web_exc:
+            # Browser invocation is best-effort UX; no browser / unregistered
+            # handler shouldn't abort the auth setup.
+            logger.debug("webbrowser.open failed for Spotify dashboard: %s", web_exc)
 
     try:
         raw = input("Spotify Client ID: ").strip()
@@ -3037,7 +3075,8 @@ def login_spotify_command(args) -> None:
     if open_browser and not _is_remote_session():
         try:
             opened = webbrowser.open(authorize_url)
-        except Exception:
+        except (webbrowser.Error, OSError) as web_exc:
+            logger.debug("webbrowser.open failed for Spotify authorize URL: %s", web_exc)
             opened = False
         if opened:
             print("Browser opened for Spotify authorization.")
@@ -3145,7 +3184,7 @@ def _parse_pasted_callback(raw: str) -> dict:
     if stripped.startswith(("http://", "https://")):
         try:
             parsed = urlparse(stripped)
-        except Exception:
+        except ValueError:
             return result
         query = parsed.query or ""
     elif stripped.startswith("?"):
@@ -3224,7 +3263,7 @@ def _print_loopback_ssh_hint(redirect_uri: str, *, docs_url: str | None = None) 
         return
     try:
         parsed = urlparse(redirect_uri)
-    except Exception:
+    except ValueError:
         return
     host = parsed.hostname or ""
     port = parsed.port
@@ -3470,8 +3509,8 @@ def refresh_codex_oauth_pure(
                     err_desc = err.get("error_description") or err.get("message")
                     if isinstance(err_desc, str) and err_desc.strip():
                         message = f"Codex token refresh failed: {err_desc.strip()}"
-        except Exception:
-            pass
+        except (AttributeError, KeyError, TypeError, ValueError) as exc:
+            logger.debug("Codex refresh error body parsing failed: %s", exc)
         if code in {"invalid_grant", "invalid_token", "invalid_request"}:
             relogin_required = True
         if code == "refresh_token_reused":
@@ -3496,7 +3535,7 @@ def refresh_codex_oauth_pure(
 
     try:
         refresh_payload = response.json()
-    except Exception as exc:
+    except (json.JSONDecodeError, ValueError) as exc:
         raise AuthError(
             "Codex token refresh returned invalid JSON.",
             provider="openai-codex",
@@ -3575,7 +3614,10 @@ def _import_codex_cli_tokens() -> Optional[Dict[str, str]]:
             )
             return None
         return dict(tokens)
-    except Exception:
+    except (OSError, json.JSONDecodeError, ValueError, TypeError) as e:
+        # Corrupt ~/.codex/auth.json or unexpected shape — return None
+        # so callers fall back to the primary auth store.
+        logger.debug("Codex CLI token import failed: %s", e)
         return None
 
 
@@ -3687,8 +3729,8 @@ def _pool_codex_access_token() -> str:
         for entry in entries:
             if _entry_usable(entry):
                 return str(entry.get("access_token", "")).strip()
-    except Exception:
-        logger.debug("Codex pool fallback lookup failed", exc_info=True)
+    except (OSError, ValueError, json.JSONDecodeError, AttributeError, TypeError) as e:
+        logger.debug("Codex pool fallback lookup failed: %s", e)
     return ""
 
 
@@ -3779,7 +3821,8 @@ def _xai_access_token_is_expiring(access_token: str, skew_seconds: int = 0) -> b
         if not isinstance(exp, (int, float)):
             return False
         return float(exp) <= (time.time() + max(0, int(skew_seconds)))
-    except Exception:
+    except (ValueError, json.JSONDecodeError, UnicodeDecodeError, AttributeError, KeyError) as e:
+        logger.debug("xAI access token expiry check failed: %s", e)
         return False
 
 
@@ -3848,7 +3891,7 @@ def _xai_validate_inference_base_url(value: str, *, fallback: str) -> str:
         return fallback
     try:
         parsed = urlparse(candidate)
-    except Exception:
+    except ValueError:
         logger.warning(
             "Ignoring malformed xAI base_url override %r; using %s instead.",
             candidate, fallback,
@@ -3887,7 +3930,7 @@ def _xai_oauth_discovery(timeout_seconds: float = 15.0) -> Dict[str, str]:
             headers={"Accept": "application/json"},
             timeout=timeout_seconds,
         )
-    except Exception as exc:
+    except (httpx.HTTPError, OSError, ValueError) as exc:
         raise AuthError(
             f"xAI OIDC discovery failed: {exc}",
             provider="xai-oauth",
@@ -3901,7 +3944,7 @@ def _xai_oauth_discovery(timeout_seconds: float = 15.0) -> Dict[str, str]:
         )
     try:
         payload = response.json()
-    except Exception as exc:
+    except (json.JSONDecodeError, ValueError) as exc:
         raise AuthError(
             f"xAI OIDC discovery returned invalid JSON: {exc}",
             provider="xai-oauth",
@@ -3995,7 +4038,7 @@ def refresh_xai_oauth_pure(
         )
     try:
         payload = response.json()
-    except Exception as exc:
+    except (json.JSONDecodeError, ValueError) as exc:
         raise AuthError(
             f"xAI token refresh returned invalid JSON: {exc}",
             provider="xai-oauth",
@@ -4119,7 +4162,7 @@ def resolve_xai_oauth_runtime_credentials(
                             }
                             _store_provider_state(_q_store, "xai-oauth", _q_state, set_active=False)
                             _save_auth_store(_q_store)
-                        except Exception as _save_exc:
+                        except (OSError, ValueError, json.JSONDecodeError, AttributeError) as _save_exc:
                             logger.debug(
                                 "xAI OAuth: failed to persist quarantined state: %s", _save_exc,
                             )
@@ -4236,7 +4279,8 @@ def _is_nous_invoke_scope_refusal(exc: Exception) -> bool:
         return False
     try:
         payload = response.json()
-    except Exception:
+    except (json.JSONDecodeError, ValueError) as exc:
+        logger.debug("_is_nous_invoke_scope_refusal: bad JSON body: %s", exc)
         payload = {}
     text = " ".join(
         str(value)
@@ -4286,7 +4330,7 @@ def _request_nous_device_code_with_scope_fallback(
             ),
             scope,
         )
-    except Exception as exc:
+    except (httpx.HTTPError, OSError, ValueError) as exc:
         if (
             allow_legacy_fallback
             and _nous_scope_has_invoke(scope)
@@ -4337,7 +4381,7 @@ def _poll_for_token(
 
         try:
             error_payload = response.json()
-        except Exception:
+        except (json.JSONDecodeError, ValueError):
             response.raise_for_status()
             raise RuntimeError("Token endpoint returned a non-JSON error response")
 
@@ -4418,7 +4462,8 @@ def _nous_shared_store_path() -> Path:
         ).resolve(strict=False)
         try:
             resolved = path.resolve(strict=False)
-        except Exception:
+        except OSError as exc:
+            logger.debug("Shared-store pytest guard resolve failed: %s", exc)
             resolved = path
         if resolved == real_home_shared:
             raise RuntimeError(
@@ -4555,7 +4600,7 @@ def _write_shared_nous_state(state: Dict[str, Any]) -> None:
             path=str(path),
             refresh_token_fp=_token_fingerprint(refresh_token),
         )
-    except Exception as exc:
+    except (OSError, ValueError, json.JSONDecodeError, AttributeError) as exc:
         logger.debug("Failed to write shared Nous auth store: %s", exc)
 
 
@@ -4599,7 +4644,7 @@ def _clear_shared_nous_state(reason: str) -> None:
             except FileNotFoundError:
                 pass
         _oauth_trace("nous_shared_store_cleared", reason=reason)
-    except Exception as exc:
+    except (OSError, ValueError, AttributeError) as exc:
         logger.debug("Failed to clear shared Nous auth store: %s", exc)
 
 
@@ -4782,7 +4827,7 @@ def _try_import_shared_nous_state(
             _clear_shared_nous_state("shared_import_terminal_refresh_failure")
         logger.debug("Shared Nous import failed: %s", exc)
         return None
-    except Exception as exc:
+    except (OSError, ValueError, json.JSONDecodeError, AttributeError, TypeError, KeyError) as exc:
         _oauth_trace(
             "nous_shared_import_failed",
             error_type=type(exc).__name__,
@@ -4818,7 +4863,7 @@ def _refresh_access_token(
 
     try:
         error_payload = response.json()
-    except Exception as exc:
+    except (json.JSONDecodeError, ValueError) as exc:
         raise AuthError("Refresh token exchange failed",
                         provider="nous", relogin_required=True) from exc
 
@@ -4874,7 +4919,7 @@ def _mint_agent_key(
 
     try:
         error_payload = response.json()
-    except Exception as exc:
+    except (json.JSONDecodeError, ValueError) as exc:
         raise AuthError("Agent key mint request failed",
                         provider="nous", code="server_error") from exc
 
@@ -4904,7 +4949,7 @@ def fetch_nous_models(
         try:
             err = response.json()
             description = str(err.get("error_description") or err.get("error") or description)
-        except Exception as e:
+        except (json.JSONDecodeError, ValueError) as e:
             logger.debug("Could not parse error response JSON: %s", e)
         raise AuthError(description, provider="nous", code="models_fetch_failed")
 
@@ -5280,7 +5325,7 @@ def _sync_nous_pool_from_auth_store() -> None:
         from agent.credential_pool import load_pool
 
         load_pool("nous")
-    except Exception as exc:
+    except (ImportError, AttributeError, OSError, ValueError) as exc:
         logger.debug("Failed to sync Nous credential pool from auth store: %s", exc)
 
 
@@ -5347,7 +5392,7 @@ def resolve_nous_runtime_credentials(
             try:
                 _save_provider_state(auth_store, "nous", state)
                 _save_auth_store(auth_store)
-            except Exception as exc:
+            except (OSError, ValueError, json.JSONDecodeError, AttributeError) as exc:
                 _oauth_trace(
                     "nous_state_persist_failed",
                     sequence_id=sequence_id,
@@ -5741,7 +5786,8 @@ def _snapshot_nous_pool_status() -> Dict[str, Any]:
             "credential_source": f"pool:{label}",
             "source": f"pool:{label}",
         }
-    except Exception:
+    except (OSError, ValueError, AttributeError, TypeError, KeyError) as e:
+        logger.debug("nous_auth_status_from_pool failed: %s", e)
         return _empty_nous_auth_status()
 
 
@@ -5762,7 +5808,8 @@ def _auth_file_mtime() -> Optional[float]:
         return _auth_file_path().stat().st_mtime
     except FileNotFoundError:
         return None
-    except Exception:
+    except OSError as exc:
+        logger.debug("_auth_file_mtime failed: %s", exc)
         return None
 
 
@@ -5889,8 +5936,8 @@ def get_codex_auth_status() -> Dict[str, Any]:
                         "source": f"pool:{getattr(entry, 'label', 'unknown')}",
                         "api_key": api_key,
                     }
-    except Exception:
-        pass
+    except (ImportError, AttributeError, OSError, ValueError) as e:
+        logger.debug("Codex pool status lookup failed: %s", e)
 
     # Fall back to legacy provider state
     try:
@@ -5932,8 +5979,8 @@ def get_xai_oauth_auth_status() -> Dict[str, Any]:
                         "source": f"pool:{getattr(entry, 'label', 'unknown')}",
                         "api_key": api_key,
                     }
-    except Exception:
-        pass
+    except (ImportError, AttributeError, OSError, ValueError) as e:
+        logger.debug("xAI pool status lookup failed: %s", e)
 
     try:
         creds = resolve_xai_oauth_runtime_credentials()
@@ -6070,7 +6117,8 @@ def _get_azure_foundry_auth_status() -> Dict[str, Any]:
     try:
         from hermes_cli.config import load_config, get_env_value
         cfg = load_config()
-    except Exception:
+    except (ImportError, OSError, yaml.YAMLError, ValueError, AttributeError) as e:
+        logger.debug("azure_foundry info: load_config failed: %s", e)
         cfg = {}
 
     model_cfg = cfg.get("model") if isinstance(cfg, dict) else None
@@ -6114,7 +6162,7 @@ def _get_azure_foundry_auth_status() -> Dict[str, Any]:
                     "is skipped here. Run `hermes doctor` to verify token acquisition."
                 )
             return info
-        except Exception as exc:
+        except (ImportError, OSError, ValueError, AttributeError, TypeError, KeyError) as exc:
             info["logged_in"] = False
             info["error"] = f"azure-identity check failed: {exc}"
             return info
@@ -6122,7 +6170,8 @@ def _get_azure_foundry_auth_status() -> Dict[str, Any]:
     # api_key mode (default)
     try:
         api_key = get_env_value("AZURE_FOUNDRY_API_KEY") or os.getenv("AZURE_FOUNDRY_API_KEY", "")
-    except Exception:
+    except (OSError, ValueError, AttributeError, TypeError) as exc:
+        logger.debug("AZURE_FOUNDRY_API_KEY read via get_env_value failed: %s", exc)
         api_key = os.getenv("AZURE_FOUNDRY_API_KEY", "")
     info["logged_in"] = has_usable_secret(api_key)
     return info
@@ -6287,7 +6336,8 @@ def _get_config_provider() -> Optional[str]:
     """Return model.provider from config.yaml, normalized, if present."""
     try:
         config = read_raw_config()
-    except Exception:
+    except (OSError, ValueError, AttributeError, yaml.YAMLError, TypeError) as e:
+        logger.debug("_get_config_provider: read_raw_config failed: %s", e)
         return None
     if not config:
         return None
@@ -6391,8 +6441,9 @@ def _prompt_model_selection(
     cache_col = 0  # only set if any model has cache pricing
     has_cache = False
     if has_pricing:
+        pricing_dict = cast(Dict[str, Dict[str, str]], pricing)
         for mid in all_models:
-            p = pricing.get(mid)  # type: ignore[union-attr]
+            p = pricing_dict.get(mid)
             if p:
                 inp = _format_price_per_mtok(p.get("prompt", ""))
                 out = _format_price_per_mtok(p.get("completion", ""))
@@ -6790,7 +6841,7 @@ def _xai_oauth_exchange_code_for_tokens(
             data=data,
             timeout=max(20.0, timeout_seconds),
         )
-    except Exception as exc:
+    except (httpx.HTTPError, OSError, ValueError) as exc:
         raise AuthError(
             f"xAI token exchange failed: {exc}",
             provider="xai-oauth",
@@ -6827,7 +6878,7 @@ def _xai_oauth_exchange_code_for_tokens(
 
     try:
         payload = response.json()
-    except Exception as exc:
+    except (json.JSONDecodeError, ValueError) as exc:
         raise AuthError(
             f"xAI token exchange returned invalid JSON: {exc}",
             provider="xai-oauth",
@@ -6861,7 +6912,7 @@ def _xai_oauth_loopback_login(
     def _stdin_supports_manual_paste() -> bool:
         try:
             return bool(getattr(sys.stdin, "isatty", lambda: False)())
-        except Exception:
+        except (AttributeError, TypeError, OSError, ValueError):
             return False
 
     discovery = _xai_oauth_discovery(timeout_seconds)
@@ -6920,7 +6971,8 @@ def _xai_oauth_loopback_login(
             if open_browser and not _is_remote_session():
                 try:
                     opened = webbrowser.open(authorize_url)
-                except Exception:
+                except (webbrowser.Error, OSError) as web_exc:
+                    logger.debug("webbrowser.open failed for xAI authorize URL: %s", web_exc)
                     opened = False
                 if opened:
                     print("Browser opened for xAI authorization.")
@@ -6949,17 +7001,17 @@ def _xai_oauth_loopback_login(
                 callback = _prompt_manual_callback_paste(redirect_uri)
                 if callback.get("code") is None and callback.get("error") is None:
                     raise exc
-        except Exception:
+        except (OSError, RuntimeError, AttributeError, TypeError, ValueError) as outer_exc:
             try:
                 server.shutdown()
                 server.server_close()
-            except Exception:
-                pass
+            except (OSError, RuntimeError, AttributeError, TypeError, ValueError) as inner_exc:
+                logger.debug("xAI OAuth loopback cleanup (server) failed: %s", inner_exc)
             try:
                 thread.join(timeout=1.0)
-            except Exception:
-                pass
-            raise
+            except (OSError, RuntimeError, AttributeError, TypeError, ValueError) as inner_exc2:
+                logger.debug("xAI OAuth loopback cleanup (thread join) failed: %s", inner_exc2)
+            raise outer_exc
 
     if callback.get("error"):
         detail = callback.get("error_description") or callback["error"]
@@ -7055,7 +7107,7 @@ def _codex_device_code_login() -> Dict[str, Any]:
                 json={"client_id": client_id},
                 headers={"Content-Type": "application/json"},
             )
-    except Exception as exc:
+    except (httpx.HTTPError, OSError, ValueError) as exc:
         raise AuthError(
             f"Failed to request device code: {exc}",
             provider="openai-codex", code="device_code_request_failed",
@@ -7145,7 +7197,7 @@ def _codex_device_code_login() -> Dict[str, Any]:
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
-    except Exception as exc:
+    except (httpx.HTTPError, OSError, ValueError) as exc:
         raise AuthError(
             f"Token exchange failed: {exc}",
             provider="openai-codex", code="token_exchange_failed",
@@ -7283,7 +7335,7 @@ def _minimax_poll_token(
         )
         try:
             payload = response.json() if response.text else {}
-        except Exception:
+        except (json.JSONDecodeError, ValueError):
             payload = {}
 
         if response.status_code != 200:
@@ -7418,7 +7470,8 @@ def _refresh_minimax_oauth_state(
         )
     try:
         expires_at = datetime.fromisoformat(state.get("expires_at", "")).timestamp()
-    except Exception:
+    except (ValueError, TypeError) as exp_exc:
+        logger.debug("MiniMax OAuth: expires_at parse failed: %s", exp_exc)
         expires_at = 0.0
     now = time.time()
     if not force and (expires_at - now) > MINIMAX_OAUTH_REFRESH_SKEW_SECONDS:
@@ -7493,7 +7546,7 @@ def _minimax_oauth_quarantine_on_terminal_refresh(state: Dict[str, Any], exc: Au
     }
     try:
         _minimax_save_auth_state(state)
-    except Exception as _save_exc:
+    except (OSError, ValueError, json.JSONDecodeError, AttributeError) as _save_exc:
         logger.debug("MiniMax OAuth: failed to persist quarantined state: %s", _save_exc)
 
 
@@ -7593,7 +7646,8 @@ def get_minimax_oauth_auth_status() -> Dict[str, Any]:
     try:
         expires_at = datetime.fromisoformat(state.get("expires_at", "")).timestamp()
         token_valid = (expires_at - time.time()) > 0
-    except Exception:
+    except (ValueError, TypeError) as exc:
+        logger.debug("MiniMax OAuth status: expires_at parse failed: %s", exc)
         token_valid = bool(state.get("access_token"))
     return {
         "logged_in": token_valid,
@@ -7877,7 +7931,8 @@ def _login_nous(args, pconfig: ProviderConfig) -> None:
                             )
                             or ""
                         )
-                    except Exception:
+                    except (ImportError, AttributeError, OSError, ValueError, RuntimeError) as e:
+                        logger.debug("Nous Portal entitlement enrichment unavailable: %s", e)
                         unavailable_message = ""
                     # The Portal's freeRecommendedModels endpoint is the
                     # source of truth for what's free *right now*. Augment
@@ -7913,7 +7968,7 @@ def _login_nous(args, pconfig: ProviderConfig) -> None:
                 print(unavailable_message or f"Upgrade at {_url} to access paid models.")
             else:
                 print("No curated models available for Nous Portal.")
-        except Exception as exc:
+        except (ImportError, OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
             message = format_auth_error(exc) if isinstance(exc, AuthError) else str(exc)
             print()
             print(f"Login succeeded, but could not fetch available models. Reason: {message}")
@@ -7951,7 +8006,7 @@ def _login_nous(args, pconfig: ProviderConfig) -> None:
     except KeyboardInterrupt:
         print("\nLogin cancelled.")
         raise SystemExit(130)
-    except Exception as exc:
+    except (httpx.HTTPError, OSError, ValueError, AttributeError, TypeError, KeyError) as exc:
         print(f"Login failed: {exc}")
         raise SystemExit(1)
 

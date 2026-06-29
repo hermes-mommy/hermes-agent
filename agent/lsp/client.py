@@ -239,7 +239,11 @@ class LSPClient:
             await self._spawn()
             await self._initialize()
             self._state = "running"
-        except Exception:
+        except Exception as e:
+            # Startup failure must surface — caller needs to know.
+            logger.exception(
+                "[%s] startup failed: %s", self.server_id, e
+            )
             self._state = "error"
             await self._cleanup_process()
             raise
@@ -404,8 +408,14 @@ class LSPClient:
                     pass
                 try:
                     await self._send_notification("exit", None)
-                except Exception:
-                    pass
+                except Exception as e:
+                    # Best-effort graceful exit — process is being
+                    # terminated regardless, so swallow pipe/IO failures.
+                    logger.debug(
+                        "[%s] exit notification failed (ignored): %s",
+                        self.server_id,
+                        e,
+                    )
         finally:
             self._state = "stopped"
             await self._cleanup_process()

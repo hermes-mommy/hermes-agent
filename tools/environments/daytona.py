@@ -137,8 +137,8 @@ class DaytonaEnvironment(BaseEnvironment):
                 self._remote_home = home
                 if requested_cwd in {"~", "/home/daytona"}:
                     self.cwd = home
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Daytona: failed to detect remote home: %s", e)
         logger.info("Daytona: resolved home to %s, cwd to %s", self._remote_home, self.cwd)
 
         self._sync_manager = FileSyncManager(
@@ -192,8 +192,8 @@ class DaytonaEnvironment(BaseEnvironment):
         # Clean up remote temp file
         try:
             self._sandbox.process.exec(f"rm -f {shlex.quote(remote_tar)}")
-        except Exception:
-            pass  # best-effort cleanup
+        except Exception as e:
+            logger.debug("Daytona: cleanup of remote temp tar failed: %s", e)
 
     def _daytona_delete(self, remote_paths: list[str]) -> None:
         """Batch-delete remote files via SDK exec."""
@@ -227,8 +227,8 @@ class DaytonaEnvironment(BaseEnvironment):
             with lock:
                 try:
                     sandbox.stop()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Daytona: sandbox stop failed during cancel: %s", e)
 
         if login:
             shell_cmd = f"bash -l -c {shlex.quote(cmd_string)}"

@@ -33,6 +33,7 @@ import json
 import logging
 import os
 import platform
+import queue
 import shlex
 import signal
 import subprocess
@@ -164,8 +165,7 @@ class ProcessRegistry:
         # Completion notifications (notify_on_complete) and watch pattern matches
         # both land here, distinguished by "type" field.  CLI process_loop and
         # gateway drain this after each agent turn to auto-trigger new turns.
-        import queue as _queue_mod
-        self.completion_queue: _queue_mod.Queue = _queue_mod.Queue()
+        self.completion_queue: queue.Queue = queue.Queue()
 
         # Track sessions whose completion was already consumed by the agent
         # via wait/poll/log.  Drain loops skip notifications for these.
@@ -626,10 +626,11 @@ class ProcessRegistry:
                 self._running[session.id] = session
 
             self._write_checkpoint()
-        except Exception:
+        except Exception as e:
             # Post-Popen setup failed — kill the orphaned subprocess (and any
             # descendants spawned via setsid) before re-raising so they do not
             # leak as untracked background processes.
+            logger.debug("Post-Popen setup failed (%s), cleaning up orphaned process", e)
             try:
                 if not _IS_WINDOWS:
                     try:
@@ -638,12 +639,12 @@ class ProcessRegistry:
                         proc.kill()
                 else:
                     proc.kill()
-            except Exception:
-                pass
+            except (OSError, ProcessLookupError, PermissionError):
+                logger.debug("Failed to kill orphaned process pid=%s during cleanup", proc.pid)
             try:
                 proc.wait(timeout=5)
-            except Exception:
-                pass
+            except (subprocess.TimeoutExpired, OSError):
+                logger.debug("Failed to wait on orphaned process pid=%s during cleanup", proc.pid)
             raise
 
         return session
@@ -804,8 +805,9 @@ class ProcessRegistry:
                     self._move_to_finished(session)
                     return
 
-            except Exception:
+            except Exception as e:
                 # Environment might be gone (sandbox reaped, etc.)
+                logger.debug("Env poller failed for session %s (sandbox likely reaped): %s", session.id, e)
                 session.exited = True
                 session.exit_code = -1
                 self._move_to_finished(session)
@@ -828,7 +830,8 @@ class ProcessRegistry:
                         self._check_watch_patterns(session, text)
                 except EOFError:
                     break
-                except Exception:
+                except (OSError, IOError) as e:
+                    logger.debug("PTY read error for session %s: %s", session.id, e)
                     break
         except Exception as e:
             logger.debug("PTY stdout reader ended: %s", e)
@@ -884,7 +887,7 @@ class ProcessRegistry:
         while not self.completion_queue.empty():
             try:
                 evt = self.completion_queue.get_nowait()
-            except Exception:
+            except queue.Empty:
                 break
             _evt_sid = evt.get("session_id", "")
             if evt.get("type") == "completion" and self.is_completion_consumed(_evt_sid):
@@ -927,7 +930,7 @@ class ProcessRegistry:
             return
         try:
             rc = proc.poll()
-        except Exception:
+        except OSError:
             return
         if rc is None:
             return  # Direct child still running — reader block is legitimate.
@@ -953,7 +956,7 @@ class ProcessRegistry:
                 finally:
                     try:
                         fcntl.fcntl(fd, fcntl.F_SETFL, flags)
-                    except Exception:
+                    except OSError:
                         pass
             except Exception as e:
                 logger.debug("Non-blocking drain failed for %s: %s", session.id, e)
@@ -1129,7 +1132,8 @@ class ProcessRegistry:
                 # PTY process -- terminate via ptyprocess
                 try:
                     session._pty.terminate(force=True)
-                except Exception:
+                except (OSError, ProcessLookupError) as e:
+                    logger.debug("PTY terminate failed for session %s, falling back to SIGTERM: %s", session.id, e)
                     if session.pid:
                         os.kill(session.pid, signal.SIGTERM)
             elif session.process:
@@ -1179,6 +1183,7 @@ class ProcessRegistry:
             self._write_checkpoint()
             return {"status": "killed", "session_id": session.id}
         except Exception as e:
+            logger.error("process kill failed session_id=%s: %s", session_id, e, exc_info=True)
             return {"status": "error", "error": str(e)}
 
     def write_stdin(self, session_id: str, data: str) -> dict:
@@ -1225,6 +1230,7 @@ class ProcessRegistry:
                 session._pty.sendeof()
                 return {"status": "ok", "message": "EOF sent"}
             except Exception as e:
+                logger.error("send_eof failed: %s", e, exc_info=True)
                 return {"status": "error", "error": str(e)}
 
         if not session.process or not session.process.stdin:
@@ -1233,6 +1239,7 @@ class ProcessRegistry:
             session.process.stdin.close()
             return {"status": "ok", "message": "stdin closed"}
         except Exception as e:
+            logger.error("close_stdin failed: %s", e, exc_info=True)
             return {"status": "error", "error": str(e)}
 
     def count_running(self) -> int:
@@ -1245,7 +1252,8 @@ class ProcessRegistry:
         """
         try:
             return len(self._running)
-        except Exception:
+        except Exception as e:
+            logger.warning("count_running failed: %s", e)
             return 0
 
     def list_sessions(self, task_id: str = None) -> list:
@@ -1397,7 +1405,8 @@ class ProcessRegistry:
 
         try:
             entries = json.loads(CHECKPOINT_PATH.read_text(encoding="utf-8"))
-        except Exception:
+        except (json.JSONDecodeError, OSError, ValueError) as e:
+            logger.debug("Failed to read/parse checkpoint file: %s", e)
             return 0
 
         recovered = 0

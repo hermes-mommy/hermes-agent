@@ -12,10 +12,13 @@ Config stored in ~/.hermes/config.yaml under:
       cli: []
 """
 from typing import List, Optional, Set
+import logging
 
 from hermes_cli.config import cfg_get, load_config, save_config
 from hermes_cli.colors import Colors, color
 from hermes_cli.platforms import PLATFORMS as _PLATFORMS
+
+logger = logging.getLogger(__name__)
 
 # Backward-compatible view: {key: label_string} so existing code that
 # iterates ``PLATFORMS.items()`` or calls ``PLATFORMS.get(key)`` keeps
@@ -54,7 +57,10 @@ def _list_all_skills() -> List[dict]:
     try:
         from tools.skills_tool import _find_all_skills
         return _find_all_skills(skip_disabled=True)
-    except Exception:
+    except (ImportError, AttributeError, RuntimeError, ValueError, TypeError) as e:
+        # Fail-soft: skill discovery may legitimately be unavailable
+        # (missing tools.skills_tool module, malformed registry, etc.).
+        logger.debug("Skill discovery unavailable: %s", e)
         return []
 
 

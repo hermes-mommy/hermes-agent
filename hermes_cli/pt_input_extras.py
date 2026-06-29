@@ -11,6 +11,11 @@ can be unit-tested without importing the whole CLI runtime.
 
 from __future__ import annotations
 
+import logging
+
+
+logger = logging.getLogger(__name__)
+
 
 def install_shift_enter_alias() -> int:
     """Map Shift+Enter byte sequences to the (Escape, ControlM) key tuple
@@ -39,7 +44,12 @@ def install_shift_enter_alias() -> int:
     try:
         from prompt_toolkit.input.ansi_escape_sequences import ANSI_SEQUENCES
         from prompt_toolkit.keys import Keys
-    except Exception:
+    except (ImportError, AttributeError, KeyError) as e:
+        logger.debug(
+            "install_shift_enter_alias: prompt_toolkit import/exposure failed (%s); "
+            "skipping Shift+Enter remap.",
+            type(e).__name__,
+        )
         return 0
 
     alt_enter = (Keys.Escape, Keys.ControlM)
@@ -71,7 +81,12 @@ def install_ctrl_enter_alias() -> int:
     try:
         from prompt_toolkit.input.ansi_escape_sequences import ANSI_SEQUENCES
         from prompt_toolkit.keys import Keys
-    except Exception:
+    except (ImportError, AttributeError, KeyError) as e:
+        logger.debug(
+            "install_ctrl_enter_alias: prompt_toolkit import/exposure failed (%s); "
+            "skipping Ctrl+Enter remap.",
+            type(e).__name__,
+        )
         return 0
 
     alt_enter = (Keys.Escape, Keys.ControlM)

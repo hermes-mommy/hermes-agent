@@ -9,6 +9,7 @@ back into the minimal shape Hermes expects from an OpenAI client.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import queue
 import re
@@ -23,6 +24,8 @@ from typing import Any
 
 from agent.file_safety import get_read_block_error, is_write_denied
 from agent.redact import redact_sensitive_text
+
+logger = logging.getLogger(__name__)
 
 ACP_MARKER_BASE_URL = "acp://copilot"
 _DEFAULT_TIMEOUT_SECONDS = 900.0
@@ -77,7 +80,8 @@ def _resolve_home_dir() -> str:
         profile_home = get_subprocess_home()
         if profile_home:
             return profile_home
-    except Exception:
+    except (ImportError, AttributeError, ValueError, TypeError) as exc:
+        logger.debug("hermes_constants.get_subprocess_home unavailable: %s", exc)
         pass
 
     home = os.environ.get("HOME", "").strip()
@@ -94,7 +98,8 @@ def _resolve_home_dir() -> str:
         resolved = pwd.getpwuid(os.getuid()).pw_dir.strip()  # windows-footgun: ok — POSIX fallback inside try/except (pwd import fails on Windows)
         if resolved:
             return resolved
-    except Exception:
+    except (ImportError, AttributeError, KeyError, OSError) as exc:
+        logger.debug("pwd home lookup unavailable: %s", exc)
         pass
 
     # Last resort: /tmp (writable on any POSIX system). Avoids crashing the
@@ -241,7 +246,8 @@ def _extract_tool_calls_from_text(text: str) -> tuple[list[SimpleNamespace], str
     def _try_add_tool_call(raw_json: str) -> None:
         try:
             obj = json.loads(raw_json)
-        except Exception:
+        except (json.JSONDecodeError, ValueError, TypeError) as exc:
+            logger.debug("ACP tool-call JSON parse failed: %s", exc)
             return
         if not isinstance(obj, dict):
             return
@@ -369,10 +375,12 @@ class CopilotACPClient:
         try:
             proc.terminate()
             proc.wait(timeout=2)
-        except Exception:
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            logger.debug("ACP terminate/wait failed, falling back to kill: %s", exc)
             try:
                 proc.kill()
-            except Exception:
+            except OSError as exc2:
+                logger.debug("ACP kill also failed: %s", exc2)
                 pass
 
     def _create_chat_completion(
@@ -470,7 +478,8 @@ class CopilotACPClient:
             for line in proc.stdout:
                 try:
                     inbox.put(json.loads(line))
-                except Exception:
+                except (json.JSONDecodeError, ValueError, TypeError) as exc:
+                    logger.debug("ACP stdout JSON parse failed (passing as raw): %s", exc)
                     inbox.put({"raw": line.rstrip("\n")})
 
         def _stderr_reader() -> None:

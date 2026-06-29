@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, Literal, Optional
 
 from agent.model_metadata import fetch_endpoint_model_metadata, fetch_model_metadata
 from utils import base_url_host_matches
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_PRICING = {"input": 0.0, "output": 0.0}
 
@@ -541,14 +544,16 @@ def _to_decimal(value: Any) -> Optional[Decimal]:
         return None
     try:
         return Decimal(str(value))
-    except Exception:
+    except (InvalidOperation, TypeError, ValueError) as e:
+        logger.debug("usage_pricing: failed to convert %r to Decimal: %s", value, e)
         return None
 
 
 def _to_int(value: Any) -> int:
     try:
         return int(value or 0)
-    except Exception:
+    except (TypeError, ValueError) as e:
+        logger.debug("usage_pricing: failed to convert %r to int: %s", value, e)
         return 0
 
 

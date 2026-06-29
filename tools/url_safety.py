@@ -132,9 +132,9 @@ def _global_allow_private_urls() -> bool:
         ):
             _cached_allow_private = True
             return _cached_allow_private
-    except Exception:
+    except Exception as e:
         # Config unavailable (e.g. tests, early import) — keep default
-        pass
+        logger.debug("Config read skipped (private-urls toggle): %s", e)
 
     return _cached_allow_private
 

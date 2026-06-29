@@ -160,10 +160,10 @@ def _sweep_expired_pastes(now: Optional[float] = None) -> tuple[int, int]:
             if delete_paste(url):
                 deleted += 1
                 continue
-        except Exception:
+        except Exception as e:
             # Network hiccup, 404 (already gone), etc. — drop the entry
             # after a grace period; don't retry forever.
-            pass
+            logger.debug("sweep_expired_pastes: delete_paste failed for %s: %s", url, e)
 
         # Retain failed deletes for up to 24h past expiration, then give up.
         if expire_at + 86400 > current:
@@ -181,8 +181,8 @@ def _best_effort_sweep_expired_pastes() -> None:
     """Attempt pending-paste cleanup without letting /debug fail offline."""
     try:
         _sweep_expired_pastes()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("best_effort_sweep_expired_pastes failed: %s", e)
 
 
 # ---------------------------------------------------------------------------
@@ -728,8 +728,8 @@ def run_debug(args):
     # reliable even when offline.
     try:
         _sweep_expired_pastes()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("opportunistic sweep_expired_pastes failed: %s", e)
 
     subcmd = getattr(args, "debug_command", None)
     if subcmd == "share":

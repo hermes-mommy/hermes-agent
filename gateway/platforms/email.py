@@ -76,7 +76,8 @@ def _send_imap_id(imap: "imaplib.IMAP4") -> None:
     try:
         try:
             from hermes_cli import __version__ as _hermes_version
-        except Exception:  # noqa: BLE001 — keep ID best-effort if import fails
+        except Exception as e:  # keep ID best-effort if import fails
+            logger.debug("[Email] hermes_cli __version__ import failed, using fallback: %s", e)
             _hermes_version = "0"
         imap.xatom(
             "ID",
@@ -422,8 +423,8 @@ class EmailAdapter(BasePlatformAdapter):
             finally:
                 try:
                     imap.logout()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("[Email] IMAP logout failed during cleanup: %s", e)
         except Exception as e:
             logger.error("[Email] IMAP fetch error: %s", e)
         return results
@@ -556,7 +557,8 @@ class EmailAdapter(BasePlatformAdapter):
         finally:
             try:
                 smtp.quit()
-            except Exception:
+            except Exception as e:
+                logger.debug("[Email] SMTP quit failed, falling back to close: %s", e)
                 smtp.close()
 
         logger.info("[Email] Sent reply to %s (subject: %s)", to_addr, subject)
@@ -678,7 +680,8 @@ class EmailAdapter(BasePlatformAdapter):
         finally:
             try:
                 smtp.quit()
-            except Exception:
+            except Exception as e:
+                logger.debug("[Email] SMTP quit failed, falling back to close: %s", e)
                 smtp.close()
 
         logger.info("[Email] Sent multi-attachment email to %s (%d files)", to_addr, len(file_paths))
@@ -757,7 +760,8 @@ class EmailAdapter(BasePlatformAdapter):
         finally:
             try:
                 smtp.quit()
-            except Exception:
+            except Exception as e:
+                logger.debug("[Email] SMTP quit failed, falling back to close: %s", e)
                 smtp.close()
 
         return msg_id

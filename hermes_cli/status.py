@@ -4,11 +4,14 @@ Status command for hermes CLI.
 Shows the status of all Hermes Agent components.
 """
 
+import logging
 import os
 import sys
 import subprocess  # noqa: F401 — re-exported for tests that monkeypatch status.subprocess to guard against regressions
 import importlib.util
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 
@@ -56,7 +59,8 @@ def _format_iso_timestamp(value) -> str:
         parsed = datetime.fromisoformat(text)
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=timezone.utc)
-    except Exception:
+    except (ValueError, TypeError) as e:
+        logger.debug("status: ISO timestamp parse failed for %r: %s", value, e)
         return value
     return parsed.astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
 
@@ -113,7 +117,8 @@ def show_status(args):
 
     try:
         config = load_config()
-    except Exception:
+    except Exception as e:
+        logger.debug("status: load_config failed, falling back to defaults: %s", e)
         config = {}
 
     print(f"  Model:        {_configured_model_label(config)}")
@@ -191,7 +196,8 @@ def show_status(args):
         codex_status = get_codex_auth_status()
         qwen_status = get_qwen_auth_status()
         minimax_status = get_minimax_oauth_auth_status()
-    except Exception:
+    except Exception as e:
+        logger.debug("status: auth provider import/call failed, treating as logged-out: %s", e)
         nous_status = {}
         codex_status = {}
         qwen_status = {}
@@ -207,7 +213,8 @@ def show_status(args):
     ):
         try:
             nous_account_info = get_nous_portal_account_info()
-        except Exception:
+        except Exception as e:
+            logger.debug("status: get_nous_portal_account_info failed, leaving unset: %s", e)
             nous_account_info = None
 
     nous_logged_in = bool(
@@ -298,7 +305,8 @@ def show_status(args):
     try:
         from hermes_cli.auth import get_xai_oauth_auth_status
         xai_oauth_status = get_xai_oauth_auth_status() or {}
-    except Exception:
+    except Exception as e:
+        logger.debug("status: xAI OAuth status probe failed: %s", e)
         xai_oauth_status = {}
 
     xai_oauth_logged_in = bool(xai_oauth_status.get("logged_in"))
@@ -467,7 +475,8 @@ def show_status(args):
             status_str = "configured" if configured else "not configured"
             label = entry.label
             print(f"  {label:<12}  {check_mark(configured)} {status_str} (plugin)")
-    except Exception:
+    except Exception as e:
+        logger.debug("status: plugin platform_registry probe failed: %s", e)
         pass
 
     # =========================================================================
@@ -492,7 +501,8 @@ def show_status(args):
             print("  Note:         Android may stop background jobs when Termux is suspended")
         elif snapshot.service_installed and not snapshot.service_running:
             print("  Service:      installed but stopped")
-    except Exception:
+    except Exception as e:
+        logger.debug("status: gateway runtime snapshot failed: %s", e)
         if _is_termux():
             print(f"  Status:       {color('unknown', Colors.DIM)}")
             print("  Manager:      Termux / manual process")
@@ -521,7 +531,8 @@ def show_status(args):
                 jobs = data.get("jobs", [])
                 enabled_jobs = [j for j in jobs if j.get("enabled", True)]
                 print(f"  Jobs:         {len(enabled_jobs)} active, {len(jobs)} total")
-        except Exception:
+        except (OSError, ValueError) as e:
+            logger.debug("status: jobs.json read failed: %s", e)
             print("  Jobs:         (error reading jobs file)")
     else:
         print("  Jobs:         0")
@@ -539,7 +550,8 @@ def show_status(args):
             with open(sessions_file, encoding="utf-8") as f:
                 data = json.load(f)
                 print(f"  Active:       {len(data)} session(s)")
-        except Exception:
+        except (OSError, ValueError) as e:
+            logger.debug("status: sessions.json read failed: %s", e)
             print("  Active:       (error reading sessions file)")
     else:
         print("  Active:       0")

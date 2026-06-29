@@ -134,7 +134,14 @@ def slack_manifest_command(args) -> int:
                 from hermes_constants import get_hermes_home
 
                 target = Path(get_hermes_home()) / "slack-manifest.json"
-            except Exception:
+            except Exception as e:
+                # hermes_constants is an optional companion package — fall back to
+                # the env var / $HOME convention if it isn't importable.
+                print(
+                    f"warning: hermes_constants unavailable ({type(e).__name__}: {e}); "
+                    "falling back to $HERMES_HOME / ~/.hermes",
+                    file=sys.stderr,
+                )
                 target = Path(os.environ.get("HERMES_HOME") or str(Path.home() / ".hermes")) / "slack-manifest.json"
         else:
             target = Path(write_target).expanduser()

@@ -134,7 +134,8 @@ def _check_fn_cached(fn: Callable) -> bool:
                 return value
     try:
         value = bool(fn())
-    except Exception:
+    except Exception as e:
+        logger.debug("check_fn %s raised %s; treating as unavailable", fn, e)
         value = False
     with _check_fn_cache_lock:
         _check_fn_cache[fn] = (now, value)
@@ -185,8 +186,8 @@ class ToolRegistry:
             return True
         try:
             return bool(check())
-        except Exception:
-            logger.debug("Toolset %s check raised; marking unavailable", toolset)
+        except Exception as e:
+            logger.debug("Toolset %s check raised %s; marking unavailable", toolset, e)
             return False
 
     def get_entry(self, name: str) -> Optional[ToolEntry]:
@@ -411,7 +412,8 @@ class ToolRegistry:
             try:
                 from model_tools import _sanitize_tool_error
                 sanitized = _sanitize_tool_error(raw)
-            except Exception:
+            except Exception as e:
+                logger.debug("Tool error sanitizer failed (%s); returning raw error", e)
                 sanitized = raw  # defensive: never let the sanitizer block error propagation
             return json.dumps({"error": sanitized})
 

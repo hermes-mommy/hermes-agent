@@ -6,6 +6,7 @@ as its first argument and uses its state (queues, app reference) to coordinate
 with the TUI.
 """
 
+import logging
 import queue
 import time as _time
 
@@ -13,6 +14,8 @@ from hermes_cli.banner import cprint, _DIM, _RST
 from hermes_cli.config import save_env_value_secure
 from hermes_cli.secret_prompt import masked_secret_prompt
 from hermes_constants import display_hermes_home
+
+logger = logging.getLogger(__name__)
 
 
 def clarify_callback(cli, question, choices):
@@ -113,13 +116,13 @@ def prompt_for_secret(cli, var_name: str, prompt: str, metadata=None) -> dict:
     if hasattr(cli, "_clear_secret_input_buffer"):
         try:
             cli._clear_secret_input_buffer()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to clear secret input buffer: %s", e)
     elif hasattr(cli, "_app") and cli._app:
         try:
             cli._app.current_buffer.reset()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to reset current buffer: %s", e)
 
     if hasattr(cli, "_app") and cli._app:
         cli._app.invalidate()
@@ -163,13 +166,13 @@ def prompt_for_secret(cli, var_name: str, prompt: str, metadata=None) -> dict:
     if hasattr(cli, "_clear_secret_input_buffer"):
         try:
             cli._clear_secret_input_buffer()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to clear secret input buffer: %s", e)
     elif hasattr(cli, "_app") and cli._app:
         try:
             cli._app.current_buffer.reset()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to reset current buffer: %s", e)
     if hasattr(cli, "_app") and cli._app:
         cli._app.invalidate()
     cprint(f"\n{_DIM}  ⏱ Timeout — secret capture cancelled{_RST}")

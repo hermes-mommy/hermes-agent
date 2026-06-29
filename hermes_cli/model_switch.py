@@ -238,8 +238,8 @@ def _load_direct_aliases() -> dict[str, DirectAlias]:
                         provider=provider.strip() or current_provider,
                         base_url="",
                     )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to load direct model aliases: %s", e)
     return merged
 
 
@@ -503,8 +503,8 @@ def resolve_alias(
             for m in static:
                 if m.lower() not in seen:
                     catalog.append(m)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to merge static provider models: %s", e)
 
     # For aggregators, models are vendor/model-name format
     aggregator = is_aggregator(current_provider)
@@ -549,7 +549,8 @@ def get_authenticated_provider_slugs(
             max_models=0,
         )
         return [p["slug"] for p in providers]
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to list authenticated provider slugs: %s", e)
         return []
 
 
@@ -608,8 +609,8 @@ def resolve_display_context_length(
         )
         if ctx:
             return int(ctx)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Context length resolution failed, falling back to model_info: %s", e)
     if model_info is not None and model_info.context_window:
         return int(model_info.context_window)
     return None
@@ -703,8 +704,8 @@ def switch_model(
                     _switch_err += "\n\nRun 'hermes doctor' — config issues detected:"
                     for _ci in _cfg_issues[:3]:
                         _switch_err += f"\n  • {_ci.message}"
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Config structure validation failed: %s", e)
             return ModelSwitchResult(
                 success=False,
                 is_global=is_global,
@@ -899,8 +900,8 @@ def switch_model(
             api_key = runtime.get("api_key", "")
             base_url = runtime.get("base_url", "")
             api_mode = runtime.get("api_mode", "")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Runtime provider resolution for '%s' failed (keeping existing creds): %s", current_provider, e)
 
     # --- Direct alias override: use exact base_url from the alias if set ---
     if resolved_alias:
@@ -1111,7 +1112,8 @@ def list_authenticated_providers(
         that URL into custom_providers would actually hit."""
         try:
             from hermes_cli.auth import PROVIDER_REGISTRY as _reg
-        except Exception:
+        except Exception as e:
+            logger.debug("Could not import PROVIDER_REGISTRY for endpoint recording: %s", e)
             return
         pcfg = _reg.get(slug)
         if not pcfg:
@@ -1161,7 +1163,8 @@ def list_authenticated_providers(
         try:
             from agent.bedrock_adapter import has_aws_credentials
             return bool(has_aws_credentials())
-        except Exception:
+        except Exception as e:
+            logger.debug("Bedrock credential check failed: %s", e)
             return False
 
     data = fetch_models_dev()
@@ -1242,8 +1245,8 @@ def list_authenticated_providers(
                 store = _load_auth_store()
                 if store and store.get("credential_pool", {}).get(hermes_id):
                     has_creds = True
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Auth store credential-checking for %s failed: %s", hermes_id, e)
         if not has_creds:
             continue
 
@@ -1371,7 +1374,8 @@ def list_authenticated_providers(
             try:
                 _ids = cached_provider_model_ids(hermes_slug)
                 model_ids = _ids if _ids else (curated.get(hermes_slug, []) or curated.get(pid, []))
-            except Exception:
+            except Exception as e:
+                logger.debug("Live model IDs cache miss for Bedrock overlay %s/%s, using curated: %s", hermes_slug, pid, e)
                 model_ids = curated.get(hermes_slug, []) or curated.get(pid, [])
         else:
             # Unified pathway — see Section 1 rationale. Fall back to the
@@ -1424,16 +1428,16 @@ def list_authenticated_providers(
                 _cp_providers_store = _cp_store.get("providers", {})
                 if _cp_store and _cp.slug in _cp_providers_store:
                     _cp_has_creds = True
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Canonical-provider auth-store check failed for %s: %s", _cp.slug, e)
         if not _cp_has_creds:
             try:
                 from agent.credential_pool import load_pool
                 _cp_pool = load_pool(_cp.slug)
                 if _cp_pool.has_credentials():
                     _cp_has_creds = True
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Credential-pool check failed for canonical provider %s: %s", _cp.slug, e)
 
         # Special case: aws_sdk auth (bedrock) — no API key env vars,
         # credentials come from the boto3 credential chain (env vars,
@@ -1450,7 +1454,8 @@ def list_authenticated_providers(
             try:
                 _ids = cached_provider_model_ids(_cp.slug)
                 _cp_model_ids = _ids if _ids else curated.get(_cp.slug, [])
-            except Exception:
+            except Exception as e:
+                logger.debug("Live Bedrock model-IDs cache miss for %s, using curated: %s", _cp.slug, e)
                 _cp_model_ids = curated.get(_cp.slug, [])
         else:
             # Unified pathway — same as sections 1 and 2.
@@ -1546,8 +1551,8 @@ def list_authenticated_providers(
                     live_models = fetch_api_models(api_key, api_url)
                     if live_models:
                         models_list = live_models
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Live /models discovery failed for user endpoint %s: %s", ep_name, e)
 
             results.append({
                 "slug": ep_name,
@@ -1729,8 +1734,8 @@ def list_authenticated_providers(
                     if live_models:
                         grp["models"] = live_models
                         grp["total_models"] = len(live_models)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Live /models discovery failed for custom-provider group %s: %s", slug, e)
             results.append({
                 "slug": slug,
                 "name": grp["name"],
@@ -1798,7 +1803,8 @@ def list_picker_providers(
             try:
                 live = fetch_openrouter_models()
                 live_ids = [mid for mid, _ in live]
-            except Exception:
+            except Exception as e:
+                logger.debug("Live OpenRouter model fetch failed, using curated list: %s", e)
                 live_ids = list(p.get("models", []))
             p = dict(p)
             p["models"] = live_ids[:max_models]

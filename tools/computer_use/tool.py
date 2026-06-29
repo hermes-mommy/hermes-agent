@@ -149,8 +149,8 @@ def reset_backend_for_tests() -> None:  # pragma: no cover
         if _backend is not None:
             try:
                 _backend.stop()
-            except Exception:
-                pass
+            except Exception as exc:  # cleanup — log and continue
+                logger.debug("reset_backend_for_tests: backend.stop() raised %s", exc)
         _backend = None
     _session_auto_approve = False
     _always_allow = set()
@@ -642,8 +642,8 @@ def _route_capture_through_aux_vision(
         if temp_image_path is not None:
             try:
                 _os.unlink(str(temp_image_path))
-            except Exception:
-                pass
+            except Exception as exc:  # cleanup — temp file removal is best-effort
+                logger.debug("computer_use: failed to remove temp vision image %s: %s", temp_image_path, exc)
 
     analysis_text = ""
     if isinstance(result_json, str):

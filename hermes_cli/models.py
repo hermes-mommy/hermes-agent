@@ -8,6 +8,7 @@ Add, remove, or reorder entries here — both `hermes setup` and
 from __future__ import annotations
 
 import json
+import logging
 import os
 import urllib.request
 import urllib.error
@@ -15,6 +16,8 @@ import time
 from difflib import get_close_matches
 from pathlib import Path
 from typing import Any, NamedTuple, Optional
+
+log = logging.getLogger(__name__)
 
 from hermes_cli import __version__ as _HERMES_VERSION
 
@@ -132,7 +135,8 @@ def _xai_curated_models() -> list[str]:
             ids = [mid for mid in models.keys() if isinstance(mid, str)]
             if ids:
                 return _xai_promote_top(sorted(ids))
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         # Any failure (missing file, malformed JSON, import error)
         # falls through to the static list.
         pass
@@ -515,7 +519,8 @@ def fetch_nous_account_tier(access_token: str, portal_base_url: str = "") -> dic
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=8) as resp:
             return json.loads(resp.read().decode())
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         return {}
 
 
@@ -608,7 +613,8 @@ def union_with_portal_free_recommendations(
         payload = fetch_nous_recommended_models(
             portal_base_url, force_refresh=force_refresh
         )
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         return (list(curated_ids), dict(pricing))
 
     free_block = payload.get("freeRecommendedModels") if isinstance(payload, dict) else None
@@ -679,7 +685,8 @@ def union_with_portal_paid_recommendations(
         payload = fetch_nous_recommended_models(
             portal_base_url, force_refresh=force_refresh
         )
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         return (list(curated_ids), dict(pricing))
 
     paid_block = payload.get("paidRecommendedModels") if isinstance(payload, dict) else None
@@ -737,7 +744,8 @@ def check_nous_free_tier(*, force_fresh: bool = False) -> bool:
         result = account_info.is_free_tier
         _free_tier_cache = (result, now)
         return result
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         _free_tier_cache = (False, now)
         return False  # default to paid on error — don't block users
 
@@ -803,7 +811,8 @@ def fetch_nous_recommended_models(
             data = json.loads(resp.read().decode())
         if not isinstance(data, dict):
             data = {}
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         data = {}
 
     _nous_recommended_cache[base] = (data, now)
@@ -822,7 +831,8 @@ def _resolve_nous_portal_url() -> str:
         if portal:
             return portal.rstrip("/")
         return str(DEFAULT_NOUS_PORTAL_URL).rstrip("/")
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         return "https://portal.nousresearch.com"
 
 
@@ -872,7 +882,8 @@ def get_nous_recommended_aux_model(
     if free_tier is None:
         try:
             free_tier = check_nous_free_tier()
-        except Exception:
+        except Exception as e:
+            log.debug("suppressed exception: %s", e)
             # On any detection error, assume paid — paid users see both fields
             # anyway so this is a safe default that maximises model quality.
             free_tier = False
@@ -963,7 +974,8 @@ try:
         _desc = _pp.description or f"{_label} (direct API)"
         CANONICAL_PROVIDERS.append(ProviderEntry(_pp.name, _label, _desc))
         _canonical_slugs.add(_pp.name)
-except Exception:
+except Exception as e:
+    log.debug("suppressed exception: %s", e)
     pass
 
 # Derived dicts — used throughout the codebase
@@ -1118,7 +1130,8 @@ def fetch_openrouter_models(
     try:
         from hermes_cli.model_catalog import get_curated_openrouter_models
         remote = get_curated_openrouter_models()
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         remote = None
     fallback = list(remote) if remote else list(OPENROUTER_MODELS)
     preferred_ids = [mid for mid, _ in fallback]
@@ -1130,7 +1143,8 @@ def fetch_openrouter_models(
         )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             payload = json.loads(resp.read().decode())
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         return list(_openrouter_catalog_cache or fallback)
 
     live_items = payload.get("data", [])
@@ -1184,7 +1198,8 @@ def get_curated_nous_model_ids() -> list[str]:
     try:
         from hermes_cli.model_catalog import get_curated_nous_models
         remote = get_curated_nous_models()
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         remote = None
     if remote:
         return list(remote)
@@ -1313,7 +1328,8 @@ def fetch_models_with_pricing(
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             payload = json.loads(resp.read().decode())
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         _pricing_cache[cache_key] = {}
         return {}
 
@@ -1361,7 +1377,8 @@ def _resolve_nous_pricing_credentials() -> tuple[str, str]:
         creds = resolve_nous_runtime_credentials()
         if creds:
             return (creds.get("api_key", ""), creds.get("base_url", ""))
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         pass
     return ("", _DEFAULT_NOUS_INFERENCE_BASE)
 
@@ -1427,7 +1444,8 @@ def _fetch_novita_pricing(
         req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             payload = json.loads(resp.read().decode())
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         _pricing_cache[cache_key] = {}
         return {}
 
@@ -1492,7 +1510,8 @@ def list_available_providers() -> list[dict[str, str]]:
             else:
                 status = get_auth_status(pid)
                 has_creds = bool(status.get("logged_in") or status.get("configured"))
-        except Exception:
+        except Exception as e:
+            log.debug("suppressed exception: %s", e)
             pass
         result.append({
             "id": pid,
@@ -1547,7 +1566,8 @@ def _get_custom_base_url() -> str:
         model_cfg = config.get("model", {})
         if isinstance(model_cfg, dict):
             return str(model_cfg.get("base_url", "")).strip()
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         pass
     return ""
 
@@ -1603,7 +1623,8 @@ def _resolve_static_model_alias(
     """Resolve short aliases (e.g. sonnet/opus) using static catalogs only."""
     try:
         from hermes_cli.model_switch import MODEL_ALIASES
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         return None
 
     identity = MODEL_ALIASES.get(name_lower)
@@ -1896,7 +1917,8 @@ def _resolve_copilot_catalog_api_key() -> str:
         api_key = str(creds.get("api_key") or "").strip()
         if api_key:
             return api_key
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         pass
 
     try:
@@ -1917,11 +1939,13 @@ def _resolve_copilot_catalog_api_key() -> str:
                 continue
             try:
                 api_token, _expires_at = exchange_copilot_token(raw)
-            except Exception:
+            except Exception as e:
+                log.debug("suppressed exception: %s", e)
                 continue
             if api_token:
                 return api_token
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         pass
 
     return ""
@@ -1973,7 +1997,8 @@ def _merge_with_models_dev(provider: str, curated: list[str]) -> list[str]:
     try:
         from agent.models_dev import list_agentic_models
         mdev = list_agentic_models(provider)
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         mdev = []
 
     if not mdev:
@@ -2022,7 +2047,8 @@ def provider_model_ids(provider: Optional[str], *, force_refresh: bool = False) 
 
             creds = resolve_codex_runtime_credentials(refresh_if_expiring=True)
             access_token = creds.get("api_key")
-        except Exception:
+        except Exception as e:
+            log.debug("suppressed exception: %s", e)
             access_token = None
         return get_codex_model_ids(access_token=access_token)
     if normalized == "xai-oauth":
@@ -2032,7 +2058,8 @@ def provider_model_ids(provider: Optional[str], *, force_refresh: bool = False) 
             live = _fetch_github_models(_resolve_copilot_catalog_api_key())
             if live:
                 return live
-        except Exception:
+        except Exception as e:
+            log.debug("suppressed exception: %s", e)
             pass
         if normalized == "copilot-acp":
             return list(_PROVIDER_MODELS.get("copilot", []))
@@ -2045,7 +2072,8 @@ def provider_model_ids(provider: Optional[str], *, force_refresh: bool = False) 
                 live = fetch_nous_models(api_key=creds.get("api_key", ""), inference_base_url=creds.get("base_url", ""))
                 if live:
                     return live
-        except Exception:
+        except Exception as e:
+            log.debug("suppressed exception: %s", e)
             pass
         # Live failed (or no creds). Fall back to the docs-hosted manifest
         # — NOT the in-repo _PROVIDER_MODELS["nous"] snapshot — so newly
@@ -2064,7 +2092,8 @@ def provider_model_ids(provider: Optional[str], *, force_refresh: bool = False) 
                 live = fetch_api_models(api_key, base_url)
                 if live:
                     return live
-        except Exception:
+        except Exception as e:
+            log.debug("suppressed exception: %s", e)
             pass
     if normalized == "anthropic":
         live = _fetch_anthropic_models()
@@ -2083,7 +2112,8 @@ def provider_model_ids(provider: Optional[str], *, force_refresh: bool = False) 
                 live = fetch_api_models(api_key, base)
                 if live:
                     return live
-            except Exception:
+            except Exception as e:
+                log.debug("suppressed exception: %s", e)
                 pass
     if normalized == "gmi":
         try:
@@ -2096,7 +2126,8 @@ def provider_model_ids(provider: Optional[str], *, force_refresh: bool = False) 
                 live = fetch_api_models(api_key, base_url)
                 if live:
                     return live
-        except Exception:
+        except Exception as e:
+            log.debug("suppressed exception: %s", e)
             pass
     if normalized == "custom":
         base_url = _get_custom_base_url()
@@ -2120,7 +2151,8 @@ def provider_model_ids(provider: Optional[str], *, force_refresh: bool = False) 
             ids = bedrock_model_ids_or_none()
             if ids is not None:
                 return ids
-        except Exception:
+        except Exception as e:
+            log.debug("suppressed exception: %s", e)
             pass
 
     # ── Profile-based generic live fetch (all simple api-key providers) ──
@@ -2136,7 +2168,8 @@ def provider_model_ids(provider: Optional[str], *, force_refresh: bool = False) 
                 creds = resolve_api_key_provider_credentials(normalized)
                 api_key = str(creds.get("api_key") or "").strip()
                 base_url = str(creds.get("base_url") or "").strip()
-            except Exception:
+            except Exception as e:
+                log.debug("suppressed exception: %s", e)
                 api_key, base_url = "", _p.base_url
             if not base_url:
                 base_url = _p.base_url
@@ -2147,7 +2180,8 @@ def provider_model_ids(provider: Optional[str], *, force_refresh: bool = False) 
             # Use profile's fallback_models if defined
             if _p.fallback_models:
                 return list(_p.fallback_models)
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         pass
 
     curated_static = list(_PROVIDER_MODELS.get(normalized, []))
@@ -2213,7 +2247,8 @@ def _credential_fingerprint(provider: str) -> str:
             bev = getattr(pcfg, "base_url_env_var", "") or ""
             if bev:
                 parts.append(f"{bev}={_os.environ.get(bev, '')}")
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         pass
 
     # OAuth / external-file mtimes that change on re-auth
@@ -2225,9 +2260,11 @@ def _credential_fingerprint(provider: str) -> str:
                 parts.append(f"{rel}@{p.stat().st_mtime_ns}")
             except FileNotFoundError:
                 parts.append(f"{rel}@missing")
-            except Exception:
+            except Exception as e:
+                log.debug("suppressed exception: %s", e)
                 pass
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         pass
 
     # External well-known credential file locations
@@ -2242,7 +2279,8 @@ def _credential_fingerprint(provider: str) -> str:
             parts.append(f"{path}@{mt}")
         except FileNotFoundError:
             parts.append(f"{path}@missing")
-        except Exception:
+        except Exception as e:
+            log.debug("suppressed exception: %s", e)
             pass
 
     blob = "|".join(parts).encode("utf-8", errors="replace")
@@ -2265,7 +2303,8 @@ def _load_provider_models_cache() -> dict:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
         return data if isinstance(data, dict) else {}
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         return {}
 
 
@@ -2276,7 +2315,8 @@ def _save_provider_models_cache(data: dict) -> None:
         path = _provider_models_cache_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         atomic_json_write(path, data, indent=None)
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         pass
 
 
@@ -2352,7 +2392,8 @@ def clear_provider_models_cache(provider: Optional[str] = None) -> None:
         if normalized in cache:
             del cache[normalized]
             _save_provider_models_cache(cache)
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         pass
 
 
@@ -2402,7 +2443,8 @@ def _fetch_anthropic_models(timeout: float = 5.0) -> Optional[list[str]]:
             ):
                 try:
                     body_text = http_err.read().decode(errors="ignore").lower()
-                except Exception:
+                except Exception as e:
+                    log.debug("suppressed exception: %s", e)
                     body_text = ""
                 if "long context beta" in body_text and "not yet available" in body_text:
                     headers["anthropic-beta"] = ",".join(
@@ -2515,7 +2557,8 @@ def fetch_github_model_catalog(
                     models.append(item)
                 if models:
                     return models
-        except Exception:
+        except Exception as e:
+            log.debug("suppressed exception: %s", e)
             continue
     return None
 
@@ -2716,7 +2759,8 @@ def ensure_lmstudio_model_loaded(
 
     try:
         raw_models = _lmstudio_fetch_raw_models(api_key=api_key, base_url=base_url, timeout=10)
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         raw_models = None
     if raw_models is None:
         return None
@@ -2758,7 +2802,8 @@ def ensure_lmstudio_model_loaded(
             timeout=timeout,
         ) as resp:
             resp.read()
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         return None
     return target_context_length
 
@@ -2777,7 +2822,8 @@ def lmstudio_model_reasoning_options(
     """
     try:
         raw_models = _lmstudio_fetch_raw_models(api_key=api_key, base_url=base_url, timeout=timeout)
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         raw_models = None
     if not raw_models:
         return []
@@ -3171,7 +3217,8 @@ def probe_api_models(
                     "suggested_base_url": alternate_base if alternate_base != candidate_base else normalized,
                     "used_fallback": is_fallback,
                 }
-        except Exception:
+        except Exception as e:
+            log.debug("suppressed exception: %s", e)
             continue
 
     return {
@@ -3247,7 +3294,8 @@ def _load_ollama_cloud_cache(*, ignore_ttl: bool = False) -> Optional[dict]:
             if (time.time() - cached_at) > _OLLAMA_CLOUD_CACHE_TTL:
                 return None  # stale
         return data
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         pass
     return None
 
@@ -3259,7 +3307,8 @@ def _save_ollama_cloud_cache(models: list[str]) -> None:
         cache_path = _ollama_cloud_cache_path()
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         atomic_json_write(cache_path, {"models": models, "cached_at": time.time()}, indent=None)
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         pass
 
 
@@ -3302,7 +3351,8 @@ def fetch_ollama_cloud_models(
     try:
         from agent.models_dev import list_agentic_models
         mdev_models = list_agentic_models("ollama-cloud")
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         pass
 
     # 4. Merge: live first, then models.dev additions (deduped, order-preserving)
@@ -3484,7 +3534,8 @@ def validate_requested_model(
     if normalized in {"openai-codex", "xai-oauth"}:
         try:
             catalog_models = provider_model_ids(normalized)
-        except Exception:
+        except Exception as e:
+            log.debug("suppressed exception: %s", e)
             catalog_models = []
         if catalog_models:
             if requested_for_lookup in set(catalog_models):
@@ -3525,7 +3576,8 @@ def validate_requested_model(
     if normalized in {"minimax", "minimax-cn"}:
         try:
             catalog_models = provider_model_ids(normalized)
-        except Exception:
+        except Exception as e:
+            log.debug("suppressed exception: %s", e)
             catalog_models = []
         if catalog_models:
             # Case-insensitive lookup (catalog uses mixed case like MiniMax-M2.7)
@@ -3734,7 +3786,8 @@ def validate_requested_model(
                     f"{suggestion_text}"
                 ),
             }
-        except Exception:
+        except Exception as e:
+            log.debug("suppressed exception: %s", e)
             pass  # Fall through to generic warning
 
     # Static-catalog fallback: when the /models probe was unreachable,
@@ -3748,7 +3801,8 @@ def validate_requested_model(
     provider_label = _PROVIDER_LABELS.get(normalized, normalized)
     try:
         catalog_models = provider_model_ids(normalized)
-    except Exception:
+    except Exception as e:
+        log.debug("suppressed exception: %s", e)
         catalog_models = []
 
     if catalog_models:

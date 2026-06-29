@@ -29,6 +29,7 @@ Design notes
 from __future__ import annotations
 
 import ctypes
+import logging
 import os
 import re
 import shlex
@@ -37,6 +38,8 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Short timeouts: schtasks occasionally wedges and we don't want to hang forever.
 _SCHTASKS_TIMEOUT_S = 15
@@ -138,7 +141,11 @@ def _is_running_as_admin() -> bool:
     _assert_windows()
     try:
         return bool(ctypes.windll.shell32.IsUserAnAdmin())
-    except Exception:
+    except Exception as e:
+        # Failure to determine elevation status (ctypes load error, missing
+        # API, etc.) is a best-effort probe — assume non-elevated so callers
+        # can decide whether to attempt UAC escalation themselves.
+        logger.debug("IsUserAnAdmin() probe failed; assuming not elevated: %s", e)
         return False
 
 
@@ -1037,10 +1044,14 @@ def _drain_gateway_pid(pid: int, drain_timeout: float) -> bool:
 
     try:
         write_planned_stop_marker(pid)
-    except Exception:
+    except OSError as e:
         # Best-effort: if the marker can't be written, we have no choice
         # but to fall through to a hard kill.  Caller decides escalation.
-        pass
+        logger.warning("Failed to write planned-stop marker for PID %s: %s", pid, e)
+    except Exception as e:
+        # Catch-all for non-OS failure modes (encoding, custom marker writer
+        # bugs, etc.). Still best-effort; we surface it but keep going.
+        logger.warning("Unexpected error writing planned-stop marker for PID %s: %s", pid, e)
 
     deadline = time.monotonic() + max(drain_timeout, 1.0)
     while time.monotonic() < deadline:
@@ -1073,7 +1084,13 @@ def stop() -> None:
     if pid is not None:
         try:
             drain_timeout = float(_get_restart_drain_timeout() or 30.0)
-        except Exception:
+        except (TypeError, ValueError) as e:
+            logger.debug("Restart drain timeout value was malformed (%s); using 30s default", e)
+            drain_timeout = 30.0
+        except Exception as e:
+            # Catch-all for any other failure (e.g. _get_restart_drain_timeout
+            # raising a RuntimeError on plugin-load failure). Default is safe.
+            logger.debug("Could not resolve restart drain timeout (%s); using 30s default", e)
             drain_timeout = 30.0
         drained = _drain_gateway_pid(pid, drain_timeout)
 

@@ -120,8 +120,8 @@ def record_nous_rate_limit(
             with os.fdopen(fd, "w") as f:
                 json.dump(state, f)
             atomic_replace(tmp_path, path)
-        except Exception:
-            # Clean up temp file on failure
+        except (OSError, IOError):
+            # Clean up temp file on filesystem / atomic_replace failure
             try:
                 os.unlink(tmp_path)
             except OSError:
@@ -132,7 +132,7 @@ def record_nous_rate_limit(
             "Nous rate limit recorded: resets in %.0fs (at %.0f)",
             reset_at - now, reset_at,
         )
-    except Exception as exc:
+    except (OSError, IOError, ValueError) as exc:
         logger.debug("Failed to write Nous rate limit state: %s", exc)
 
 

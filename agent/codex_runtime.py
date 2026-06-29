@@ -55,7 +55,8 @@ def run_codex_app_server_turn(
         try:
             from tools.terminal_tool import _get_approval_callback
             approval_callback = _get_approval_callback()
-        except Exception:
+        except Exception as e:
+            logger.debug("approval callback import failed (optional): %s", e)
             approval_callback = None
         agent._codex_session = CodexAppServerSession(
             cwd=cwd,
@@ -74,8 +75,8 @@ def run_codex_app_server_turn(
         # respawns from scratch instead of reusing a dead client.
         try:
             agent._codex_session.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("codex session close on crash raised (benign): %s", e)
         agent._codex_session = None
         return {
             "final_response": (
@@ -101,8 +102,8 @@ def run_codex_app_server_turn(
         )
         try:
             agent._codex_session.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("codex session close on retire raised (benign): %s", e)
         agent._codex_session = None
 
     # Splice projected messages into the conversation. The projector emits
@@ -142,8 +143,8 @@ def run_codex_app_server_turn(
                 final_response=turn.final_text,
                 interrupted=False,
             )
-        except Exception:
-            logger.debug("external memory sync raised", exc_info=True)
+        except Exception as e:
+            logger.debug("external memory sync raised: %s", e, exc_info=True)
 
     # Background review fork — same cadence + signature as the default
     # path (line ~15449). Only fires when a trigger actually tripped AND
@@ -159,8 +160,8 @@ def run_codex_app_server_turn(
                 review_memory=should_review_memory,
                 review_skills=should_review_skills,
             )
-        except Exception:
-            logger.debug("background review spawn raised", exc_info=True)
+        except Exception as e:
+            logger.debug("background review spawn raised: %s", e, exc_info=True)
 
     return {
         "final_response": turn.final_text,
@@ -289,10 +290,10 @@ def _consume_codex_event_stream(
                 # Control-flow signals from watchdog/cancellation hooks must
                 # propagate, not get swallowed as "debug noise".
                 raise
-            except Exception:
+            except Exception as e:
                 # Genuine bugs in third-party debug/log hooks shouldn't break
                 # stream consumption.
-                logger.debug("Codex stream on_event hook raised", exc_info=True)
+                logger.debug("Codex stream on_event hook raised: %s", e, exc_info=True)
         if interrupt_check is not None and interrupt_check():
             break
 
@@ -317,13 +318,13 @@ def _consume_codex_event_stream(
                         if on_first_delta is not None:
                             try:
                                 on_first_delta()
-                            except Exception:
-                                logger.debug("Codex stream on_first_delta raised", exc_info=True)
+                            except Exception as e:
+                                logger.debug("Codex stream on_first_delta raised: %s", e, exc_info=True)
                     if on_text_delta is not None:
                         try:
                             on_text_delta(delta_text)
-                        except Exception:
-                            logger.debug("Codex stream on_text_delta raised", exc_info=True)
+                        except Exception as e:
+                            logger.debug("Codex stream on_text_delta raised: %s", e, exc_info=True)
             continue
 
         if "function_call" in event_type:
@@ -335,8 +336,8 @@ def _consume_codex_event_stream(
             if reasoning_text and on_reasoning_delta is not None:
                 try:
                     on_reasoning_delta(reasoning_text)
-                except Exception:
-                    logger.debug("Codex stream on_reasoning_delta raised", exc_info=True)
+                except Exception as e:
+                    logger.debug("Codex stream on_reasoning_delta raised: %s", e, exc_info=True)
             continue
 
         if event_type == "response.output_item.done":
@@ -512,8 +513,8 @@ def run_codex_stream(agent, api_kwargs: dict, client: Any = None, on_first_delta
             if callable(close_fn):
                 try:
                     close_fn()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("codex stream close raised (benign): %s", e)
 
 
 def run_codex_create_stream_fallback(agent, api_kwargs: dict, client: Any = None):

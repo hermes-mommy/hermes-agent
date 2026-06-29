@@ -170,7 +170,8 @@ def is_interactive_stdin() -> bool:
         return False
     try:
         return bool(stdin.isatty())
-    except Exception:
+    except (OSError, ValueError) as e:
+        logger.debug("is_interactive_stdin: isatty() failed: %s", e)
         return False
 
 
@@ -368,7 +369,8 @@ def _print_setup_summary(config: dict, hermes_home):
         from agent.auxiliary_client import get_available_vision_backends
 
         _vision_backends = get_available_vision_backends()
-    except Exception:
+    except (ImportError, AttributeError, ValueError, TypeError) as e:
+        logger.debug("Could not probe vision backends: %s", e)
         _vision_backends = []
 
     if _vision_backends:
@@ -443,9 +445,11 @@ def _print_setup_summary(config: dict, hermes_home):
                     if _p.is_available():
                         _img_backend = _p.display_name
                         break
-                except Exception:
+                except (AttributeError, RuntimeError, OSError, ValueError) as e:
+                    logger.debug("Image provider %s is_available() failed: %s", getattr(_p, 'name', '<unknown>'), e)
                     continue
-        except Exception:
+        except (ImportError, AttributeError, TypeError) as e:
+            logger.debug("Image-gen registry probe skipped: %s", e)
             pass
         if _img_backend:
             tool_status.append((f"Image Generation ({_img_backend})", True, None))
@@ -465,9 +469,11 @@ def _print_setup_summary(config: dict, hermes_home):
                 if _vp.is_available():
                     _video_backend = _vp.display_name
                     break
-            except Exception:
+            except (AttributeError, RuntimeError, OSError, ValueError) as e:
+                logger.debug("Video provider %s is_available() failed: %s", getattr(_vp, 'name', '<unknown>'), e)
                 continue
-    except Exception:
+    except (ImportError, AttributeError, TypeError) as e:
+        logger.debug("Video-gen registry probe skipped: %s", e)
         _video_backend = None
     if _video_backend:
         tool_status.append((f"Video Generation ({_video_backend})", True, None))
@@ -491,7 +497,8 @@ def _print_setup_summary(config: dict, hermes_home):
     elif tts_provider == "neutts":
         try:
             neutts_ok = importlib.util.find_spec("neutts") is not None
-        except Exception:
+        except (ImportError, ModuleNotFoundError, ValueError) as e:
+            logger.debug("neutts spec lookup failed: %s", e)
             neutts_ok = False
         if neutts_ok:
             tool_status.append(("Text-to-Speech (NeuTTS local)", True, None))
@@ -501,7 +508,8 @@ def _print_setup_summary(config: dict, hermes_home):
         try:
             import importlib.util
             kittentts_ok = importlib.util.find_spec("kittentts") is not None
-        except Exception:
+        except (ImportError, ModuleNotFoundError, ValueError) as e:
+            logger.debug("kittentts spec lookup failed: %s", e)
             kittentts_ok = False
         if kittentts_ok:
             tool_status.append(("Text-to-Speech (KittenTTS local)", True, None))
@@ -530,7 +538,8 @@ def _print_setup_summary(config: dict, hermes_home):
         _spotify_state = get_provider_auth_state("spotify") or {}
         if _spotify_state.get("access_token") or _spotify_state.get("refresh_token"):
             tool_status.append(("Spotify (PKCE OAuth)", True, None))
-    except Exception:
+    except (ImportError, AttributeError, FileNotFoundError, ValueError) as e:
+        logger.debug("Spotify auth state probe skipped: %s", e)
         pass
 
     # Skills Hub
@@ -819,7 +828,8 @@ def setup_model_provider(config: dict, *, quick: bool = False):
         try:
             from agent.auxiliary_client import get_available_vision_backends
             _vision_backends = set(get_available_vision_backends())
-        except Exception:
+        except (ImportError, AttributeError, ValueError, TypeError) as e:
+            logger.debug("Could not probe vision backends for setup decision: %s", e)
             _vision_backends = set()
 
         _vision_needs_setup = not bool(_vision_backends)
@@ -1001,7 +1011,8 @@ def _xai_oauth_logged_in_for_setup() -> bool:
         from hermes_cli.auth import get_xai_oauth_auth_status
 
         return bool(get_xai_oauth_auth_status().get("logged_in"))
-    except Exception:
+    except (ImportError, AttributeError, ValueError) as e:
+        logger.debug("xAI OAuth auth-status probe skipped: %s", e)
         return False
 
 
@@ -1107,7 +1118,8 @@ def _setup_tts_provider(config: dict):
         # Check if already installed
         try:
             already_installed = importlib.util.find_spec("neutts") is not None
-        except Exception:
+        except (ImportError, ModuleNotFoundError, ValueError) as e:
+            logger.debug("neutts spec lookup (tts flow) failed: %s", e)
             already_installed = False
 
         if already_installed:
@@ -1254,7 +1266,8 @@ def _setup_tts_provider(config: dict):
         try:
             import importlib.util
             already_installed = importlib.util.find_spec("kittentts") is not None
-        except Exception:
+        except (ImportError, ModuleNotFoundError, ValueError) as e:
+            logger.debug("kittentts spec lookup (tts flow) failed: %s", e)
             already_installed = False
 
         if already_installed:
@@ -2519,13 +2532,20 @@ def _model_section_has_credentials(config: dict) -> bool:
         from hermes_cli.auth import get_active_provider
         if get_active_provider():
             return True
-    except Exception:
-        pass
+    except (ImportError, AttributeError) as e:
+        logger.debug(
+            "get_active_provider unavailable in setup credential probe: %s", e
+        )
 
+    PROVIDER_REGISTRY: dict = {}
     try:
-        from hermes_cli.auth import PROVIDER_REGISTRY
-    except Exception:
-        PROVIDER_REGISTRY = {}  # type: ignore[assignment]
+        from hermes_cli.auth import PROVIDER_REGISTRY as _provider_registry
+    except (ImportError, AttributeError) as e:
+        logger.debug(
+            "PROVIDER_REGISTRY unavailable in setup credential probe: %s", e
+        )
+    else:
+        PROVIDER_REGISTRY = _provider_registry
 
     def _has_key(pconfig) -> bool:
         for env_var in pconfig.api_key_env_vars:
@@ -2677,7 +2697,8 @@ def _load_openclaw_migration_module():
     _sys.modules[spec.name] = mod
     try:
         spec.loader.exec_module(mod)
-    except Exception:
+    except Exception as e:
+        logger.exception("Failed to exec OpenClaw migration module: %s", e)
         _sys.modules.pop(spec.name, None)
         raise
     return mod
@@ -2954,7 +2975,8 @@ def _run_portal_one_shot(config: dict) -> None:
     already_logged_in = False
     try:
         already_logged_in = bool((get_nous_auth_status() or {}).get("logged_in"))
-    except Exception:
+    except (ImportError, AttributeError, ValueError) as e:
+        logger.debug("Nous auth status probe skipped in portal one-shot: %s", e)
         already_logged_in = False
 
     if already_logged_in:
@@ -3063,7 +3085,8 @@ def run_setup_wizard(args):
         try:
             import shutil
             shutil.copy2(config_path, _backup_path)
-        except Exception:
+        except (OSError, shutil.Error) as e:
+            logger.debug("Config backup failed before setup: %s", e)
             _backup_path = None
     else:
         _backup_path = None

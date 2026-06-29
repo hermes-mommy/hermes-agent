@@ -15,15 +15,15 @@ import asyncio
 import json
 import logging
 import signal
-from typing import Optional
+from typing import Any, Optional
 
 try:
     import aiohttp
     from aiohttp import web
     AIOHTTP_AVAILABLE = True
 except ImportError:
-    aiohttp = None  # type: ignore[assignment]
-    web = None  # type: ignore[assignment]
+    aiohttp: Any = None
+    web: Any = None
     AIOHTTP_AVAILABLE = False
 
 from hermes_cli.proxy.adapters.base import UpstreamAdapter, UpstreamCredential
@@ -171,7 +171,15 @@ def create_app(adapter: UpstreamAdapter) -> "web.Application":
                     headers=fwd_headers,
                     allow_redirects=False,
                 )
-            except Exception:
+            except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as exc:
+                # aiohttp.ClientError covers connection/transport/protocol errors.
+                # asyncio.TimeoutError handles sock_read timeouts via the timeout
+                # object. OSError covers underlying socket-level failures that
+                # bubble through aiohttp's connector.
+                logger.debug(
+                    "proxy: session.request failed (%s); closing session before re-raise",
+                    exc,
+                )
                 await session.close()
                 raise
             return session, upstream_resp

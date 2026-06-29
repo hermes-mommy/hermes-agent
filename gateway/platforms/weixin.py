@@ -35,24 +35,39 @@ logger = logging.getLogger(__name__)
 
 WEIXIN_COPY_LINE_WIDTH = 120
 
-try:
-    import aiohttp
+# These dependency-gated modules are declared as Optional[Any] up front so we
+# can reassign them to ``None`` inside the ImportError-gate branches below
+# without losing type information or needing type-ignore suppression comments.
+aiohttp: "Optional[Any]" = None
+default_backend: "Optional[Any]" = None
+Cipher: "Optional[Any]" = None
+algorithms: "Optional[Any]" = None
+modes: "Optional[Any]" = None
 
+try:
+    import aiohttp as _real_aiohttp
+
+    aiohttp = _real_aiohttp
     AIOHTTP_AVAILABLE = True
 except ImportError:  # pragma: no cover - dependency gate
-    aiohttp = None  # type: ignore[assignment]
     AIOHTTP_AVAILABLE = False
 
 try:
-    from cryptography.hazmat.backends import default_backend
-    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    from cryptography.hazmat.backends import (
+        default_backend as _real_default_backend,
+    )
+    from cryptography.hazmat.primitives.ciphers import (
+        Cipher as _real_Cipher,
+        algorithms as _real_algorithms,
+        modes as _real_modes,
+    )
 
+    default_backend = _real_default_backend
+    Cipher = _real_Cipher
+    algorithms = _real_algorithms
+    modes = _real_modes
     CRYPTO_AVAILABLE = True
 except ImportError:  # pragma: no cover - dependency gate
-    default_backend = None  # type: ignore[assignment]
-    Cipher = None  # type: ignore[assignment]
-    algorithms = None  # type: ignore[assignment]
-    modes = None  # type: ignore[assignment]
     CRYPTO_AVAILABLE = False
 
 from gateway.config import Platform, PlatformConfig
@@ -261,7 +276,8 @@ def load_weixin_account(hermes_home: str, account_id: str) -> Optional[Dict[str,
         return None
     try:
         return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+    except (OSError, ValueError) as exc:
+        logger.warning("weixin: failed to load account %s: %s", _safe_id(account_id), exc)
         return None
 
 
@@ -1029,7 +1045,8 @@ def _load_sync_buf(hermes_home: str, account_id: str) -> str:
         return ""
     try:
         return json.loads(path.read_text(encoding="utf-8")).get("get_updates_buf", "")
-    except Exception:
+    except (OSError, ValueError) as exc:
+        logger.warning("weixin: failed to load sync buf for %s: %s", _safe_id(account_id), exc)
         return ""
 
 
@@ -1140,8 +1157,10 @@ async def qr_login(
                         qr.add_data(qr_scan_data)
                         qr.make(fit=True)
                         qr.print_ascii(invert=True)
-                    except Exception:
-                        pass
+                    except Exception as _qr_render_err:
+                        # Best-effort terminal ASCII rendering for the QR code; the URL
+                        # was already printed above so the user can still scan it.
+                        logger.debug("weixin: terminal QR re-render failed: %s", _qr_render_err)
                 except Exception as exc:
                     logger.error("weixin: QR refresh failed: %s", exc)
                     return None

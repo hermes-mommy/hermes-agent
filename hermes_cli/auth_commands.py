@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import math
 import sys
 import time
@@ -31,6 +32,7 @@ from hermes_cli.auth import PROVIDER_REGISTRY
 from hermes_constants import OPENROUTER_BASE_URL
 from hermes_cli.secret_prompt import masked_secret_prompt
 
+logger = logging.getLogger(__name__)
 
 # Providers that support OAuth login in addition to API keys.
 _OAUTH_CAPABLE_PROVIDERS = {"anthropic", "nous", "openai-codex", "xai-oauth", "qwen-oauth", "google-gemini-cli", "minimax-oauth"}
@@ -42,7 +44,8 @@ def _get_custom_provider_names() -> list:
         from hermes_cli.config import get_compatible_custom_providers, load_config
 
         config = load_config()
-    except Exception:
+    except Exception as exc:  # fail-soft: listing custom providers is best-effort
+        logger.debug("custom providers probe failed: %s", exc)
         return []
     result = []
     for entry in get_compatible_custom_providers(config):
@@ -190,7 +193,8 @@ def auth_add_command(args) -> None:
             suppressed = _load_auth_store().get("suppressed_sources", {})
             for src in list(suppressed.get(provider, []) or []):
                 unsuppress_credential_source(provider, src)
-        except Exception:
+        except Exception as exc:  # fail-soft: re-engagement is bonus, not blocker
+            logger.debug("suppression clear failed for %s: %s", provider, exc)
             pass
 
     if requested_type == AUTH_TYPE_API_KEY:
@@ -562,7 +566,21 @@ def _interactive_auth() -> None:
                 identity = sts.get_caller_identity()
                 arn = identity.get("Arn", "unknown")
                 print(f"  Identity: {arn}")
-            except Exception:
+            except (
+                ImportError,
+                ConnectionError,
+                TimeoutError,
+                ValueError,
+                KeyError,
+                TypeError,
+                AttributeError,
+            ) as exc:
+                # cover botocore.exceptions.{BotoCoreError, ClientError} via
+                # the AttributeError/ConnectionError fallback chain — these are
+                # the categories that surface when boto3 is installed but the
+                # call cannot resolve an identity (no creds, no network,
+                # malformed response).
+                logger.debug("boto3 STS identity probe failed: %s", exc)
                 print(f"  Identity: (could not resolve — boto3 STS call failed)")
             print()
     except ImportError:
@@ -613,7 +631,8 @@ def _interactive_auth() -> None:
                         if _hint:
                             print(f"  Hint: {_hint}")
                 print()
-    except Exception:
+    except Exception as exc:  # fail-soft: status probe must not break interactive loop
+        logger.debug("azure-foundry status probe failed: %s", exc)
         pass
     print()
 

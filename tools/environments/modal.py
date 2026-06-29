@@ -276,7 +276,8 @@ class ModalEnvironment(BaseEnvironment):
             else:
                 if restored_snapshot_id and restored_from_legacy_key:
                     _store_direct_snapshot(self._task_id, restored_snapshot_id)
-        except Exception:
+        except Exception as e:
+            logger.warning("Modal: sandbox creation failed, stopping worker: %s", e)
             self._worker.stop()
             raise
 
@@ -456,7 +457,8 @@ class ModalEnvironment(BaseEnvironment):
 
                 try:
                     snapshot_id = self._worker.run_coroutine(_snapshot(), timeout=60)
-                except Exception:
+                except Exception as e:
+                    logger.debug("Modal: filesystem snapshot attempt failed: %s", e)
                     snapshot_id = None
 
                 if snapshot_id:
@@ -470,8 +472,8 @@ class ModalEnvironment(BaseEnvironment):
 
         try:
             self._worker.run_coroutine(self._sandbox.terminate.aio(), timeout=15)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Modal: sandbox terminate during cleanup failed (ignored): %s", e)
         finally:
             self._worker.stop()
             self._sandbox = None

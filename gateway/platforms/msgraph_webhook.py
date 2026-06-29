@@ -17,7 +17,7 @@ try:
     AIOHTTP_AVAILABLE = True
 except ImportError:
     AIOHTTP_AVAILABLE = False
-    web = None  # type: ignore[assignment]
+    web: Any = None  # sentinel when aiohttp is not importable
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import (
@@ -230,7 +230,16 @@ class MSGraphWebhookAdapter(BasePlatformAdapter):
 
         try:
             body = await request.json()
-        except Exception:
+        except Exception as e:
+            # Fail-soft: malformed webhook body from upstream Graph sent a
+            # payload we couldn't parse. Reject with 400 so the sender can
+            # correct/retry. Log the exception type only; never the body
+            # (it may contain customer-controlled data).
+            logger.debug(
+                "[msgraph_webhook] Rejected notification payload: %s: %s",
+                type(e).__name__,
+                e,
+            )
             return web.Response(status=400)
 
         notifications = body.get("value")

@@ -122,11 +122,11 @@ class TextBatchAggregator:
         chunk_len = len(event.text or "")
         existing = self._pending.get(key)
         if not existing:
-            event._last_chunk_len = chunk_len  # type: ignore[attr-defined]
+            setattr(event, "_last_chunk_len", chunk_len)
             self._pending[key] = event
         else:
             existing.text = f"{existing.text}\n{event.text}"
-            existing._last_chunk_len = chunk_len  # type: ignore[attr-defined]
+            setattr(existing, "_last_chunk_len", chunk_len)
 
         # Cancel prior flush timer, start a new one
         prior = self._pending_tasks.get(key)
@@ -148,8 +148,12 @@ class TextBatchAggregator:
         if event:
             try:
                 await self._handler(event)
-            except Exception:
-                logger.exception("[TextBatchAggregator] Error dispatching batched event for %s", key)
+            except Exception as e:
+                logger.debug(
+                    "[TextBatchAggregator] Handler dispatch failed for %s (fail-soft): %s",
+                    key,
+                    e,
+                )
 
         if self._pending_tasks.get(key) is current_task:
             self._pending_tasks.pop(key, None)
@@ -237,8 +241,12 @@ class ThreadParticipationTracker:
                 data = json.loads(path.read_text(encoding="utf-8"))
                 if isinstance(data, list):
                     return [str(thread_id) for thread_id in data]
-            except Exception:
-                pass
+            except (OSError, json.JSONDecodeError, ValueError) as e:
+                logger.warning(
+                    "[ThreadParticipationTracker] Failed to load %s: %s; starting empty",
+                    path,
+                    e,
+                )
         return []
 
     def _save(self) -> None:

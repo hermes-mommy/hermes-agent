@@ -19,9 +19,13 @@ Storage: ``fallback_providers`` in ``~/.hermes/config.yaml`` (top-level, list of
 from __future__ import annotations
 
 import copy
+import logging
 from typing import Any, Dict, List, Optional
 
 from hermes_cli.fallback_config import get_fallback_chain
+
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -81,7 +85,11 @@ def _snapshot_auth_active_provider() -> Any:
         from hermes_cli.auth import _load_auth_store
         store = _load_auth_store()
         return store.get("active_provider")
-    except Exception:
+    except (OSError, ValueError) as e:
+        # OSError covers missing/unreadable auth.json on disk; ValueError covers
+        # corrupt contents / unexpected schema. Fail-soft — no snapshot means
+        # the add-cancel restore path becomes a no-op, which is safe.
+        logger.debug("Failed to snapshot auth active_provider: %s", e)
         return None
 
 
@@ -93,11 +101,11 @@ def _restore_auth_active_provider(value: Any) -> None:
             store = _load_auth_store()
             store["active_provider"] = value
             _save_auth_store(store)
-    except Exception:
+    except (OSError, KeyError, ValueError) as e:
         # Best-effort — if auth.json can't be restored, the user's primary
         # provider may have been deactivated by the picker.  They can re-run
         # `hermes model` to fix it.  Don't fail the fallback add.
-        pass
+        logger.debug("Failed to restore auth active_provider: %s", e)
 
 
 # ---------------------------------------------------------------------------
@@ -255,7 +263,13 @@ def cmd_fallback_remove(args) -> None:  # noqa: ARG001
     try:
         from hermes_cli.setup import _curses_prompt_choice
         idx = _curses_prompt_choice("Select a fallback to remove:", choices, 0)
-    except Exception:
+    except (ImportError, RuntimeError, OSError) as e:
+        # ImportError: curses unavailable on the host (e.g. minimal container).
+        # RuntimeError: curses backend init/term setup failure.
+        # OSError: low-level TTY I/O failure when curses tries to take over the screen.
+        # Fall through to the numbered picker so the user can still remove a
+        # fallback entry. We log for diagnostics but never block the cmd.
+        logger.debug("curses picker unavailable (%s); using numbered picker", e)
         idx = _numbered_pick("Select a fallback to remove:", choices)
 
     if idx is None or idx < 0 or idx >= len(chain):

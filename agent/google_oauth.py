@@ -164,6 +164,24 @@ def _lock_path() -> Path:
 _lock_state = threading.local()
 
 
+def _try_import_msvcrt() -> Optional[Any]:
+    """Import the Windows-only ``msvcrt`` module, returning None on non-Windows / ImportError.
+
+    The import is allowed to fail because ``msvcrt`` does not exist on POSIX
+    systems. Callers use the return value as a sentinel to decide between
+    fcntl-based locking and a no-op fallback.
+
+    Returning a typed ``Optional[Any]`` (rather than falling through a
+    bare mypy disable directive) keeps mypy strict=true green on POSIX
+    (where the symbol genuinely is missing).
+    """
+    try:
+        import msvcrt as _msvcrt
+    except ImportError:
+        return None
+    return _msvcrt
+
+
 @contextlib.contextmanager
 def _credentials_lock(timeout_seconds: float = LOCK_TIMEOUT_SECONDS):
     """Cross-process lock around the credentials file (fcntl POSIX / msvcrt Windows)."""
@@ -200,9 +218,10 @@ def _credentials_lock(timeout_seconds: float = LOCK_TIMEOUT_SECONDS):
                         )
                     time.sleep(0.05)
         else:
-            try:
-                import msvcrt  # type: ignore[import-not-found]
-
+            msvcrt = _try_import_msvcrt()
+            if msvcrt is None:
+                acquired = True
+            else:
                 deadline = time.monotonic() + max(0.0, float(timeout_seconds))
                 while True:
                     try:
@@ -215,8 +234,6 @@ def _credentials_lock(timeout_seconds: float = LOCK_TIMEOUT_SECONDS):
                                 f"Timed out acquiring Google OAuth credentials lock at {lock_file_path}."
                             )
                         time.sleep(0.05)
-            except ImportError:
-                acquired = True
 
         _lock_state.depth = 1
         yield
@@ -228,15 +245,12 @@ def _credentials_lock(timeout_seconds: float = LOCK_TIMEOUT_SECONDS):
 
                     fcntl.flock(fd, fcntl.LOCK_UN)
                 except ImportError:
-                    try:
-                        import msvcrt  # type: ignore[import-not-found]
-
+                    msvcrt_cleanup = _try_import_msvcrt()
+                    if msvcrt_cleanup is not None:
                         try:
-                            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+                            msvcrt_cleanup.locking(fd, msvcrt_cleanup.LK_UNLCK, 1)
                         except OSError:
                             pass
-                    except ImportError:
-                        pass
         finally:
             os.close(fd)
             _lock_state.depth = 0
@@ -556,8 +570,8 @@ def _post_form(url: str, data: Dict[str, str], timeout: float) -> Dict[str, Any]
         detail = ""
         try:
             detail = exc.read().decode("utf-8", errors="replace")
-        except Exception:
-            pass
+        except (OSError, IOError, ValueError, UnicodeDecodeError) as body_exc:
+            logger.debug("Failed to read HTTPError body from Google OAuth response: %s", body_exc)
         # Detect invalid_grant to signal credential revocation
         code = "google_oauth_token_http_error"
         if "invalid_grant" in detail.lower():
@@ -919,12 +933,12 @@ def start_oauth_flow(
     finally:
         try:
             server.shutdown()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("OAuth callback server shutdown failed (non-fatal): %s", e)
         try:
             server.server_close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("OAuth callback server_close failed (non-fatal): %s", e)
         server_thread.join(timeout=2.0)
 
     if not code:

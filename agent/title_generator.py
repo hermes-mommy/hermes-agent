@@ -79,8 +79,8 @@ def generate_title(
         if failure_callback is not None:
             try:
                 failure_callback("title generation", e)
-            except Exception:
-                logger.debug("Title generation failure_callback raised", exc_info=True)
+            except Exception as e:
+                logger.debug("Title generation failure_callback raised: %s", e)
         return None
 
 
@@ -109,7 +109,8 @@ def auto_title_session(
         existing = session_db.get_session_title(session_id)
         if existing:
             return
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to check existing title: %s", e)
         return
 
     title = generate_title(
@@ -124,8 +125,8 @@ def auto_title_session(
         if title_callback is not None:
             try:
                 title_callback(title)
-            except Exception:
-                logger.debug("Auto-title callback failed", exc_info=True)
+            except Exception as e:
+                logger.debug("Auto-title callback failed: %s", e)
     except Exception as e:
         logger.debug("Failed to set auto-generated title: %s", e)
 

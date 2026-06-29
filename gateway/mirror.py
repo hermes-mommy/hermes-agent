@@ -104,7 +104,8 @@ def _find_session_id(
     try:
         with open(_SESSIONS_INDEX, encoding="utf-8") as f:
             data = json.load(f)
-    except Exception:
+    except (OSError, json.JSONDecodeError) as e:
+        logger.debug("Mirror: failed to read/parse sessions index: %s", e)
         return None
 
     platform_lower = platform.lower()

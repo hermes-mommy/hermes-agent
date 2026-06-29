@@ -31,7 +31,10 @@ fail because of a malformed config.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict
+
+log = logging.getLogger(__name__)
 
 # Hardcoded defaults — these match the pre-existing values, so adding
 # this module is behaviour-preserving for users who don't set
@@ -65,7 +68,8 @@ def get_tool_output_limits() -> Dict[str, int]:
         section = cfg.get("tool_output") if isinstance(cfg, dict) else None
         if not isinstance(section, dict):
             section = {}
-    except Exception:
+    except Exception as e:
+        log.debug("tool_output config unavailable, using defaults: %s", e)
         section = {}
 
     return {

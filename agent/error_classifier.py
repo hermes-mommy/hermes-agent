@@ -1245,8 +1245,20 @@ def _extract_error_body(error: Exception) -> dict:
             json_body = response.json()
             if isinstance(json_body, dict):
                 return json_body
-        except Exception:
-            pass
+        except (ValueError, TypeError, AttributeError) as e:
+            # ValueError covers json.JSONDecodeError (subclass) and any
+            # SDK-specific JSON parsing failure; TypeError covers responses
+            # whose .json() isn't callable; AttributeError covers failed
+            # accessor chains. This is a probing fallback — we just want
+            # to know whether the body has structured data, so logging
+            # at debug is sufficient. Anything else propagates.
+            logger.debug("error_classifier: response.json() failed (%r), falling through", e)
+        except Exception as e:
+            # Genuinely-unexpected probe failure (e.g. an httpx/aiohttp
+            # ClientError leaking through a re-wrapped SDK exception).
+            # Log for diagnostics but keep fail-soft semantics so we
+            # don't break classification for an unrelated probe error.
+            logger.debug("error_classifier: unexpected response probe error (%r), falling through", e)
     return {}
 
 

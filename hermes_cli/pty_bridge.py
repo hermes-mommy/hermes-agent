@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import errno
 import fcntl
+import logging
 import os
 import select
 import signal
@@ -37,14 +38,45 @@ import struct
 import sys
 import termios
 import time
-from typing import Optional, Sequence
+from typing import Optional, Protocol, Sequence, cast
 
 try:
-    import ptyprocess  # type: ignore
+    import ptyprocess as _ptyprocess_mod
+    ptyprocess: Optional[object] = _ptyprocess_mod
     _PTY_AVAILABLE = not sys.platform.startswith("win")
 except ImportError:  # pragma: no cover - dev env without ptyprocess
-    ptyprocess = None  # type: ignore
+    ptyprocess = None
     _PTY_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
+
+
+class _PtyProcessLike(Protocol):
+    """Typed shim for the untyped ``ptyprocess`` package.
+
+    ``ptyprocess`` ships without type stubs, which forces dynamic
+    attribute access.  Declaring the surface we actually use here lets
+    us drop the per-call mypy suppression comments at call sites
+    without a blanket mypy override.
+    """
+
+    fd: int
+    pid: int
+
+    def isalive(self) -> bool: ...
+    def kill(self, sig: int) -> None: ...
+
+    @classmethod
+    def spawn(
+        cls,
+        argv: Sequence[str],
+        *,
+        cwd: Optional[str] = None,
+        env: Optional[dict] = None,
+        dimensions: tuple = ...,
+    ) -> "_PtyProcessLike": ...
+
+    def close(self, force: bool = ...) -> None: ...
 
 
 __all__ = ["PtyBridge", "PtyUnavailableError"]
@@ -70,7 +102,7 @@ class PtyBridge:
     ``os.write`` on the master fd, which is safe.
     """
 
-    def __init__(self, proc: "ptyprocess.PtyProcess"):  # type: ignore[name-defined]
+    def __init__(self, proc: _PtyProcessLike):
         self._proc = proc
         self._fd: int = proc.fd
         self._closed = False
@@ -119,7 +151,11 @@ class PtyBridge:
         spawn_env = (os.environ.copy() if env is None else env.copy())
         if not spawn_env.get("TERM"):
             spawn_env["TERM"] = "xterm-256color"
-        proc = ptyprocess.PtyProcess.spawn(  # type: ignore[union-attr]
+        # ``ptyprocess`` has no stubs; cast to a typed shim layer so mypy
+        # accepts the call without a per-call mypy suppression comment at
+        # the call site.  The cast is a no-op at runtime — the underlying
+        # module/library is used as-is.
+        proc = cast("type[_PtyProcessLike]", ptyprocess).PtyProcess.spawn(
             list(argv),
             cwd=cwd,
             env=spawn_env,
@@ -136,7 +172,11 @@ class PtyBridge:
             return False
         try:
             return bool(self._proc.isalive())
-        except Exception:
+        except Exception as exc:
+            # Health probe — fail soft on any ptyprocess/python error
+            # so a single malformed liveness check can't take down the
+            # dashboard WebSocket handler.
+            logger.debug("PtyBridge.is_alive failed: %r", exc)
             return False
 
     # -- I/O --------------------------------------------------------------
@@ -218,7 +258,10 @@ class PtyBridge:
                 break
             try:
                 self._proc.kill(sig)
-            except Exception:
+            except Exception as exc:
+                # Cleanup path — never propagate while tearing down the
+                # child; log and continue so SIGKILL is still attempted.
+                logger.debug("PtyBridge.close kill(%r) failed: %r", sig, exc)
                 pass
             deadline = time.monotonic() + 0.5
             while self._proc.isalive() and time.monotonic() < deadline:
@@ -226,7 +269,12 @@ class PtyBridge:
 
         try:
             self._proc.close(force=True)
-        except Exception:
+        except Exception as exc:
+            # Cleanup path — closing the ptyprocess handle should already
+            # have done the actual teardown, but if it raises (e.g. the
+            # child was already reaped externally) we must not propagate
+            # or the dashboard teardown itself fails.
+            logger.debug("PtyBridge.close .close(force=True) failed: %r", exc)
             pass
 
     # Context-manager sugar — handy in tests and ad-hoc scripts.

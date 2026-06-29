@@ -50,7 +50,7 @@ def _fire_approval_hook(hook_name: str, **kwargs) -> None:
     """
     try:
         from hermes_cli.plugins import invoke_hook
-    except Exception:
+    except ImportError:
         # Plugin system not available in this execution context
         # (e.g. bare tool-only imports, minimal test environments).
         return
@@ -95,7 +95,7 @@ def _get_session_platform() -> str:
         from gateway.session_context import get_session_env
 
         return get_session_env("HERMES_SESSION_PLATFORM", "") or ""
-    except Exception:
+    except (ImportError, AttributeError):
         return os.getenv("HERMES_SESSION_PLATFORM", "") or ""
 
 
@@ -748,7 +748,7 @@ def prompt_dangerous_approval(command: str, description: str,
                 command, description,
             )
             return "deny"
-    except Exception:
+    except (ImportError, AttributeError):
         # prompt_toolkit not installed, or detection failed -- fall through
         # to the legacy input() path (safe in non-TUI contexts: scripts,
         # tests, sshd, etc.).
@@ -864,7 +864,8 @@ def _get_cron_approval_mode() -> str:
         if mode in {"approve", "off", "allow", "yes"}:
             return "approve"
         return "deny"
-    except Exception:
+    except Exception as e:
+        logger.warning("Failed to load cron approval config: %s", e)
         return "deny"
 
 
@@ -1259,7 +1260,7 @@ def check_all_command_guards(command: str, env_type: str,
 
             try:
                 from tools.environments.base import touch_activity_if_due
-            except Exception:  # pragma: no cover
+            except ImportError:  # pragma: no cover
                 touch_activity_if_due = None
 
             _now = time.monotonic()

@@ -464,7 +464,8 @@ def _query_codex_plugins(
     """
     try:
         from agent.transports.codex_app_server import CodexAppServerClient
-    except Exception as exc:
+    except ImportError as exc:
+        logger.debug("CodexAppServerClient import failed: %s", exc)
         return [], f"transport unavailable: {exc}"
 
     try:
@@ -473,7 +474,12 @@ def _query_codex_plugins(
         ) as client:
             client.initialize(client_name="hermes-migration")
             resp = client.request("plugin/list", {}, timeout=timeout)
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, TimeoutError) as exc:
+        # OSError: subprocess spawn / IPC failures (codex missing on PATH).
+        # RuntimeError: codex RPC protocol errors / unexpected shape.
+        # ValueError: malformed JSON-RPC payload from codex.
+        # TimeoutError: subprocess or RPC timed out.
+        logger.debug("plugin/list RPC against codex failed: %s", exc)
         return [], f"plugin/list query failed: {exc}"
 
     out: list[dict] = []
@@ -709,7 +715,10 @@ def migrate(
     if target.exists():
         try:
             existing = target.read_text(encoding="utf-8")
-        except Exception as exc:
+        except OSError as exc:
+            # OSError covers PermissionError, IsADirectoryError, and other
+            # filesystem-level read failures on the existing config.
+            logger.debug("could not read %s: %s", target, exc)
             report.errors.append(f"could not read {target}: {exc}")
             return report
         without_managed = _strip_existing_managed_block(existing)
@@ -743,15 +752,30 @@ def migrate(
             with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
                 fh.write(new_text)
             tmp_path.replace(target)
-        except Exception:
+        except OSError as exc:
+            # Atomic rename / write failed (fs full, target locked on
+            # Windows, replacement not supported on volume, etc.).
+            # Fall through to cleanup and re-raise so the outer block
+            # reports the failure to the caller.
+            logger.debug("atomic rename %s -> %s failed: %s", tmp_path, target, exc)
             # Clean up the temp file if the rename didn't happen.
             try:
                 if tmp_path.exists():
                     tmp_path.unlink()
-            except Exception:
+            except OSError as cleanup_exc:
+                logger.debug(
+                    "tempfile %s unlink failed (best-effort): %s",
+                    tmp_path, cleanup_exc,
+                )
                 pass
             raise
         report.written = True
-    except Exception as exc:
+    except OSError as exc:
+        # mkdir, mkstemp, or atomic-rename-level OS failures. We
+        # previously used a bare `except Exception` here, but OSError
+        # covers everything realistically thrown by filesystem ops in
+        # this block (PermissionError, FileExistsError races, FS-full,
+        # etc.).
+        logger.debug("could not write %s: %s", target, exc)
         report.errors.append(f"could not write {target}: {exc}")
     return report

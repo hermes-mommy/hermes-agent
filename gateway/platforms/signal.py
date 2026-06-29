@@ -374,8 +374,13 @@ class SignalAdapter(BasePlatformAdapter):
                                     await self._handle_envelope(data)
                                 except json.JSONDecodeError:
                                     logger.debug("Signal SSE: invalid JSON: %s", data_str[:100])
-                                except Exception:
-                                    logger.exception("Signal SSE: error handling event")
+                                except (ValueError, KeyError, TypeError, AttributeError) as e:
+                                    # Envelope handling already passes a fresh
+                                    # ``dict`` through ``_handle_envelope``; errors
+                                    # here are shape/access mistakes, not network
+                                    # failures. Log loudly so they're noticed but
+                                    # never crash the SSE listener loop.
+                                    logger.exception("Signal SSE: error handling event: %s", e)
 
             except asyncio.CancelledError:
                 break
@@ -431,8 +436,11 @@ class SignalAdapter(BasePlatformAdapter):
                 task = asyncio.create_task(self._sse_response.aclose())
                 self._background_tasks.add(task)
                 task.add_done_callback(self._background_tasks.discard)
-            except Exception:
-                pass
+            except (RuntimeError, ValueError, AttributeError) as e:
+                # Task creation / httpx-response-closed cleanup. The next SSE
+                # loop will replace ``self._sse_response`` so any teardown
+                # error here is non-fatal — log at debug to avoid spam.
+                logger.debug("Signal: force-reconnect cleanup skipped: %s", e)
             self._sse_response = None
 
     # ------------------------------------------------------------------
@@ -579,8 +587,11 @@ class SignalAdapter(BasePlatformAdapter):
                         content_type = att.get("contentType") or _ext_to_mime(ext)
                         media_urls.append(cached_path)
                         media_types.append(content_type)
-                except Exception:
-                    logger.exception("Signal: failed to fetch attachment %s", att_id)
+                except (httpx.HTTPError, OSError, ValueError, KeyError) as e:
+                    # Attachment fetch may fail on network (httpx), filesystem
+                    # (cache paths), or payload (b64 decode). Skip just this
+                    # attachment so one bad one doesn't lose the whole message.
+                    logger.exception("Signal: failed to fetch attachment %s: %s", att_id, e)
 
         # Skip envelopes with no meaningful content (no text, no attachments).
         # Catches profile key updates, empty messages, and other metadata-only

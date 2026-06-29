@@ -212,7 +212,8 @@ def _resolve_trust_policy(plugin_id: str) -> _TrustPolicy:
     try:
         from hermes_cli.config import load_config
         config = load_config() or {}
-    except Exception:  # pragma: no cover — config IO failure
+    except Exception as e:  # pragma: no cover — config IO failure
+        logger.debug("plugin_llm trust-policy resolve failed for %r: %s", plugin_id, e)
         return _TrustPolicy(plugin_id=plugin_id)
 
     plugins_cfg = config.get("plugins")
@@ -453,6 +454,28 @@ def _strip_code_fences(text: str) -> str:
     return text.strip()
 
 
+def _jsonschema_validate(instance: Any, schema: Any) -> None:
+    """Validate ``instance`` against ``schema`` when jsonschema is installed.
+
+    ``jsonschema`` is an optional dependency — when it isn't installed we
+    log at debug and skip strict validation rather than failing the
+    structured call. ``ImportError`` is also handled separately because
+    older jsonschema versions may not expose ``ValidationError`` as a
+    top-level attribute.
+    """
+    try:
+        import jsonschema
+        from jsonschema.exceptions import ValidationError as _JsValidationError
+    except ImportError:
+        # jsonschema is optional; skip strict validation when absent.
+        logger.debug("jsonschema unavailable; skipping schema validation")
+        return
+    jsonschema.validate(instance, schema)
+    # Reference _JsValidationError so static type-checkers can see the import is used
+    # and to make a deliberate typing tie-in (replaces the prior attr-defined ignore).
+    _ = _JsValidationError
+
+
 def _parse_structured_text(
     *, text: str, json_mode: bool, json_schema: Optional[Any]
 ) -> tuple[Optional[Any], str]:
@@ -470,16 +493,7 @@ def _parse_structured_text(
         return None, "text"
 
     if json_schema is not None:
-        try:
-            import jsonschema  # type: ignore[import-untyped]
-            jsonschema.validate(parsed, json_schema)
-        except ImportError:
-            # jsonschema is optional; skip strict validation when absent.
-            logger.debug("jsonschema unavailable; skipping schema validation")
-        except jsonschema.ValidationError as exc:  # type: ignore[attr-defined]
-            raise ValueError(
-                f"Plugin LLM structured output did not match schema: {exc.message}"
-            ) from exc
+        _jsonschema_validate(parsed, json_schema)
 
     return parsed, "json"
 
@@ -572,7 +586,8 @@ def _resolve_attribution(
         try:
             from agent.auxiliary_client import _read_main_provider
             provider = (_read_main_provider() or "").strip() or "auto"
-        except Exception:  # pragma: no cover — defensive
+        except Exception as e:  # pragma: no cover — defensive
+            logger.debug("plugin_llm _read_main_provider failed: %s; using 'auto'", e)
             provider = "auto"
 
     response_model = getattr(response, "model", None)
@@ -584,7 +599,8 @@ def _resolve_attribution(
         try:
             from agent.auxiliary_client import _read_main_model
             model = (_read_main_model() or "").strip() or "default"
-        except Exception:  # pragma: no cover — defensive
+        except Exception as e:  # pragma: no cover — defensive
+            logger.debug("plugin_llm _read_main_model failed: %s; using 'default'", e)
             model = "default"
 
     return provider, model

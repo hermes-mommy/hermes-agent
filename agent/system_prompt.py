@@ -24,8 +24,11 @@ Pure helpers that read the agent's state.  AIAgent keeps thin forwarders.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 from agent.prompt_builder import (
     DEFAULT_AGENT_IDENTITY,
@@ -215,7 +218,8 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     try:
         from agent.file_safety import _resolve_active_profile_name
         active_profile = _resolve_active_profile_name()
-    except Exception:
+    except Exception as e:
+        logger.debug("Could not resolve active Hermes profile; using 'default': %s", e)
         active_profile = "default"
     if active_profile == "default":
         stable_parts.append(
@@ -249,8 +253,8 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
             _entry = platform_registry.get(platform_key)
             if _entry and _entry.platform_hint:
                 stable_parts.append(_entry.platform_hint)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Platform registry lookup for %r failed; skipping platform hint: %s", platform_key, e)
 
     # ── Context tier (cwd-dependent, may change between sessions) ─
     context_parts: List[str] = []
@@ -291,8 +295,8 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
             _ext_mem_block = agent._memory_manager.build_system_prompt()
             if _ext_mem_block:
                 volatile_parts.append(_ext_mem_block)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("External memory manager build_system_prompt failed; skipping: %s", e)
 
     # ── M4 emotion volatile block (P24 fork, W7) ─────────────────────
     # Affect state refreshed per-turn; appended fail-soft so a missing
@@ -304,8 +308,8 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
             _emotion_block = _emotion_engine.format_for_system_prompt()
             if _emotion_block:
                 volatile_parts.append(_emotion_block)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Emotion engine format_for_system_prompt failed; skipping: %s", e)
 
     # ── M12 personality-drift volatile block (P24 fork, W11) ──────────
     # Drift signature summary (cosine sim vs baseline, peer-monitor result,
@@ -317,8 +321,8 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
             _drift_block = _drift_detector.format_for_system_prompt()
             if _drift_block:
                 volatile_parts.append(_drift_block)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Drift detector format_for_system_prompt failed; skipping: %s", e)
 
     from hermes_time import now as _hermes_now
     now = _hermes_now()

@@ -328,8 +328,8 @@ def init_agent(
     # not mid-conversation.  Also validates the api_mode is registered.
     try:
         agent._get_transport()
-    except Exception:
-        pass  # Non-fatal — transport may not exist for all modes yet
+    except Exception as e:
+        logger.debug("Transport warm-up skipped: %s", e)  # Non-fatal — transport may not exist for all modes yet
 
     try:
         from hermes_cli.model_normalize import (
@@ -339,8 +339,8 @@ def init_agent(
 
         if agent.provider not in _AGGREGATOR_PROVIDERS:
             agent.model = normalize_model_for_provider(agent.model, agent.provider)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Model normalization skipped: %s", e)
 
     # GPT-5.x models usually require the Responses API path, but some
     # providers have exceptions (for example Copilot's gpt-5-mini still
@@ -485,8 +485,8 @@ def init_agent(
         _ttl = _pc_cfg.get("cache_ttl", "5m")
         if _ttl in {"5m", "1h"}:
             agent._cache_ttl = _ttl
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Prompt cache TTL config ignored: %s", e)
 
     # Iteration budget: the LLM is only notified when it actually exhausts
     # the iteration budget (api_call_count >= max_iterations).  At that
@@ -682,8 +682,8 @@ def init_agent(
                     agent._bedrock_guardrail_config["streamProcessingMode"] = _gr["stream_processing_mode"]
                 if _gr.get("trace"):
                     agent._bedrock_guardrail_config["trace"] = _gr["trace"]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Bedrock guardrail config ignored: %s", e)
         agent.client = None
         agent._client_kwargs = {}
         if not agent.quiet_mode:
@@ -745,8 +745,8 @@ def init_agent(
                     _ph = _gpf(agent.provider)
                     if _ph and _ph.default_headers:
                         client_kwargs["default_headers"] = dict(_ph.default_headers)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Provider profile headers ignored: %s", e)
         else:
             # No explicit creds — use the centralized provider router
             from agent.auxiliary_client import resolve_provider_client
@@ -783,8 +783,8 @@ def init_agent(
                         _pcfg = PROVIDER_REGISTRY.get(_explicit)
                         if _pcfg and _pcfg.api_key_env_vars:
                             _env_hint = _pcfg.api_key_env_vars[0]
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("Auth PROVIDER_REGISTRY lookup skipped: %s", e)
                     # --- Init-time fallback (#17929) ---
                     _fb_entries = []
                     if isinstance(fallback_model, list):
@@ -984,7 +984,8 @@ def init_agent(
         from gateway.session_context import set_current_session_id
 
         set_current_session_id(agent.session_id)
-    except Exception:
+    except Exception as e:
+        logger.debug("Session context set_current_session_id skipped, using env: %s", e)
         os.environ["HERMES_SESSION_ID"] = agent.session_id
 
     # Session logs go into ~/.hermes/sessions/ alongside gateway sessions
@@ -1000,8 +1001,8 @@ def init_agent(
         from hermes_cli.config import load_config as _load_sess_cfg
         _sess_cfg = (_load_sess_cfg().get("sessions") or {})
         agent._session_json_enabled = bool(_sess_cfg.get("write_json_snapshots", False))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Session JSON snapshot config ignored: %s", e)
     # logs_dir is retained unconditionally for request_dump_*.json (debug
     # breadcrumb path written by agent_runtime_helpers.dump_api_request_debug).
     
@@ -1048,7 +1049,8 @@ def init_agent(
     try:
         from hermes_cli.config import load_config as _load_agent_config
         _agent_cfg = _load_agent_config()
-    except Exception:
+    except Exception as e:
+        logger.debug("Agent config load failed, using defaults: %s", e)
         _agent_cfg = {}
     try:
         agent._tool_guardrails = ToolCallGuardrailController(
@@ -1083,8 +1085,8 @@ def init_agent(
                     user_char_limit=mem_config.get("user_char_limit", 1375),
                 )
                 agent._memory_store.load_from_disk()
-        except Exception:
-            pass  # Memory is optional -- don't break agent init
+        except Exception as e:
+            logger.debug("Memory optional load skipped: %s", e)  # Memory is optional -- don't break agent init
     
 
 
@@ -1116,8 +1118,8 @@ def init_agent(
                             _st = agent._session_db.get_session_title(agent.session_id)
                             if _st:
                                 _init_kwargs["session_title"] = _st
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug("Session title lookup skipped: %s", e)
                     # Thread gateway user identity for per-user memory scoping
                     if agent._user_id:
                         _init_kwargs["user_id"] = agent._user_id
@@ -1142,8 +1144,8 @@ def init_agent(
                         _profile = get_active_profile_name()
                         _init_kwargs["agent_identity"] = _profile
                         _init_kwargs["agent_workspace"] = "hermes"
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("Profile/agent_identity lookup skipped: %s", e)
                     agent._memory_manager.initialize_all(**_init_kwargs)
                     _ra().logger.info("Memory provider '%s' activated", _mem_provider_name)
                 else:
@@ -1191,8 +1193,8 @@ def init_agent(
     try:
         skills_config = _agent_cfg.get("skills", {})
         agent._skill_nudge_interval = int(skills_config.get("creation_nudge_interval", 10))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Skills creation_nudge_interval parse ignored: %s", e)
 
     # Tool-use enforcement config: "auto" (default — matches hardcoded
     # model list), true (always), false (never), or list of substrings.
@@ -1223,8 +1225,8 @@ def init_agent(
         _model_cthresh = _cthresh_fn(agent.model)
         if _model_cthresh is not None:
             compression_threshold = _model_cthresh
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("_compression_threshold_for_model lookup skipped: %s", e)
     compression_enabled = str(_compression_cfg.get("enabled", True)).lower() in {"true", "1", "yes"}
     compression_target_ratio = float(_compression_cfg.get("target_ratio", 0.20))
     compression_protect_last = int(_compression_cfg.get("protect_last_n", 20))
@@ -1246,7 +1248,8 @@ def init_agent(
     # /models, so the startup feasibility check needs the config hint.
     try:
         _aux_cfg = cfg_get(_agent_cfg, "auxiliary", "compression", default={})
-    except Exception:
+    except Exception as e:
+        logger.debug("cfg_get auxiliary compression lookup skipped: %s", e)
         _aux_cfg = {}
     if isinstance(_aux_cfg, dict):
         _aux_context_config = _aux_cfg.get("context_length")
@@ -1315,7 +1318,8 @@ def init_agent(
     try:
         from hermes_cli.config import get_compatible_custom_providers
         _custom_providers = get_compatible_custom_providers(_agent_cfg)
-    except Exception:
+    except Exception as e:
+        logger.debug("get_compatible_custom_providers lookup skipped: %s", e)
         _custom_providers = _agent_cfg.get("custom_providers")
         if not isinstance(_custom_providers, list):
             _custom_providers = []
@@ -1336,7 +1340,8 @@ def init_agent(
             )
             if _cp_ctx_resolved:
                 _config_context_length = int(_cp_ctx_resolved)
-        except Exception:
+        except Exception as e:
+            logger.debug("get_custom_provider_context_length lookup skipped: %s", e)
             _cp_ctx_resolved = None
 
         # Surface a clear warning if the user set a context_length but it
@@ -1392,8 +1397,8 @@ def init_agent(
     try:
         _ctx_cfg = _agent_cfg.get("context", {}) if isinstance(_agent_cfg, dict) else {}
         _engine_name = _ctx_cfg.get("engine", "compressor") or "compressor"
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Context engine name lookup skipped: %s", e)
 
     if _engine_name != "compressor":
         # Try loading from plugins/context_engine/<name>/
@@ -1410,8 +1415,8 @@ def init_agent(
                 _candidate = get_plugin_context_engine()
                 if _candidate and _candidate.name == _engine_name:
                     _selected_engine = _candidate
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("General plugin context engine lookup skipped: %s", e)
 
         if _selected_engine is None:
             _ra().logger.warning(
@@ -1653,7 +1658,8 @@ def init_agent(
         from guinevere.config.models import GuinevereConfig
         _guin_cfg_path = os.environ.get("GUINEVERE_CONFIG", "config/guinevere.yaml")
         agent._guinevere_settings = load_settings(_guin_cfg_path)
-    except Exception:
+    except Exception as e:
+        logger.debug("Guinevere settings load skipped: %s", e)
         agent._guinevere_settings = None  # non-fatal: downstream modules guard
     # ── end M1 wire ────────────────────────────────────────────────────────
 
@@ -1669,18 +1675,21 @@ def init_agent(
     try:
         from guinevere.emotions.engine import wire as _wire_emotion
         _wire_emotion(agent)
-    except Exception:
+    except Exception as e:
+        logger.debug("Guinevere emotion engine wire skipped: %s", e)
         agent._emotion_engine = None
         agent._emotion_state = None
     try:
         from guinevere.governance.dao import wire as _wire_dao
         _wire_dao(agent)
-    except Exception:
+    except Exception as e:
+        logger.debug("Guinevere DAO governance wire skipped: %s", e)
         agent._dao_engine = None
     try:
         from guinevere.personality.drift import wire as _wire_drift
         _wire_drift(agent)
-    except Exception:
+    except Exception as e:
+        logger.debug("Guinevere personality drift wire skipped: %s", e)
         agent._drift_detector = None
         agent._peer_monitor = None
     # ── end Group C wire ───────────────────────────────────────────────────
@@ -1694,17 +1703,20 @@ def init_agent(
     try:
         from guinevere.tools.registry import wire as _wire_tools
         _wire_tools(agent)
-    except Exception:
+    except Exception as e:
+        logger.debug("Guinevere tool registry wire skipped: %s", e)
         agent._guinevere_tool_registry = None
     try:
         from guinevere.life_kernel.simple_tools import wire as _wire_life_kernel
         _wire_life_kernel(agent)
-    except Exception:
+    except Exception as e:
+        logger.debug("Guinevere life_kernel wire skipped: %s", e)
         agent._life_kernel = None
     try:
         from guinevere.self_modify.mutation import wire as _wire_self_modify
         _wire_self_modify(agent)
-    except Exception:
+    except Exception as e:
+        logger.debug("Guinevere self_modify mutation wire skipped: %s", e)
         agent._mutation_engine = None
     # ── end Group D wire ───────────────────────────────────────────────────
 
@@ -1717,12 +1729,14 @@ def init_agent(
     try:
         from guinevere.discord.gateway_patch import wire as _wire_discord
         _wire_discord(agent)
-    except Exception:
+    except Exception as e:
+        logger.debug("Guinevere Discord gateway wire skipped: %s", e)
         agent._guinevere_discord = None
     try:
         from guinevere.channels._bridge import wire as _wire_channels
         _wire_channels(agent)
-    except Exception:
+    except Exception as e:
+        logger.debug("Guinevere channels bridge wire skipped: %s", e)
         agent._guinevere_channels = None
     # ── end Group E wire ───────────────────────────────────────────────────
 
@@ -1733,10 +1747,42 @@ def init_agent(
     try:
         from guinevere.production.recovery import wire as _wire_production
         _wire_production(agent)
-    except Exception:
+    except Exception as e:
+        logger.debug("Guinevere production recovery wire skipped: %s", e)
         agent._circuit_breaker_set = None
         agent._auto_recovery = None
     # ── end Group F wire ───────────────────────────────────────────────────
+
+    # ── Group G wire (P24 v3.1 fork — W18 standalone modules) ──────────────
+    # 3 standalone modules wired to the Hermes agent runtime: consciousness
+    # loop (asyncio task), surveillance buffer (LLM-event capture), and
+    # observability (Sentry + Prometheus). Each wire() is independently
+    # fail-soft and reads config via getattr guards on agent._guinevere_settings.
+    # No new config sections added; see guinevere/{consciousness,surveillance,
+    # observability}/wire.py for the real-API contracts.
+    try:
+        from guinevere.consciousness import wire as _wire_consciousness_mod
+        _wire_consciousness_mod.wire(agent)
+    except (ImportError, AttributeError, TypeError, ValueError) as _e:
+        log.warning(f"[guinevere] consciousness loop wiring failed: {_e}")
+        agent._consciousness_loop = None
+        agent._consciousness_task = None
+
+    try:
+        from guinevere.surveillance import wire as _wire_surveillance_mod
+        _wire_surveillance_mod.wire(agent)
+    except (ImportError, AttributeError, TypeError, ValueError) as _e:
+        log.warning(f"[guinevere] surveillance wiring failed: {_e}")
+        agent._surveillance_buffer = None
+
+    try:
+        from guinevere.observability import wire as _wire_observability_mod
+        _wire_observability_mod.wire(agent)
+    except (ImportError, AttributeError, TypeError, ValueError) as _e:
+        log.warning(f"[guinevere] observability wiring failed: {_e}")
+        agent._sentry_initialized = False
+        agent._metrics = {}
+    # ── end Group G wire ───────────────────────────────────────────────────
 
 
 

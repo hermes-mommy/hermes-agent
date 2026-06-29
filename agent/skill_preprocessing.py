@@ -29,8 +29,8 @@ def load_skills_config() -> dict:
         skills_cfg = cfg.get("skills")
         if isinstance(skills_cfg, dict):
             return skills_cfg
-    except Exception:
-        logger.debug("Could not read skills config", exc_info=True)
+    except Exception as e:
+        logger.debug("Could not read skills config: %s", e, exc_info=True)
     return {}
 
 

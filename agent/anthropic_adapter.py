@@ -43,9 +43,9 @@ def _get_anthropic_sdk():
             _lazy_ensure("provider.anthropic", prompt=False)
         except ImportError:
             pass
-        except Exception:
+        except Exception as e:
             # FeatureUnavailable — fall through to ImportError handling below
-            pass
+            logger.debug("anthropic SDK lazy ensure failed: %s", e)
         try:
             import anthropic as _sdk
             _anthropic_sdk = _sdk
@@ -170,7 +170,8 @@ def _resolve_positive_anthropic_max_tokens(value) -> Optional[int]:
         import math
         if not math.isfinite(value):
             return None
-    except Exception:
+    except Exception as e:
+        logger.debug("_resolve_positive_anthropic_max_tokens: math.isfinite failed: %s", e)
         return None
     floored = int(value)  # truncates toward zero for floats
     return floored if floored > 0 else None
@@ -310,8 +311,8 @@ def _detect_claude_code_version() -> str:
                 version = result.stdout.strip().split()[0]
                 if version and version[0].isdigit():
                     return version
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Claude Code version detection failed for '%s': %s", cmd, e)
     return _CLAUDE_CODE_VERSION_FALLBACK
 
 
@@ -1258,8 +1259,8 @@ def run_hermes_oauth_login_pure() -> Optional[Dict[str, Any]]:
     try:
         webbrowser.open(auth_url)
         print("  (Browser opened automatically)")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to open browser for OAuth: %s", e)
 
     print()
     print("After authorizing, you'll see a code. Paste it below.")

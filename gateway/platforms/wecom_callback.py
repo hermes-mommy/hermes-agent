@@ -26,7 +26,7 @@ try:
 
     DEFUSEDXML_AVAILABLE = True
 except ImportError:
-    ET = None  # type: ignore[assignment]
+    ET: Optional[Any] = None
     DEFUSEDXML_AVAILABLE = False
 
 try:
@@ -34,7 +34,7 @@ try:
 
     AIOHTTP_AVAILABLE = True
 except ImportError:
-    web = None  # type: ignore[assignment]
+    web: Optional[Any] = None
     AIOHTTP_AVAILABLE = False
 
 try:
@@ -42,7 +42,7 @@ try:
 
     HTTPX_AVAILABLE = True
 except ImportError:
-    httpx = None  # type: ignore[assignment]
+    httpx: Optional[Any] = None
     HTTPX_AVAILABLE = False
 
 from gateway.config import Platform, PlatformConfig
@@ -149,15 +149,15 @@ class WecomCallbackAdapter(BasePlatformAdapter):
             for app in self._apps:
                 try:
                     await self._refresh_access_token(app)
-                except Exception as exc:
+                except (httpx.HTTPError, RuntimeError, ValueError, OSError) as exc:
                     logger.warning(
                         "[WecomCallback] Initial token refresh failed for app '%s': %s",
                         app.get("name", "default"), exc,
                     )
             return True
-        except Exception:
+        except Exception as exc:
             await self._cleanup()
-            logger.exception("[WecomCallback] Failed to start")
+            logger.exception("[WecomCallback] Failed to start: %s", exc)
             return False
 
     async def disconnect(self) -> None:
@@ -264,7 +264,11 @@ class WecomCallbackAdapter(BasePlatformAdapter):
                 crypt = self._crypt_for_app(app)
                 plain = crypt.verify_url(msg_signature, timestamp, nonce, echostr)
                 return web.Response(text=plain, content_type="text/plain")
-            except Exception:
+            except (WeComCryptoError, ValueError, IndexError, KeyError, TypeError) as exc:
+                logger.debug(
+                    "[WecomCallback] verify_url failed for app '%s': %s",
+                    app.get("name", "default"), exc,
+                )
                 continue
         return web.Response(status=403, text="signature verification failed")
 
@@ -308,8 +312,10 @@ class WecomCallbackAdapter(BasePlatformAdapter):
                 return web.Response(text="success", content_type="text/plain")
             except WeComCryptoError:
                 continue
-            except Exception:
-                logger.exception("[WecomCallback] Error handling message")
+            except Exception as exc:
+                logger.exception(
+                    "[WecomCallback] Error handling message: %s", exc,
+                )
                 break
         return web.Response(status=400, text="invalid callback payload")
 
@@ -321,8 +327,10 @@ class WecomCallbackAdapter(BasePlatformAdapter):
                 task = asyncio.create_task(self.handle_message(event))
                 self._background_tasks.add(task)
                 task.add_done_callback(self._background_tasks.discard)
-            except Exception:
-                logger.exception("[WecomCallback] Failed to enqueue event")
+            except (RuntimeError, TypeError, AttributeError, ValueError) as exc:
+                logger.exception(
+                    "[WecomCallback] Failed to enqueue event: %s", exc,
+                )
 
     # ------------------------------------------------------------------
     # XML / crypto helpers

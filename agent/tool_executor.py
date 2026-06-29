@@ -107,8 +107,8 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                 if file_path:
                     work_dir = agent._checkpoint_mgr.get_working_dir_for_path(file_path)
                     agent._checkpoint_mgr.ensure_checkpoint(work_dir, f"before {function_name}")
-            except Exception:
-                pass
+            except Exception as e:
+                logging.debug("checkpoint ensure failed for %s: %s", function_name, e)
 
         # Checkpoint before destructive terminal commands
         if function_name == "terminal" and agent._checkpoint_mgr.enabled:
@@ -119,8 +119,8 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                     agent._checkpoint_mgr.ensure_checkpoint(
                         cwd, f"before terminal: {cmd[:60]}"
                     )
-            except Exception:
-                pass
+            except Exception as e:
+                logging.debug("terminal checkpoint ensure failed: %s", e)
 
         block_result = None
         blocked_by_guardrail = False
@@ -129,7 +129,8 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
             block_message = get_pre_tool_call_block_message(
                 function_name, function_args, task_id=effective_task_id or "",
             )
-        except Exception:
+        except Exception as e:
+            logging.debug("pre_tool_call_block_message lookup failed: %s", e)
             block_message = None
 
         if block_message is not None:
@@ -209,8 +210,8 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
         if agent._interrupt_requested:
             try:
                 _ra()._set_interrupt(True, _worker_tid)
-            except Exception:
-                pass
+            except Exception as e:
+                logging.debug("worker set_interrupt(True) failed for tid %s: %s", _worker_tid, e)
         # Set the activity callback on THIS worker thread so
         # _wait_for_process (terminal commands) can fire heartbeats.
         # The callback is thread-local; the main thread's callback
@@ -218,20 +219,20 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
         try:
             from tools.environments.base import set_activity_callback
             set_activity_callback(agent._touch_activity)
-        except Exception:
-            pass
+        except Exception as e:
+            logging.debug("worker set_activity_callback failed: %s", e)
         # Propagate approval/sudo callbacks to this worker thread.
         # Mirrors cli.py run_agent() pattern (GHSA-qg5c-hvr5-hjgr).
         if _parent_approval_cb is not None:
             try:
                 _set_approval_callback(_parent_approval_cb)
-            except Exception:
-                pass
+            except Exception as e:
+                logging.debug("worker approval callback propagation failed: %s", e)
         if _parent_sudo_cb is not None:
             try:
                 _set_sudo_password_callback(_parent_sudo_cb)
-            except Exception:
-                pass
+            except Exception as e:
+                logging.debug("worker sudo callback propagation failed: %s", e)
         start = time.time()
         try:
             result = agent._invoke_tool(
@@ -259,15 +260,15 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
             agent._tool_worker_threads.discard(_worker_tid)
         try:
             _ra()._set_interrupt(False, _worker_tid)
-        except Exception:
-            pass
+        except Exception as e:
+            logging.debug("worker set_interrupt(False) failed for tid %s: %s", _worker_tid, e)
         # Clear thread-local callbacks so a recycled worker thread
         # doesn't hold stale references to a disposed CLI instance.
         try:
             _set_approval_callback(None)
             _set_sudo_password_callback(None)
-        except Exception:
-            pass
+        except Exception as e:
+            logging.debug("worker callback teardown failed: %s", e)
 
     # Start spinner for CLI mode (skip when TUI handles tool progress)
     spinner = None
@@ -504,8 +505,8 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
             _block_msg = get_pre_tool_call_block_message(
                 function_name, function_args, task_id=effective_task_id or "",
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logging.debug("pre_tool_call_block_message lookup failed: %s", e)
 
         _guardrail_block_decision: ToolGuardrailDecision | None = None
         if _block_msg is None:
@@ -545,8 +546,8 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
             try:
                 from tools.environments.base import set_activity_callback
                 set_activity_callback(agent._touch_activity)
-            except Exception:
-                pass
+            except Exception as e:
+                logging.debug("set_activity_callback failed: %s", e)
 
         if not _execution_blocked and agent.tool_progress_callback:
             try:
@@ -570,8 +571,8 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                     agent._checkpoint_mgr.ensure_checkpoint(
                         work_dir, f"before {function_name}"
                     )
-            except Exception:
-                pass  # never block tool execution
+            except Exception as e:
+                logging.debug("checkpoint ensure failed for %s: %s", function_name, e)  # never block tool execution
 
         # Checkpoint before destructive terminal commands
         if not _execution_blocked and function_name == "terminal" and agent._checkpoint_mgr.enabled:
@@ -582,8 +583,8 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                     agent._checkpoint_mgr.ensure_checkpoint(
                         cwd, f"before terminal: {cmd[:60]}"
                     )
-            except Exception:
-                pass  # never block tool execution
+            except Exception as e:
+                logging.debug("terminal checkpoint ensure failed: %s", e)  # never block tool execution
 
         tool_start_time = time.time()
 
@@ -649,8 +650,8 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                             tool_call_id=getattr(tool_call, "id", None),
                         ),
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logging.debug("memory_manager.on_memory_write notification failed: %s", e)
             tool_duration = time.time() - tool_start_time
             if agent._should_emit_quiet_tool_messages():
                 agent._vprint(f"  {_get_cute_tool_message_impl('memory', function_args, tool_duration, result=function_result)}")

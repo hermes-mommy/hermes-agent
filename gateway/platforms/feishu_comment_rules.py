@@ -353,8 +353,8 @@ def _main() -> int:
     try:
         from hermes_cli.env_loader import load_hermes_dotenv
         load_hermes_dotenv()
-    except Exception:
-        pass
+    except Exception as e:  # best-effort env preload; safe to ignore
+        logger.debug("[Feishu-Rules] hermes_dotenv preload failed (non-fatal): %s", e)
 
     usage = (
         "Usage: python -m gateway.platforms.feishu_comment_rules <command> [args]\n"

@@ -15,9 +15,10 @@ design.
 
 from __future__ import annotations
 
+import importlib
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from tools.browser_supervisor import SUPERVISOR_REGISTRY
 from tools.registry import registry
@@ -126,8 +127,9 @@ def _browser_dialog_check() -> bool:
     CDP URL is enough to commit to showing the tool.
     """
     try:
-        from tools.browser_cdp_tool import _browser_cdp_check  # type: ignore[import-not-found]
-    except Exception as exc:  # pragma: no cover — defensive
+        mod = importlib.import_module("tools.browser_cdp_tool")
+        _browser_cdp_check: Callable[[], bool] = getattr(mod, "_browser_cdp_check")
+    except (ImportError, AttributeError) as exc:  # pragma: no cover — defensive
         logger.debug("browser_dialog check: browser_cdp_tool import failed: %s", exc)
         return False
     return _browser_cdp_check()

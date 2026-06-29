@@ -423,7 +423,11 @@ def get_provider(name: str) -> Optional[ProviderDef]:
     try:
         from agent.models_dev import get_provider_info as _mdev_provider
         mdev_info = _mdev_provider(canonical)
-    except Exception:
+    except (ImportError, AttributeError) as e:
+        # models.dev catalog is an optional data source.  If the local
+        # module is missing or its catalog is malformed, fall through to
+        # the Hermes overlay layer.
+        logger.debug("models.dev lookup failed for %r: %s", canonical, e)
         mdev_info = None
 
     overlay = HERMES_OVERLAYS.get(canonical)
@@ -712,7 +716,12 @@ def resolve_provider_full(
                 base_url=mdev_info.api,
                 source="models.dev",
             )
-    except Exception:
+    except (ImportError, AttributeError, ValueError, TypeError) as e:
+        # Fail-soft: models.dev is optional.  Import failure, schema
+        # corruption, or attribute access on a malformed entry must NOT
+        # crash provider resolution — caller will get None and surface
+        # a clearer "provider not found" downstream.
+        logger.debug("models.dev fallback lookup failed for %r: %s", canonical, e)
         pass
 
     return None

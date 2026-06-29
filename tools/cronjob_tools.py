@@ -305,8 +305,8 @@ def _resolve_model_override(model_obj: Optional[Dict[str, Any]]) -> tuple:
             model_cfg = cfg.get("model", {})
             if isinstance(model_cfg, dict):
                 provider_name = model_cfg.get("provider") or None
-        except Exception:
-            pass  # Best-effort; provider stays None
+        except Exception as e:
+            logger.debug("model override config load failed, provider stays None: %s", e)
     return (provider_name, model_name)
 
 

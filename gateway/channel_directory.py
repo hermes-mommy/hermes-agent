@@ -93,8 +93,8 @@ async def build_channel_directory(adapters: Dict[Any, Any]) -> Dict[str, Any]:
         for entry in platform_registry.plugin_entries():
             if entry.name not in _SKIP_SESSION_DISCOVERY and entry.name not in platforms:
                 platforms[entry.name] = _build_from_sessions(entry.name)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Channel directory: plugin registry unavailable: %s", e)
 
     directory = {
         "updated_at": datetime.now().isoformat(),
@@ -251,7 +251,8 @@ def load_directory() -> Dict[str, Any]:
     try:
         with open(DIRECTORY_PATH, encoding="utf-8") as f:
             return json.load(f)
-    except Exception:
+    except Exception as e:
+        logger.warning("Channel directory: failed to read cache: %s", e)
         return {"updated_at": None, "platforms": {}}
 
 

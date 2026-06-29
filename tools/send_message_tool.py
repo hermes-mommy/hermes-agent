@@ -163,6 +163,7 @@ def _handle_list():
         from gateway.channel_directory import format_directory_for_display
         return json.dumps({"targets": format_directory_for_display()})
     except Exception as e:
+        logger.error("channel_directory load failed: %s", e, exc_info=True)
         return json.dumps(_error(f"Failed to load channel directory: {e}"))
 
 
@@ -196,7 +197,8 @@ def _handle_send(args):
                     "error": f"Could not resolve '{target_ref}' on {platform_name}. "
                     f"Use send_message(action='list') to see available targets."
                 })
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to resolve channel name for %s on %s: %s", target_ref, platform_name, e)
             return json.dumps({
                 "error": f"Could not resolve '{target_ref}' on {platform_name}. "
                 f"Try using a numeric channel ID instead."
@@ -330,8 +332,8 @@ def _handle_send(args):
                     user_id=user_id,
                 ):
                     result["mirrored"] = True
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Mirror to session failed for %s:%s: %s", platform_name, chat_id, e)
 
         if isinstance(result, dict) and "error" in result:
             result["error"] = _sanitize_error_text(result["error"])
@@ -491,13 +493,15 @@ async def _send_via_adapter(
     try:
         from gateway.run import _gateway_runner_ref
         runner = _gateway_runner_ref()
-    except Exception:
+    except Exception as e:
+        logger.debug("Could not obtain gateway runner reference: %s", e)
         runner = None
 
     if runner is not None:
         try:
             adapter = runner.adapters.get(platform)
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to get adapter for platform %s: %s", platform, e)
             adapter = None
         if adapter is not None:
             try:
@@ -516,7 +520,8 @@ async def _send_via_adapter(
     try:
         from gateway.platform_registry import platform_registry
         entry = platform_registry.get(platform_name)
-    except Exception:
+    except Exception as e:
+        logger.debug("Could not load platform registry entry for %s: %s", platform_name, e)
         entry = None
 
     if entry is not None and entry.standalone_sender_fn is not None:
@@ -586,8 +591,8 @@ async def _send_to_platform(platform, pconfig, chat_id, message, thread_id=None,
         try:
             slack_adapter = SlackAdapter.__new__(SlackAdapter)
             message = slack_adapter.format_message(message)
-        except Exception:
-            logger.debug("Failed to apply Slack mrkdwn formatting in _send_to_platform", exc_info=True)
+        except Exception as e:
+            logger.debug("Failed to apply Slack mrkdwn formatting in _send_to_platform: %s", e, exc_info=True)
 
     # Platform message length limits (from adapter class attributes for
     # built-in platforms; from PlatformEntry.max_message_length for plugins).
@@ -605,8 +610,8 @@ async def _send_to_platform(platform, pconfig, chat_id, message, thread_id=None,
             entry = platform_registry.get(platform.value)
             if entry and entry.max_message_length > 0:
                 _MAX_LENGTHS[platform] = entry.max_message_length
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Could not load platform registry max_message_length: %s", e)
 
     # Smart-chunk the message to fit within platform limits.
     # For short messages or platforms without a known limit this is a no-op.
@@ -835,8 +840,9 @@ async def _send_telegram(token, chat_id, message, media_files=None, thread_id=No
                 from gateway.platforms.telegram import TelegramAdapter
                 _adapter = TelegramAdapter.__new__(TelegramAdapter)
                 formatted = _adapter.format_message(message)
-            except Exception:
+            except Exception as e:
                 # Fallback: send as-is if formatting unavailable
+                logger.debug("Telegram MarkdownV2 formatting failed, sending as plain text: %s", e)
                 formatted = message
             send_parse_mode = ParseMode.MARKDOWN_V2
 
@@ -848,7 +854,8 @@ async def _send_telegram(token, chat_id, message, media_files=None, thread_id=No
         try:
             from gateway.platforms.base import resolve_proxy_url
             _tg_proxy = resolve_proxy_url("TELEGRAM_PROXY", target_hosts=["api.telegram.org"])
-        except Exception:
+        except Exception as e:
+            logger.debug("Could not resolve Telegram proxy: %s", e)
             _tg_proxy = None
         if _tg_proxy:
             try:
@@ -881,9 +888,10 @@ async def _send_telegram(token, chat_id, message, media_files=None, thread_id=No
                 effective_thread_id = TelegramAdapter._message_thread_id_for_send(
                     str(thread_id)
                 )
-            except Exception:
+            except Exception as e:
                 # Fallback: explicit mapping in case the adapter import
                 # fails (e.g. python-telegram-bot missing in this venv).
+                logger.debug("TelegramAdapter._message_thread_id_for_send unavailable, using raw thread_id: %s", e)
                 effective_thread_id = (
                     None if str(thread_id) == "1" else int(thread_id)
                 )
@@ -931,7 +939,8 @@ async def _send_telegram(token, chat_id, message, media_files=None, thread_id=No
                         try:
                             from gateway.platforms.telegram import _strip_mdv2
                             plain = _strip_mdv2(formatted)
-                        except Exception:
+                        except Exception as e:
+                            logger.debug("_strip_mdv2 unavailable, using original message: %s", e)
                             plain = message
                     else:
                         plain = message
@@ -1031,6 +1040,7 @@ async def _send_telegram(token, chat_id, message, media_files=None, thread_id=No
     except ImportError:
         return {"error": "python-telegram-bot not installed. Run: pip install python-telegram-bot"}
     except Exception as e:
+        logger.error("telegram send failed: %s", e, exc_info=True)
         return _error(f"Telegram send failed: {e}")
 
 
@@ -1456,8 +1466,8 @@ async def _send_matrix_via_adapter(pconfig, chat_id, message, media_files=None, 
     finally:
         try:
             await adapter.disconnect()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Matrix adapter disconnect failed (non-fatal): %s", e)
 
 
 async def _send_homeassistant(token, extra, chat_id, message):
@@ -1668,7 +1678,8 @@ def _check_send_message():
     try:
         from gateway.status import is_gateway_running
         return is_gateway_running()
-    except Exception:
+    except Exception as e:
+        logger.debug("Gateway status check failed: %s", e)
         return False
 
 

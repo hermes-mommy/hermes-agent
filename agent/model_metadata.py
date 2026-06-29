@@ -387,8 +387,10 @@ try:
         _host = _pp.get_hostname()
         if _host and _host not in _URL_TO_PROVIDER:
             _URL_TO_PROVIDER[_host] = _pp.name
-except Exception:
-    pass
+except ImportError as e:
+    logger.debug("providers module not available, skipping auto-register: %s", e)
+except AttributeError as e:
+    logger.debug("providers.list_providers missing/incompatible shape: %s", e)
 
 
 def _infer_provider_from_url(base_url: str) -> Optional[str]:
@@ -430,7 +432,8 @@ def is_local_endpoint(base_url: str) -> bool:
     try:
         parsed = urlparse(url)
         host = parsed.hostname or ""
-    except Exception:
+    except ValueError as e:
+        logger.debug("urlparse failed for %r: %s", url, e)
         return False
     if host in _LOCAL_HOSTS:
         return True
@@ -486,8 +489,8 @@ def detect_local_server_type(base_url: str, api_key: str = "") -> Optional[str]:
                 r = client.get(f"{server_url}/api/v1/models")
                 if r.status_code == 200:
                     return "lm-studio"
-            except Exception:
-                pass
+            except httpx.HTTPError as e:
+                logger.debug("LM Studio /api/v1/models probe failed: %s", e)
             # Ollama exposes /api/tags and responds with {"models": [...]}
             # LM Studio returns {"error": "Unexpected endpoint"} with status 200
             # on this path, so we must verify the response contains "models".
@@ -498,10 +501,10 @@ def detect_local_server_type(base_url: str, api_key: str = "") -> Optional[str]:
                         data = r.json()
                         if "models" in data:
                             return "ollama"
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+                    except ValueError as e:
+                        logger.debug("Ollama /api/tags JSON parse failed: %s", e)
+            except httpx.HTTPError as e:
+                logger.debug("Ollama /api/tags probe failed: %s", e)
             # llama.cpp exposes /v1/props (older builds used /props without the /v1 prefix)
             try:
                 r = client.get(f"{server_url}/v1/props")
@@ -509,8 +512,8 @@ def detect_local_server_type(base_url: str, api_key: str = "") -> Optional[str]:
                     r = client.get(f"{server_url}/props")  # fallback for older builds
                 if r.status_code == 200 and "default_generation_settings" in r.text:
                     return "llamacpp"
-            except Exception:
-                pass
+            except httpx.HTTPError as e:
+                logger.debug("llama.cpp /v1/props probe failed: %s", e)
             # vLLM: /version
             try:
                 r = client.get(f"{server_url}/version")
@@ -518,10 +521,10 @@ def detect_local_server_type(base_url: str, api_key: str = "") -> Optional[str]:
                     data = r.json()
                     if "version" in data:
                         return "vllm"
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except httpx.HTTPError as e:
+                logger.debug("vLLM /version probe failed: %s", e)
+    except httpx.HTTPError as e:
+        logger.debug("local server detection client error for %s: %s", server_url, e)
 
     return None
 
@@ -774,8 +777,10 @@ def fetch_endpoint_model_metadata(
                         model_alias = props.get("model_alias", "")
                         if n_ctx and model_alias and model_alias in cache:
                             cache[model_alias]["context_length"] = n_ctx
-                except Exception:
-                    pass
+                except requests.exceptions.RequestException as e:
+                    logger.debug("llama.cpp /props probe failed: %s", e)
+                except ValueError as e:
+                    logger.debug("llama.cpp /props JSON parse failed: %s", e)
 
             _endpoint_model_metadata_cache[normalized] = cache
             _endpoint_model_metadata_cache_time[normalized] = time.time()
@@ -1015,7 +1020,11 @@ def query_ollama_num_ctx(model: str, base_url: str, api_key: str = "") -> Option
 
     try:
         server_type = detect_local_server_type(base_url, api_key=api_key)
-    except Exception:
+    except httpx.HTTPError as e:
+        logger.debug("detect_local_server_type failed in query_ollama_num_ctx: %s", e)
+        return None
+    except ValueError as e:
+        logger.debug("detect_local_server_type parse failed in query_ollama_num_ctx: %s", e)
         return None
     if server_type != "ollama":
         return None
@@ -1046,8 +1055,10 @@ def query_ollama_num_ctx(model: str, base_url: str, api_key: str = "") -> Option
             for key, value in model_info.items():
                 if "context_length" in key and isinstance(value, (int, float)):
                     return int(value)
-    except Exception:
-        pass
+    except httpx.HTTPError as e:
+        logger.debug("Ollama /api/show POST failed: %s", e)
+    except ValueError as e:
+        logger.debug("Ollama /api/show response parse failed: %s", e)
     return None
 
 
@@ -1107,8 +1118,10 @@ def _query_ollama_api_show(model: str, base_url: str, api_key: str = "") -> Opti
                                     return ctx
                             except ValueError:
                                 pass
-    except Exception:
-        pass
+    except httpx.HTTPError as e:
+        logger.debug("Ollama /api/show POST failed in _query_ollama_api_show: %s", e)
+    except ValueError as e:
+        logger.debug("Ollama /api/show response parse failed: %s", e)
     return None
 
 
@@ -1141,7 +1154,11 @@ def _query_local_context_length(model: str, base_url: str, api_key: str = "") ->
 
     try:
         server_type = detect_local_server_type(base_url, api_key=api_key)
-    except Exception:
+    except httpx.HTTPError as e:
+        logger.debug("detect_local_server_type failed in _query_local_context_length: %s", e)
+        server_type = None
+    except ValueError as e:
+        logger.debug("detect_local_server_type parse failed in _query_local_context_length: %s", e)
         server_type = None
 
     try:
@@ -1212,8 +1229,10 @@ def _query_local_context_length(model: str, base_url: str, api_key: str = "") ->
                         ctx = m.get("max_model_len") or m.get("context_length") or m.get("max_tokens")
                         if ctx and isinstance(ctx, (int, float)):
                             return int(ctx)
-    except Exception:
-        pass
+    except httpx.HTTPError as e:
+        logger.debug("local server context probe failed: %s", e)
+    except ValueError as e:
+        logger.debug("local server response parse failed: %s", e)
 
     return None
 
@@ -1499,8 +1518,12 @@ def get_model_context_length(
             )
             if cp_ctx:
                 return cp_ctx
-        except Exception:
-            pass  # fall through to probing
+        except ImportError as e:
+            logger.debug("hermes_cli.config import failed for custom provider context: %s", e)
+        except AttributeError as e:
+            logger.debug("get_custom_provider_context_length missing/incompatible: %s", e)
+        except ValueError as e:
+            logger.debug("get_custom_provider_context_length validation failed: %s", e)
 
     # Normalise provider-prefixed model names (e.g. "local:model-name" →
     # "model-name") so cache lookups and server queries use the bare ID that
@@ -1643,8 +1666,14 @@ def get_model_context_length(
             ctx = get_copilot_model_context(model, api_key=api_key)
             if ctx:
                 return ctx
-        except Exception:
-            pass  # Fall through to models.dev
+        except ImportError as e:
+            logger.debug("hermes_cli.models import failed for copilot context: %s", e)
+        except AttributeError as e:
+            logger.debug("get_copilot_model_context missing/incompatible: %s", e)
+        except (requests.exceptions.RequestException, httpx.HTTPError) as e:
+            logger.debug("copilot /models probe network failure: %s", e)
+        except ValueError as e:
+            logger.debug("copilot /models response parse failed: %s", e)
 
     if effective_provider == "nous":
         ctx, source = _resolve_nous_context_length(

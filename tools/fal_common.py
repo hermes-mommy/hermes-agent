@@ -48,7 +48,8 @@ def import_fal_client() -> Any:
         pass
     except Exception as exc:  # noqa: BLE001 — lazy_deps surfaces install hints
         raise ImportError(str(exc))
-    import fal_client  # type: ignore  # noqa: WPS433 — intentionally lazy
+    import importlib
+    fal_client = importlib.import_module("fal_client")
     return fal_client
 
 

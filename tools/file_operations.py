@@ -25,6 +25,7 @@ Usage:
     result = file_ops.search("TODO", path=".", file_glob="*.py")
 """
 
+import logging
 import os
 import re
 import difflib
@@ -32,6 +33,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 from tools.binary_extensions import BINARY_EXTENSIONS
 
 from agent.file_safety import (
@@ -490,9 +493,11 @@ def _lint_toml_inproc(content: str) -> tuple[bool, str]:
     try:
         import tomllib as _toml
     except ImportError:
+        _toml = None  # noqa: F841
+    if _toml is None:
         # Pre-3.11 fallback via tomli, if installed.
         try:
-            import tomli as _toml  # type: ignore[no-redef]
+            import tomli as _toml  # noqa: F841
         except ImportError:
             return True, "__SKIP__"
     try:
@@ -1152,7 +1157,8 @@ class ShellFileOperations(FileOperations):
             try:
                 from tools.fuzzy_match import format_no_match_hint
                 err_msg += format_no_match_hint(err_msg, match_count, old_string, content)
-            except Exception:
+            except Exception as e:
+                logger.debug("format_no_match_hint unavailable: %s", e)
                 pass
             return PatchResult(error=err_msg)
 
@@ -1442,7 +1448,8 @@ class ShellFileOperations(FileOperations):
             return False
         try:
             from tools.environments.local import LocalEnvironment
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
+            logger.debug("LocalEnvironment import failed: %s", e)
             return False
         return isinstance(env, LocalEnvironment)
 
@@ -1461,7 +1468,8 @@ class ShellFileOperations(FileOperations):
             return False
         try:
             from agent.lsp.servers import SERVERS
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
+            logger.debug("LSP SERVERS import failed: %s", e)
             return False
         ext_lower = ext.lower()
         for srv in SERVERS:
@@ -1490,17 +1498,20 @@ class ShellFileOperations(FileOperations):
             return False
         try:
             from agent.lsp import get_service
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
+            logger.debug("LSP get_service import failed: %s", e)
             return False
         try:
             svc = get_service()
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
+            logger.debug("LSP get_service() failed: %s", e)
             return False
         if svc is None:
             return False
         try:
             return bool(svc.enabled_for(path))
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
+            logger.debug("LSP enabled_for(%s) failed: %s", path, e)
             return False
 
     def _snapshot_lsp_baseline(self, path: str) -> None:
@@ -1517,13 +1528,15 @@ class ShellFileOperations(FileOperations):
         try:
             from agent.lsp import get_service
             svc = get_service()
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
+            logger.debug("LSP snapshot_baseline probe failed: %s", e)
             return
         if svc is None:
             return
         try:
             svc.snapshot_baseline(path)
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
+            logger.debug("LSP snapshot_baseline(%s) failed: %s", path, e)
             pass
 
     def _maybe_lsp_diagnostics(
@@ -1557,11 +1570,13 @@ class ShellFileOperations(FileOperations):
             return ""
         try:
             from agent.lsp import get_service
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
+            logger.debug("LSP get_service import failed: %s", e)
             return ""
         try:
             svc = get_service()
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
+            logger.debug("LSP get_service() failed: %s", e)
             return ""
         if svc is None or not svc.enabled_for(path):
             return ""
@@ -1574,12 +1589,14 @@ class ShellFileOperations(FileOperations):
             try:
                 from agent.lsp.range_shift import build_line_shift
                 line_shift = build_line_shift(pre_content, post_content)
-            except Exception:  # noqa: BLE001
+            except Exception as e:  # noqa: BLE001
+                logger.debug("LSP build_line_shift failed: %s", e)
                 line_shift = None
 
         try:
             diagnostics = svc.get_diagnostics_sync(path, delta=True, line_shift=line_shift)
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
+            logger.debug("LSP get_diagnostics_sync(%s) failed: %s", path, e)
             return ""
         if not diagnostics:
             return ""
@@ -1589,7 +1606,8 @@ class ShellFileOperations(FileOperations):
             if not block:
                 return ""
             return truncate("LSP diagnostics introduced by this edit:\n" + block)
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
+            logger.debug("LSP reporter failed for %s: %s", path, e)
             return ""
     
     # =========================================================================

@@ -44,8 +44,8 @@ def _read_nous_provider_state() -> Optional[dict]:
         nous_provider = providers.get("nous", {})
         if isinstance(nous_provider, dict):
             return nous_provider
-    except Exception:
-        pass
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("Failed to read Nous provider state from auth store: %s", exc)
     return None
 
 

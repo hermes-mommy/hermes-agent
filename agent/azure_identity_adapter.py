@@ -65,7 +65,7 @@ def has_azure_identity_installed() -> bool:
     try:
         import azure.identity  # noqa: F401
         return True
-    except Exception:
+    except ImportError:
         return False
 
 

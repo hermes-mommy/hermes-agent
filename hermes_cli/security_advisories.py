@@ -155,10 +155,10 @@ def _installed_version(pkg_name: str) -> Optional[str]:
         return version(pkg_name)
     except PackageNotFoundError:
         return None
-    except Exception:
+    except Exception as e:
         # Some metadata corruption modes raise ValueError or OSError. Don't
         # let advisory checking crash the CLI startup path.
-        logger.debug("importlib.metadata.version(%s) raised", pkg_name, exc_info=True)
+        logger.debug("importlib.metadata.version(%s) raised: %s", pkg_name, e)
         return None
 
 
@@ -207,8 +207,8 @@ def get_acked_ids() -> set[str]:
     try:
         from hermes_cli.config import load_config
         cfg = load_config()
-    except Exception:
-        logger.debug("Could not load config for advisory acks", exc_info=True)
+    except Exception as e:
+        logger.debug("Could not load config for advisory acks: %s", e)
         return set()
     sec = cfg.get("security") or {}
     raw = sec.get("acked_advisories") or []
@@ -227,8 +227,8 @@ def ack_advisory(advisory_id: str) -> bool:
         return False
     try:
         from hermes_cli.config import load_config, save_config
-    except Exception:
-        logger.warning("Could not import config module to persist ack")
+    except Exception as e:
+        logger.warning("Could not import config module to persist ack: %s", e)
         return False
     try:
         cfg = load_config()
@@ -241,8 +241,8 @@ def ack_advisory(advisory_id: str) -> bool:
             sec["acked_advisories"] = existing
             save_config(cfg)
         return True
-    except Exception:
-        logger.exception("Failed to persist advisory ack for %s", advisory_id)
+    except Exception as e:
+        logger.exception("Failed to persist advisory ack for %s: %s", advisory_id, e)
         return False
 
 
@@ -328,7 +328,8 @@ def _banner_cache_path() -> Optional[Path]:
         cache_dir = Path(get_hermes_home()) / "cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
         return cache_dir / _BANNER_CACHE_FILE
-    except Exception:
+    except Exception as e:
+        logger.debug("Could not resolve banner cache path: %s", e)
         return None
 
 
@@ -350,7 +351,8 @@ def _read_banner_cache() -> dict[str, float]:
                 out[advisory_id] = float(ts)
             except ValueError:
                 continue
-    except Exception:
+    except Exception as e:
+        logger.debug("Could not read advisory banner cache: %s", e)
         return {}
     return out
 
@@ -362,8 +364,8 @@ def _write_banner_cache(seen: dict[str, float]) -> None:
     try:
         lines = [f"{aid} {ts}" for aid, ts in seen.items()]
         p.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    except Exception:
-        logger.debug("Could not write advisory banner cache", exc_info=True)
+    except Exception as e:
+        logger.debug("Could not write advisory banner cache: %s", e)
 
 
 def hits_due_for_banner(

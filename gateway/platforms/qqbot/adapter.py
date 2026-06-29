@@ -41,8 +41,12 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
+
+if TYPE_CHECKING:
+    import aiohttp
+    import httpx
 
 try:
     import aiohttp
@@ -50,7 +54,7 @@ try:
     AIOHTTP_AVAILABLE = True
 except ImportError:
     AIOHTTP_AVAILABLE = False
-    aiohttp = None  # type: ignore[assignment]
+    aiohttp = None
 
 try:
     import httpx
@@ -58,7 +62,7 @@ try:
     HTTPX_AVAILABLE = True
 except ImportError:
     HTTPX_AVAILABLE = False
-    httpx = None  # type: ignore[assignment]
+    httpx = None
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import (
@@ -889,8 +893,12 @@ class QQAdapter(BasePlatformAdapter):
     def _parse_json(raw: Any) -> Optional[Dict[str, Any]]:
         try:
             payload = json.loads(raw)
-        except Exception:
-            logger.warning("[QQBot] Failed to parse JSON: %r", raw)
+        except (ValueError, TypeError) as exc:
+            # json.JSONDecodeError is a subclass of ValueError; TypeError covers
+            # non-string/bytes inputs.
+            logger.warning(
+                "[QQBot] Failed to parse JSON (%s): %r", type(exc).__name__, raw
+            )
             return None
         return payload if isinstance(payload, dict) else None
 
@@ -2287,7 +2295,14 @@ class QQAdapter(BasePlatformAdapter):
                     ext,
                 )
                 return cache_document_from_bytes(audio_data, f"qq_voice{ext}")
-        except Exception:
+        except Exception as exc:
+            # Genuinely-unknown fail-soft fallback for ffmpeg/pilk boundaries.
+            logger.debug(
+                "[%s] audio conversion sweep failed (%s); caching raw attachment instead: %s",
+                self._log_tag,
+                type(exc).__name__,
+                exc,
+            )
             return cache_document_from_bytes(audio_data, f"qq_voice{ext}")
         finally:
             try:

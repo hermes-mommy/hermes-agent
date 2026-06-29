@@ -15,7 +15,10 @@ Design decisions (per r11):
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 
 async def check_postgres(pg_dsn: str) -> dict[str, Any]:
@@ -34,7 +37,8 @@ async def check_postgres(pg_dsn: str) -> dict[str, Any]:
         finally:
             await conn.close()
         return {"status": "ok"}
-    except Exception:
+    except Exception as e:
+        log.debug("PostgreSQL health check failed: %s", e)
         return {"status": "unavailable"}
 
 
@@ -53,7 +57,8 @@ async def check_redis(redis_url: str) -> dict[str, Any]:
         finally:
             await client.aclose()
         return {"status": "ok"}
-    except Exception:
+    except Exception as e:
+        log.debug("Redis health check failed: %s", e)
         return {"status": "unavailable"}
 
 

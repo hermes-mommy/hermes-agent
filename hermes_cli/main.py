@@ -61,6 +61,7 @@ try:
 except ModuleNotFoundError:
     pass
 
+import logging
 import os
 import sys
 
@@ -336,8 +337,13 @@ try:
             _FORCE_IPV4_EARLY = True
         del _early_cfg_raw
     del _cfg_path
-except Exception:
-    pass  # best-effort — redaction stays at default (enabled) on config errors
+except Exception as _e:
+    # Genuinely-unknown fail-soft — yaml may not have imported, file may be
+    # missing, or content may be unparseable.  Best-effort: redaction stays
+    # at default (enabled) on config errors.
+    logging.getLogger(__name__).debug(
+        "Early config preload failed (best-effort): %s", _e
+    )
 
 # Initialize centralized file logging early — all `hermes` subcommands
 # (chat, setup, gateway, config, etc.) write to agent.log + errors.log.
@@ -345,8 +351,12 @@ try:
     from hermes_logging import setup_logging as _setup_logging
 
     _setup_logging(mode="cli")
-except Exception:
-    pass  # best-effort — don't crash the CLI if logging setup fails
+except Exception as _e:
+    # Genuinely-unknown fail-soft — hermes_logging or its deps may be missing
+    # or broken. Don't crash the CLI if logging setup fails.
+    logging.getLogger(__name__).debug(
+        "hermes_logging setup failed (best-effort): %s", _e
+    )
 
 # Apply IPv4 preference early, before any HTTP clients are created.
 # We already determined whether to force IPv4 from the raw yaml read above —
@@ -356,10 +366,13 @@ if _FORCE_IPV4_EARLY:
         from hermes_constants import apply_ipv4_preference as _apply_ipv4
 
         _apply_ipv4(force=True)
-    except Exception:
-        pass  # best-effort — don't crash if hermes_constants not importable yet
+    except Exception as _e:
+        # Genuinely-unknown fail-soft — hermes_constants may not be
+        # importable yet (e.g. stale .pth after git pull).  Don't crash.
+        logging.getLogger(__name__).debug(
+            "apply_ipv4_preference skipped: %s", _e
+        )
 
-import logging
 import threading
 import time as _time
 from datetime import datetime
@@ -577,8 +590,8 @@ def _has_any_provider_configured() -> bool:
                 val = val.strip().strip("'\"")
                 if key.strip() in provider_env_vars and val:
                     return True
-        except Exception:
-            pass
+        except (OSError, ValueError) as e:
+            logger.debug(".env read failed during provider check: %s", e)
 
     # Check provider-specific auth fallbacks (for example, Copilot via gh auth).
     try:
@@ -588,8 +601,8 @@ def _has_any_provider_configured() -> bool:
             status = get_auth_status(provider_id)
             if status.get("logged_in"):
                 return True
-    except Exception:
-        pass
+    except (OSError, ValueError, KeyError) as e:
+        logger.debug("provider auth fallback check failed: %s", e)
 
     # Check for Nous Portal OAuth credentials
     auth_file = get_hermes_home() / "auth.json"
@@ -603,8 +616,8 @@ def _has_any_provider_configured() -> bool:
                 status = get_auth_status(active)
                 if status.get("logged_in"):
                     return True
-        except Exception:
-            pass
+        except (json.JSONDecodeError, OSError, ValueError, KeyError) as e:
+            logger.debug("auth.json check failed: %s", e)
 
     # Check config.yaml — if model is a dict with an explicit provider set,
     # the user has gone through setup (fresh installs have model as a plain
@@ -632,8 +645,8 @@ def _has_any_provider_configured() -> bool:
                 is_claude_code_token_valid(creds) or creds.get("refreshToken")
             ):
                 return True
-        except Exception:
-            pass
+        except (OSError, ValueError, KeyError, AttributeError) as e:
+            logger.debug("Claude Code credential check failed: %s", e)
 
     return False
 
@@ -848,7 +861,8 @@ def _session_browse_picker(sessions: list) -> Optional[str]:
         curses.wrapper(_curses_browse)
         return result_holder[0]
 
-    except Exception:
+    except Exception as _e:
+        logger.debug('Curses unavailable, using fallback: %s', _e)
         pass
 
     # Fallback: numbered list (Windows without curses, etc.)
@@ -888,13 +902,15 @@ def _resolve_last_session(source: str = "cli") -> Optional[str]:
         db = SessionDB()
         sessions = db.search_sessions(source=source, limit=1)
         return sessions[0]["id"] if sessions else None
-    except Exception:
+    except (OSError, AttributeError) as _e:
+        logger.debug('DB close failed (ignored): %s', _e)
         pass
     finally:
         if db is not None:
             try:
                 db.close()
-            except Exception:
+            except (OSError, AttributeError) as _e:
+                logger.debug('DB close failed (ignored): %s', _e)
                 pass
     return None
 
@@ -1040,12 +1056,14 @@ def _resolve_session_by_name_or_id(name_or_id: str) -> Optional[str]:
             # the live tip instead of a dead compressed parent.
             try:
                 resolved_id = db.get_compression_tip(resolved_id) or resolved_id
-            except Exception:
+            except (OSError, ValueError, KeyError) as _e:
+                logger.debug('DB session operation failed: %s', _e)
                 pass
 
         db.close()
         return resolved_id
-    except Exception:
+    except (OSError, ValueError, KeyError, AttributeError) as _e:
+        logger.debug('Credential resolution failed: %s', _e)
         pass
     return None
 
@@ -1057,7 +1075,8 @@ def _read_tui_active_session_file(path: Optional[str]) -> Optional[str]:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         sid = str(data.get("session_id") or "").strip()
         return sid or None
-    except Exception:
+    except (json.JSONDecodeError, OSError, ValueError) as _e:
+        logger.debug('JSON parse failed: %s', _e)
         return None
 
 
@@ -1098,7 +1117,8 @@ def _print_tui_exit_summary(
             + cache_write_tokens
             + reasoning_tokens
         )
-    except Exception:
+    except Exception as _e:
+        logger.debug('Best-effort operation failed: %s', _e)
         return
     finally:
         if db is not None:
@@ -1353,7 +1373,8 @@ def _make_tui_argv(tui_dir: Path, tui_dev: bool) -> tuple[list[str], Path]:
                 from hermes_cli.dep_ensure import ensure_dependency
                 if ensure_dependency("node"):
                     path = shutil.which("node")
-            except Exception:
+            except Exception as _e:
+                logger.debug('Import/operation failed: %s', _e)
                 pass
         if not path:
             print(f"{bin} not found — install Node.js to use the TUI.")
@@ -1622,7 +1643,8 @@ def _launch_tui(
         if wt_info:
             try:
                 _cleanup_worktree(wt_info)
-            except Exception:
+            except OSError as _e:
+                logger.debug('Filesystem cleanup failed: %s', _e)
                 pass
 
     # Exit code 42 = TUI requested an update. Relaunch as `hermes update` so
@@ -1657,7 +1679,8 @@ def _pin_kanban_board_env() -> None:
         from hermes_cli.kanban_db import get_current_board
 
         os.environ["HERMES_KANBAN_BOARD"] = get_current_board()
-    except Exception:
+    except Exception as _e:
+        logger.debug('Import/operation failed: %s', _e)
         pass
 
 
@@ -1719,7 +1742,8 @@ def cmd_chat(args):
                 sys.stderr.write(f"  \033[33m⚠\033[0m {format_issue(_ref)}\n")
             sys.stderr.write(f"  \033[2mMigration guide: {MIGRATION_GUIDE_URL}\033[0m\n")
             sys.stderr.write("  \033[2mRun 'hermes doctor' for details.\033[0m\n\n")
-    except Exception:
+    except (OSError, ValueError, KeyError) as _e:
+        logger.debug('Config operation failed: %s', _e)
         pass
 
     # First-run guard: check if any provider is configured before launching
@@ -1762,13 +1786,15 @@ def cmd_chat(args):
             from hermes_cli.banner import prefetch_update_check
 
             prefetch_update_check()
-        except Exception:
+        except Exception as _e:
+            logger.debug('Import/operation failed: %s', _e)
             pass
 
     # Sync bundled skills on every CLI launch (fast -- skips unchanged skills)
     try:
         _sync_bundled_skills_for_startup()
-    except Exception:
+    except Exception as _e:
+        logger.debug('Import/operation failed: %s', _e)
         pass
 
     # --yolo: bypass all dangerous command approvals
@@ -2122,7 +2148,8 @@ def cmd_model(args):
             from hermes_cli.models import clear_provider_models_cache
             clear_provider_models_cache()
             print("  Cleared model picker cache.")
-        except Exception:
+        except Exception as _e:
+            logger.debug('Import/operation failed: %s', _e)
             pass
     select_provider_and_model(args=args)
 
@@ -2138,7 +2165,8 @@ def _is_profile_api_key_provider(provider_id: str) -> bool:
         from providers import get_provider_profile
         _p = get_provider_profile(provider_id)
         return _p is not None and _p.auth_type == "api_key"
-    except Exception:
+    except Exception as _e:
+        logger.debug('Plugin discovery failed: %s', _e)
         return False
 
 
@@ -2565,7 +2593,8 @@ def _all_aux_tasks() -> list[tuple[str, str, str]]:
         from hermes_cli.plugins import get_plugin_auxiliary_tasks
         for entry in get_plugin_auxiliary_tasks():
             tasks.append((entry["key"], entry["display_name"], entry["description"]))
-    except Exception:
+    except Exception as _e:
+        logger.debug('Plugin discovery failed: %s', _e)
         # Plugin discovery failure must not break the aux config UI.
         # Built-in tasks remain available.
         pass
@@ -2810,7 +2839,8 @@ def _aux_flow_provider_model(
     pricing: dict = {}
     try:
         pricing = get_pricing_for_provider(provider_slug) or {}
-    except Exception:
+    except (OSError, ValueError, KeyError) as _e:
+        logger.debug('Network fetch failed: %s', _e)
         pricing = {}
 
     model_list = list(curated_models)
@@ -2914,7 +2944,8 @@ def _prompt_provider_choice(choices, *, default=0):
         if idx >= 0:
             print()
             return idx
-    except Exception:
+    except Exception as _e:
+        logger.debug('Curses unavailable, using fallback: %s', _e)
         pass
 
     # Fallback: numbered list
@@ -3042,7 +3073,8 @@ def _model_flow_nous(config, current_model="", args=None):
             try:
                 _refreshed = load_config() or {}
                 prompt_enable_tool_gateway(_refreshed)
-            except Exception:
+            except (OSError, ValueError, KeyError) as _e:
+                logger.debug('Config operation failed: %s', _e)
                 pass
         except SystemExit:
             print("Login cancelled or failed.")
@@ -3111,7 +3143,8 @@ def _model_flow_nous(config, current_model="", args=None):
             )
             if refreshed_creds:
                 creds = refreshed_creds
-        except Exception:
+        except (OSError, ValueError, KeyError, AttributeError) as _e:
+            logger.debug('Credential resolution failed: %s', _e)
             # Runtime inference has its own paid-entitlement recovery path; do
             # not block model selection if this opportunistic remint fails.
             pass
@@ -3123,7 +3156,8 @@ def _model_flow_nous(config, current_model="", args=None):
         _nous_state = get_provider_auth_state("nous")
         if _nous_state:
             _nous_portal_url = _nous_state.get("portal_base_url", "")
-    except Exception:
+    except (OSError, ValueError, KeyError, AttributeError) as _e:
+        logger.debug('Credential resolution failed: %s', _e)
         pass
 
     # For free users: partition models into selectable/unavailable based on
@@ -3152,7 +3186,8 @@ def _model_flow_nous(config, current_model="", args=None):
                 )
                 or ""
             )
-        except Exception:
+        except Exception as _e:
+            logger.debug('Import/operation failed: %s', _e)
             unavailable_message = ""
         model_ids, pricing = union_with_portal_free_recommendations(
             model_ids, pricing, _nous_portal_url,
@@ -3289,7 +3324,8 @@ def _model_flow_openai_codex(config, current_model=""):
         _codex_status = get_codex_auth_status()
         if _codex_status.get("logged_in"):
             _codex_token = _codex_status.get("api_key")
-    except Exception:
+    except Exception as _e:
+        logger.debug('Best-effort operation failed: %s', _e)
         pass
     if not _codex_token:
         try:
@@ -3297,7 +3333,8 @@ def _model_flow_openai_codex(config, current_model=""):
 
             _codex_creds = resolve_codex_runtime_credentials()
             _codex_token = _codex_creds.get("api_key")
-        except Exception:
+        except (OSError, ValueError, KeyError, AttributeError) as _e:
+            logger.debug('Credential resolution failed: %s', _e)
             pass
 
     codex_models = get_codex_model_ids(access_token=_codex_token)
@@ -3391,7 +3428,8 @@ def _model_flow_xai_oauth(_config, current_model="", *, args=None):
     try:
         creds = resolve_xai_oauth_runtime_credentials()
         base_url = (creds.get("base_url") or "").strip().rstrip("/") or base_url
-    except Exception:
+    except (OSError, ValueError, KeyError, AttributeError) as _e:
+        logger.debug('Credential resolution failed: %s', _e)
         pass
 
     models = list(_PROVIDER_MODELS.get("xai-oauth") or _PROVIDER_MODELS.get("xai") or [])
@@ -3438,7 +3476,8 @@ def _model_flow_qwen_oauth(_config, current_model=""):
     try:
         creds = resolve_qwen_runtime_credentials(refresh_if_expiring=True)
         models = fetch_api_models(creds["api_key"], creds["base_url"])
-    except Exception:
+    except (OSError, ValueError, KeyError, AttributeError) as _e:
+        logger.debug('Credential resolution failed: %s', _e)
         pass
     if not models:
         models = list(_DEFAULT_QWEN_PORTAL_MODELS)
@@ -4946,7 +4985,8 @@ def _model_flow_copilot_acp(config, current_model=""):
     try:
         catalog_creds = resolve_api_key_provider_credentials("copilot")
         catalog_api_key = catalog_creds.get("api_key", "")
-    except Exception:
+    except (OSError, ValueError, KeyError, AttributeError) as _e:
+        logger.debug('Credential resolution failed: %s', _e)
         pass
 
     catalog = fetch_github_model_catalog(catalog_api_key)
@@ -5636,7 +5676,8 @@ def _model_flow_api_key_provider(config, provider_id, current_model=""):
     if provider_id == "gemini" and existing_key:
         try:
             from agent.gemini_native_adapter import probe_gemini_tier
-        except Exception:
+        except Exception as _e:
+            logger.debug('Import/operation failed: %s', _e)
             probe_gemini_tier = None
         if probe_gemini_tier is not None:
             print("  Checking Gemini API tier...")
@@ -5700,7 +5741,8 @@ def _model_flow_api_key_provider(config, provider_id, current_model=""):
             _m = load_config().get("model") or {}
             if str(_m.get("provider") or "").strip().lower() == provider_id:
                 current_base = str(_m.get("base_url") or "").strip()
-        except Exception:
+        except (OSError, ValueError, KeyError) as _e:
+            logger.debug('Config operation failed: %s', _e)
             pass
     effective_base = current_base or pconfig.inference_base_url
 
@@ -5770,7 +5812,8 @@ def _model_flow_api_key_provider(config, provider_id, current_model=""):
                 from agent.models_dev import list_agentic_models
 
                 mdev_models = list_agentic_models(provider_id)
-            except Exception:
+            except (OSError, ValueError, KeyError) as _e:
+                logger.debug('Network fetch failed: %s', _e)
                 pass
             if mdev_models:
                 seen = {m.lower() for m in mdev_models}
@@ -5795,7 +5838,8 @@ def _model_flow_api_key_provider(config, provider_id, current_model=""):
             from agent.models_dev import list_agentic_models
 
             mdev_models = list_agentic_models(provider_id)
-        except Exception:
+        except Exception as _e:
+            logger.debug('Import/operation failed: %s', _e)
             pass
 
         if mdev_models:
@@ -5890,7 +5934,8 @@ def _run_anthropic_oauth_flow(save_env_value):
     def _activate_claude_code_credentials_if_available() -> bool:
         try:
             creds = read_claude_code_credentials()
-        except Exception:
+        except (OSError, ValueError, KeyError, AttributeError) as _e:
+            logger.debug('Credential resolution failed: %s', _e)
             creds = None
         if creds and (
             is_claude_code_token_valid(creds) or bool(creds.get("refreshToken"))
@@ -5998,7 +6043,8 @@ def _model_flow_anthropic(config, current_model=""):
         cc_creds = read_claude_code_credentials()
         if cc_creds and is_claude_code_token_valid(cc_creds):
             cc_available = True
-    except Exception:
+    except (OSError, ValueError, KeyError, AttributeError) as _e:
+        logger.debug('Credential resolution failed: %s', _e)
         pass
 
     # Stale-OAuth guard: if the only existing cred is an expired OAuth token
@@ -6312,7 +6358,8 @@ def _print_version_info(*, check_updates: bool = True) -> None:
             )
         elif behind == 0:
             print("Up to date")
-    except Exception:
+    except Exception as _e:
+        logger.debug('Import/operation failed: %s', _e)
         pass
 
 
@@ -6868,20 +6915,23 @@ def _print_curator_first_run_notice() -> None:
     """
     try:
         from agent import curator
-    except Exception:
+    except Exception as _e:
+        logger.debug('Curator operation failed: %s', _e)
         return
     try:
         if not curator.is_enabled():
             return
         state = curator.load_state()
-    except Exception:
+    except Exception as _e:
+        logger.debug('Curator operation failed: %s', _e)
         return
     if state.get("last_run_at"):
         # Curator has run before (real or already seeded) — no notice needed.
         return
     try:
         hours = curator.get_interval_hours()
-    except Exception:
+    except Exception as _e:
+        logger.debug('Curator operation failed: %s', _e)
         hours = 24 * 7
     days = max(1, hours // 24)
     print()
@@ -6914,11 +6964,13 @@ def _print_curator_recent_run_notice() -> None:
     """
     try:
         from agent import curator
-    except Exception:
+    except Exception as _e:
+        logger.debug('Curator operation failed: %s', _e)
         return
     try:
         state = curator.load_state()
-    except Exception:
+    except Exception as _e:
+        logger.debug('Curator operation failed: %s', _e)
         return
 
     last_run_at = state.get("last_run_at")
@@ -6941,7 +6993,8 @@ def _print_curator_recent_run_notice() -> None:
         try:
             state["last_run_summary_shown_at"] = last_run_at
             curator.save_state(state)
-        except Exception:
+        except Exception as _e:
+            logger.debug('Curator operation failed: %s', _e)
             pass
         return
 
@@ -6960,7 +7013,8 @@ def _print_curator_recent_run_notice() -> None:
     try:
         state["last_run_summary_shown_at"] = last_run_at
         curator.save_state(state)
-    except Exception:
+    except Exception as _e:
+        logger.debug('Curator operation failed: %s', _e)
         pass
 
 
@@ -6980,7 +7034,8 @@ def _format_time_ago(iso_ts: str) -> str:
         if secs < 86400:
             return f"{secs // 3600}h ago"
         return f"{secs // 86400}d ago"
-    except Exception:
+    except Exception as _e:
+        logger.debug('Import/operation failed: %s', _e)
         return "recently"
 
 
@@ -7254,7 +7309,8 @@ def _update_via_zip(args):
             print(f"  − {len(result['cleaned'])} removed from manifest")
         if not result["copied"] and not result.get("updated"):
             print("  ✓ Skills are up to date")
-    except Exception:
+    except Exception as _e:
+        logger.debug('Import/operation failed: %s', _e)
         pass
 
     print()
@@ -7481,7 +7537,8 @@ def _get_origin_url(git_cmd: list[str], cwd: Path) -> Optional[str]:
         )
         if result.returncode == 0:
             return result.stdout.strip()
-    except Exception:
+    except (subprocess.SubprocessError, OSError) as _e:
+        logger.debug('Subprocess operation failed: %s', _e)
         pass
     return None
 
@@ -7513,7 +7570,8 @@ def _has_upstream_remote(git_cmd: list[str], cwd: Path) -> bool:
             text=True,
         )
         return result.returncode == 0
-    except Exception:
+    except (subprocess.SubprocessError, OSError) as _e:
+        logger.debug('Subprocess operation failed: %s', _e)
         return False
 
 
@@ -7527,7 +7585,8 @@ def _add_upstream_remote(git_cmd: list[str], cwd: Path) -> bool:
             text=True,
         )
         return result.returncode == 0
-    except Exception:
+    except (subprocess.SubprocessError, OSError) as _e:
+        logger.debug('Subprocess operation failed: %s', _e)
         return False
 
 
@@ -7542,7 +7601,8 @@ def _count_commits_between(git_cmd: list[str], cwd: Path, base: str, head: str) 
         )
         if result.returncode == 0:
             return int(result.stdout.strip())
-    except Exception:
+    except (subprocess.SubprocessError, OSError) as _e:
+        logger.debug('Subprocess operation failed: %s', _e)
         pass
     return -1
 
@@ -7560,7 +7620,8 @@ def _mark_skip_upstream_prompt():
         from hermes_constants import get_hermes_home
 
         (get_hermes_home() / SKIP_UPSTREAM_PROMPT_FILE).touch()
-    except Exception:
+    except OSError as _e:
+        logger.debug('File creation failed: %s', _e)
         pass
 
 
@@ -7577,7 +7638,8 @@ def _sync_fork_with_upstream(git_cmd: list[str], cwd: Path) -> bool:
             text=True,
         )
         return result.returncode == 0
-    except Exception:
+    except (subprocess.SubprocessError, OSError) as _e:
+        logger.debug('Subprocess operation failed: %s', _e)
         return False
 
 
@@ -7719,7 +7781,8 @@ def _invalidate_update_cache():
             cache_file = home / ".update_check"
             if cache_file.exists():
                 cache_file.unlink()
-        except Exception:
+        except OSError as _e:
+            logger.debug('Filesystem cleanup failed: %s', _e)
             pass
 
 
@@ -7734,7 +7797,8 @@ def _load_installable_optional_extras(group: str = "all") -> list[str]:
 
         with (PROJECT_ROOT / "pyproject.toml").open("rb") as handle:
             project = tomllib.load(handle).get("project", {})
-    except Exception:
+    except (OSError, ValueError) as _e:
+        logger.debug('TOML parse failed: %s', _e)
         return []
 
     optional_deps = project.get("optional-dependencies", {})
@@ -7847,7 +7911,8 @@ def _detect_concurrent_hermes_instances(
 
     try:
         import psutil
-    except Exception:
+    except Exception as _e:
+        logger.debug('psutil operation failed: %s', _e)
         return []
 
     # Build a set of PIDs to exclude: the Python process itself plus its
@@ -7872,7 +7937,8 @@ def _detect_concurrent_hermes_instances(
         while True:
             try:
                 parent = current.parent()
-            except Exception:
+            except Exception as _e:
+                logger.debug('psutil operation failed: %s', _e)
                 break
             if parent is None or parent.pid <= 0:
                 break
@@ -7880,7 +7946,8 @@ def _detect_concurrent_hermes_instances(
                 break  # loop detected
             exclude_pids.add(parent.pid)
             current = parent
-    except Exception:
+    except Exception as _e:
+        logger.debug('psutil operation failed: %s', _e)
         pass
 
     # Resolve every shim path to its canonical form once for cheap comparison.
@@ -7896,13 +7963,15 @@ def _detect_concurrent_hermes_instances(
     matches: list[tuple[int, str]] = []
     try:
         proc_iter = psutil.process_iter(["pid", "exe", "name"])
-    except Exception:
+    except Exception as _e:
+        logger.debug('psutil operation failed: %s', _e)
         return []
 
     for proc in proc_iter:
         try:
             info = proc.info
-        except Exception:
+        except Exception as _e:
+            logger.debug('psutil operation failed: %s', _e)
             continue
         pid = info.get("pid")
         exe = info.get("exe")
@@ -8072,7 +8141,8 @@ def _schedule_replace_on_reboot(shim: Path, quarantine_target: Path) -> bool:
             MOVEFILE_REPLACE_EXISTING | MOVEFILE_DELAY_UNTIL_REBOOT,
         )
         return bool(ok)
-    except Exception:
+    except Exception as _e:
+        logger.debug('Import/operation failed: %s', _e)
         return False
 
 
@@ -8289,7 +8359,8 @@ def _ensure_uv_for_termux(pip_cmd: list[str]) -> str | None:
     try:
         print("  → Termux detected: trying to install uv for faster dependency updates...")
         subprocess.run(pip_cmd + ["install", "uv"], cwd=PROJECT_ROOT, check=False)
-    except Exception:
+    except (subprocess.SubprocessError, OSError) as _e:
+        logger.debug('Subprocess operation failed: %s', _e)
         pass
     return shutil.which("uv")
 
@@ -8361,7 +8432,8 @@ class _UpdateOutputStream:
         if self._log is not None:
             try:
                 self._log.write(data)
-            except Exception:
+            except (OSError, BrokenPipeError, ValueError) as _e:
+                logger.debug('Stream I/O failed: %s', _e)
                 # Log errors should never abort the update.
                 pass
 
@@ -8380,7 +8452,8 @@ class _UpdateOutputStream:
         if self._log is not None:
             try:
                 self._log.flush()
-            except Exception:
+            except (OSError, BrokenPipeError, ValueError) as _e:
+                logger.debug('Stream I/O failed: %s', _e)
                 pass
         if self._original_broken:
             return
@@ -8394,7 +8467,8 @@ class _UpdateOutputStream:
             return False
         try:
             return self._original.isatty()
-        except Exception:
+        except (OSError, ValueError) as _e:
+            logger.debug('Stream probe failed: %s', _e)
             return False
 
     def fileno(self):
@@ -8479,7 +8553,8 @@ def _install_hangup_protection(gateway_mode: bool = False):
         sys.stdout = _UpdateOutputStream(state["prev_stdout"], log_file)
         sys.stderr = _UpdateOutputStream(state["prev_stderr"], log_file)
         state["installed"] = True
-    except Exception:
+    except (OSError, BrokenPipeError, ValueError) as _e:
+        logger.debug('Stream I/O failed: %s', _e)
         # Leave stdio untouched on any setup failure.  Update continues
         # without mirroring.
         state["log_file"] = None
@@ -8494,18 +8569,21 @@ def _finalize_update_output(state):
     if state.get("installed"):
         try:
             sys.stdout = state.get("prev_stdout", sys.stdout)
-        except Exception:
+        except (OSError, BrokenPipeError, ValueError) as _e:
+            logger.debug('Stream I/O failed: %s', _e)
             pass
         try:
             sys.stderr = state.get("prev_stderr", sys.stderr)
-        except Exception:
+        except (OSError, BrokenPipeError, ValueError) as _e:
+            logger.debug('Stream I/O failed: %s', _e)
             pass
     log_file = state.get("log_file")
     if log_file is not None:
         try:
             log_file.flush()
             log_file.close()
-        except Exception:
+        except (OSError, BrokenPipeError, ValueError) as _e:
+            logger.debug('Stream I/O failed: %s', _e)
             pass
 
 
@@ -8825,7 +8903,8 @@ def _run_pre_update_backup(args) -> None:
             display_path = f"{display_hermes_home()}/{out_path.relative_to(home)}"
         except ValueError:
             display_path = str(out_path)
-    except Exception:
+    except Exception as _e:
+        logger.debug('Import/operation failed: %s', _e)
         display_path = str(out_path)
 
     print(f"  Saved:    {display_path} ({size_str}, {elapsed:.1f}s)")
@@ -9326,7 +9405,8 @@ def _cmd_update_impl(args, gateway_mode: bool):
             import hermes_constants as _hc
 
             importlib.reload(_hc)
-        except Exception:
+        except Exception as _e:
+            logger.debug('Import/operation failed: %s', _e)
             pass  # non-fatal — worst case a lazy import fails gracefully
 
         # Sync bundled skills (copies new, updates changed, respects user deletions)
@@ -9388,7 +9468,8 @@ def _cmd_update_impl(args, gateway_mode: bool):
                         print(f"  {p.name}: {status}")
                     except Exception as pe:
                         print(f"  {p.name}: error ({pe})")
-        except Exception:
+        except Exception as _e:
+            logger.debug('Best-effort operation failed: %s', _e)
             pass  # profiles module not available or no profiles
 
         # Sync Honcho host blocks to all profiles
@@ -9398,7 +9479,8 @@ def _cmd_update_impl(args, gateway_mode: bool):
             synced = sync_honcho_profiles_quiet()
             if synced:
                 print(f"\n-> Honcho: synced {synced} profile(s)")
-        except Exception:
+        except Exception as _e:
+            logger.debug('Plugin discovery failed: %s', _e)
             pass  # honcho plugin not installed or not configured
 
         # Check for config migrations
@@ -9652,7 +9734,8 @@ def _cmd_update_impl(args, gateway_mode: bool):
                 from hermes_constants import (
                     DEFAULT_GATEWAY_RESTART_DRAIN_TIMEOUT as _DEFAULT_DRAIN,
                 )
-            except Exception:
+            except Exception as _e:
+                logger.debug('Import/operation failed: %s', _e)
                 _DEFAULT_DRAIN = 60.0
             _cfg_drain = None
             try:
@@ -9660,7 +9743,8 @@ def _cmd_update_impl(args, gateway_mode: bool):
 
                 _cfg_agent = load_config().get("agent") or {}
                 _cfg_drain = _cfg_agent.get("restart_drain_timeout")
-            except Exception:
+            except (OSError, ValueError, KeyError) as _e:
+                logger.debug('Config operation failed: %s', _e)
                 pass
             try:
                 _drain_budget = (
@@ -9683,7 +9767,8 @@ def _cmd_update_impl(args, gateway_mode: bool):
             if supports_systemd_services():
                 try:
                     _ensure_user_systemd_env()
-                except Exception:
+                except Exception as _e:
+                    logger.debug('Plugin discovery failed: %s', _e)
                     pass
 
                 for scope, scope_cmd in [
@@ -10328,7 +10413,8 @@ def cmd_profile(args):
 
                     if clone_honcho_for_profile(name):
                         print(f"Honcho config cloned (peer: {name})")
-                except Exception:
+                except Exception as _e:
+                    logger.debug('Plugin discovery failed: %s', _e)
                     pass  # Honcho plugin not installed or not configured
 
             # Seed bundled skills (skip if --clone-all already copied them, or
@@ -10985,7 +11071,8 @@ def _build_provider_choices() -> list[str]:
     try:
         from hermes_cli.models import CANONICAL_PROVIDERS as _cp
         return ["auto"] + [p.slug for p in _cp]
-    except Exception:
+    except Exception as _e:
+        logger.debug('Import/operation failed: %s', _e)
         # Fallback: static list guarantees the CLI always works
         return [
             "auto", "openrouter", "nous", "openai-codex", "xai-oauth", "copilot-acp", "copilot",
@@ -11127,7 +11214,8 @@ def _prepare_agent_startup(args) -> None:
         from hermes_cli.plugins import discover_plugins
 
         discover_plugins()
-    except Exception:
+    except Exception as _e:
+        logger.debug('Plugin discovery failed: %s', _e)
         logger.warning(
             "plugin discovery failed at CLI startup",
             exc_info=True,
@@ -11140,7 +11228,8 @@ def _prepare_agent_startup(args) -> None:
         from tools.mcp_tool import discover_mcp_tools
 
         discover_mcp_tools()
-    except Exception:
+    except Exception as _e:
+        logger.debug('Plugin discovery failed: %s', _e)
         logger.debug(
             "MCP tool discovery failed at CLI startup",
             exc_info=True,
@@ -11150,7 +11239,8 @@ def _prepare_agent_startup(args) -> None:
         from agent.shell_hooks import register_from_config
 
         register_from_config(load_config(), accept_hooks=_accept_hooks)
-    except Exception:
+    except (OSError, ValueError, KeyError) as _e:
+        logger.debug('Config operation failed: %s', _e)
         logger.debug(
             "shell-hook registration failed at CLI startup",
             exc_info=True,
@@ -11289,7 +11379,8 @@ def main():
     try:
         from hermes_cli.stdio import configure_windows_stdio
         configure_windows_stdio()
-    except Exception:
+    except Exception as _e:
+        logger.debug('Import/operation failed: %s', _e)
         pass
 
     # Sweep stale ``hermes.exe.old.*`` quarantine files left by previous
@@ -11297,7 +11388,8 @@ def main():
     # there's nothing to clean. See ``_quarantine_running_hermes_exe``.
     try:
         _cleanup_quarantined_exes()
-    except Exception:
+    except Exception as _e:
+        logger.debug('Import/operation failed: %s', _e)
         pass
 
     if _try_termux_fast_tui_launch():
@@ -13230,7 +13322,8 @@ Examples:
                         ["cua-driver", "--version"],
                         capture_output=True, text=True, timeout=5,
                     ).stdout.strip()
-                except Exception:
+                except (subprocess.SubprocessError, OSError) as _e:
+                    logger.debug('Subprocess operation failed: %s', _e)
                     pass
                 if version:
                     print(f"cua-driver: installed at {path} ({version})")

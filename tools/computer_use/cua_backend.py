@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import binascii
 import json
 import logging
 import os
@@ -188,8 +189,8 @@ class _AsyncBridge:
             finally:
                 try:
                     self._loop.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("cua-driver loop close error (benign): %s", e)
 
         self._thread = threading.Thread(target=_run, daemon=True, name="cua-driver-loop")
         self._thread.start()
@@ -466,7 +467,8 @@ class CuaDriverBackend(ComputerUseBackend):
         if png_b64:
             try:
                 png_bytes_len = len(base64.b64decode(png_b64, validate=False))
-            except Exception:
+            except (ValueError, binascii.Error) as e:
+                logger.debug("base64 decode for png length failed, using estimate: %s", e)
                 png_bytes_len = len(png_b64) * 3 // 4
 
         return CaptureResult(
@@ -710,23 +712,24 @@ class CuaDriverBackend(ComputerUseBackend):
 
 
 def _parse_element(d: Dict[str, Any]) -> UIElement:
-    bounds = d.get("bounds") or (0, 0, 0, 0)
-    if isinstance(bounds, dict):
-        bounds = (
-            int(bounds.get("x", 0)),
-            int(bounds.get("y", 0)),
-            int(bounds.get("w", bounds.get("width", 0))),
-            int(bounds.get("h", bounds.get("height", 0))),
+    raw = d.get("bounds") or (0, 0, 0, 0)
+    parsed: Tuple[int, int, int, int]
+    if isinstance(raw, dict):
+        parsed = (
+            int(raw.get("x", 0)),
+            int(raw.get("y", 0)),
+            int(raw.get("w", raw.get("width", 0))),
+            int(raw.get("h", raw.get("height", 0))),
         )
-    elif isinstance(bounds, (list, tuple)) and len(bounds) == 4:
-        bounds = tuple(int(v) for v in bounds)
+    elif isinstance(raw, (list, tuple)) and len(raw) == 4:
+        parsed = (int(raw[0]), int(raw[1]), int(raw[2]), int(raw[3]))
     else:
-        bounds = (0, 0, 0, 0)
+        parsed = (0, 0, 0, 0)
     return UIElement(
         index=int(d.get("index", 0)),
         role=str(d.get("role", "") or ""),
         label=str(d.get("label", "") or ""),
-        bounds=bounds,  # type: ignore[arg-type]
+        bounds=parsed,
         app=str(d.get("app", "") or ""),
         pid=int(d.get("pid", 0) or 0),
         window_id=int(d.get("windowId", 0) or 0),

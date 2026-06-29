@@ -180,8 +180,8 @@ def describe_profile(
 
     try:
         if canon == "default":
-            from hermes_constants import get_hermes_home  # type: ignore
-            profile_dir = Path(get_hermes_home())
+            import hermes_constants
+            profile_dir = Path(hermes_constants.get_hermes_home())
         else:
             profile_dir = profiles_mod.get_profile_dir(canon)
     except Exception as exc:
@@ -207,20 +207,18 @@ def describe_profile(
     # Read model + provider from the profile's config.
     try:
         model, provider = profiles_mod._read_config_model(profile_dir)
-    except Exception:
+    except Exception as exc:
+        logger.debug("describe: failed to read model from profile %s: %s", canon, exc)
         model, provider = None, None
 
     try:
-        from agent.auxiliary_client import (  # type: ignore
-            get_auxiliary_extra_body,
-            get_text_auxiliary_client,
-        )
+        import agent.auxiliary_client as _auxiliary_client
     except Exception as exc:
         logger.debug("describe: auxiliary client import failed: %s", exc)
         return DescribeOutcome(canon, False, "auxiliary client unavailable")
 
     try:
-        client, aux_model = get_text_auxiliary_client("profile_describer")
+        client, aux_model = _auxiliary_client.get_text_auxiliary_client("profile_describer")
     except Exception as exc:
         logger.debug("describe: get_text_auxiliary_client failed: %s", exc)
         return DescribeOutcome(canon, False, "auxiliary client unavailable")
@@ -247,7 +245,7 @@ def describe_profile(
             temperature=0.3,
             max_tokens=400,
             timeout=timeout or 60,
-            extra_body=get_auxiliary_extra_body() or None,
+            extra_body=_auxiliary_client.get_auxiliary_extra_body() or None,
         )
     except Exception as exc:
         logger.info("describe: API call failed for %s (%s)", canon, exc)
@@ -255,7 +253,8 @@ def describe_profile(
 
     try:
         raw = resp.choices[0].message.content or ""
-    except Exception:
+    except Exception as exc:
+        logger.debug("describe: malformed response object for %s: %s", canon, exc)
         raw = ""
 
     parsed = _extract_json_blob(raw)

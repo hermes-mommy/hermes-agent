@@ -85,7 +85,8 @@ def _kill_port_process(port: int) -> None:
                             pass
                 except FileNotFoundError:
                     pass  # lsof not installed either
-    except Exception:
+    except Exception as e:  # last-resort fail-soft: best-effort port cleanup
+        logger.debug("[whatsapp] _kill_port_process(%d) best-effort failure: %s", port, e)
         pass
 
 
@@ -211,7 +212,11 @@ def check_whatsapp_requirements() -> bool:
             timeout=5
         )
         return result.returncode == 0
-    except Exception:
+    except (subprocess.SubprocessError, OSError) as e:
+        # Node probe — best-effort capability check. Surface unexpected spawn/
+        # timeout errors at debug so they don't drown the log on healthy hosts
+        # but remain diagnosable when node is genuinely broken.
+        logger.debug("[whatsapp] node --version failed: %s", e)
         return False
 
 
@@ -367,7 +372,10 @@ class WhatsAppAdapter(BasePlatformAdapter):
             if raw:
                 try:
                     patterns = json.loads(raw)
-                except Exception:
+                except (ValueError, TypeError) as e:
+                    # WHATSAPP_MENTION_PATTERNS was set but not valid JSON; fall
+                    # back to treating it as a free-form list of patterns.
+                    logger.debug("[%s] WHATSAPP_MENTION_PATTERNS not valid JSON; falling back to line/comma split: %s", self.name, e)
                     patterns = [part.strip() for part in raw.splitlines() if part.strip()]
                     if not patterns:
                         patterns = [part.strip() for part in raw.split(",") if part.strip()]
@@ -594,7 +602,11 @@ class WhatsAppAdapter(BasePlatformAdapter):
                                 return True
                             else:
                                 print(f"[{self.name}] Bridge found but not connected (status: {bridge_status}), restarting")
-            except Exception:
+            except (OSError, asyncio.TimeoutError, ConnectionError) as e:
+                # Bridge HTTP probe failed — almost always means the bridge
+                # is not yet running, which is the expected path on first
+                # connect. Other transient errors stay at debug level.
+                logger.debug("[%s] Initial bridge health probe failed (will start bridge): %s", self.name, e)
                 pass  # Bridge not running, start a new one
             
             # Kill any orphaned bridge from a previous gateway run
@@ -657,7 +669,10 @@ class WhatsAppAdapter(BasePlatformAdapter):
                                 if data.get("status") == "connected":
                                     print(f"[{self.name}] Bridge ready (status: connected)")
                                     break
-                except Exception:
+                except (OSError, asyncio.TimeoutError, ConnectionError) as e:
+                    # Expected during the 15s bridge bootstrap window — the
+                    # HTTP server isn't accepting connections yet.
+                    logger.debug("[%s] Bridge health probe during Phase-1 wait: %s", self.name, e)
                     continue
 
             if not http_ready:
@@ -688,7 +703,10 @@ class WhatsAppAdapter(BasePlatformAdapter):
                                     if data.get("status") == "connected":
                                         print(f"[{self.name}] Bridge ready (status: connected)")
                                         break
-                    except Exception:
+                    except (OSError, asyncio.TimeoutError, ConnectionError) as e:
+                        # Expected while waiting for the Baileys handshake to
+                        # complete — bridge HTTP is up but WS not yet authed.
+                        logger.debug("[%s] Bridge health probe during Phase-2 wait: %s", self.name, e)
                         continue
                 else:
                     # Still not connected — warn but proceed (bridge may
@@ -721,7 +739,8 @@ class WhatsAppAdapter(BasePlatformAdapter):
         if self._bridge_log_fh:
             try:
                 self._bridge_log_fh.close()
-            except Exception:
+            except Exception as e:  # last-resort fail-soft: file may already be closed
+                logger.debug("[%s] Bridge log close best-effort failure: %s", self.name, e)
                 pass
             self._bridge_log_fh = None
 
@@ -1019,7 +1038,8 @@ class WhatsAppAdapter(BasePlatformAdapter):
         try:
             local_path = await cache_image_from_url(image_url)
             return await self._send_media_to_bridge(chat_id, local_path, "image", caption)
-        except Exception:
+        except (OSError, ValueError, TypeError, ConnectionError) as e:
+            logger.debug("[%s] Bridge image send falling back to base adapter: %s", self.name, e)
             return await super().send_image(chat_id, image_url, caption, reply_to)
 
     async def send_image_file(
@@ -1089,7 +1109,10 @@ class WhatsAppAdapter(BasePlatformAdapter):
                 timeout=aiohttp.ClientTimeout(total=5)
             ):
                 pass
-        except Exception:
+        except (OSError, asyncio.TimeoutError, ConnectionError) as e:
+            # Typing indicator is best-effort; transient bridge/HTTP failures
+            # must not surface to the caller.
+            logger.debug("[%s] Typing indicator best-effort failure (ignored): %s", self.name, e)
             pass  # Ignore typing indicator failures
     
     async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:

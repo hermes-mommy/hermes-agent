@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import time
+import httpx  # module-level so qr_register's except clause can reference httpx.HTTPError
 from enum import IntEnum
 from typing import Optional, Tuple
 from urllib.parse import quote
@@ -56,7 +57,7 @@ class BindStatus(IntEnum):
 try:
     import qrcode as _qrcode_mod
 except (ImportError, TypeError):
-    _qrcode_mod = None  # type: ignore[assignment]
+    _qrcode_mod = None
 
 
 def _render_qr(url: str) -> bool:
@@ -72,7 +73,8 @@ def _render_qr(url: str) -> bool:
         qr.make(fit=True)
         qr.print_ascii(invert=True)
         return True
-    except Exception:
+    except Exception as e:
+        logger.debug("qrcode render failed: %s", e)
         return False
 
 
@@ -188,7 +190,8 @@ def qr_register(timeout_seconds: int = 600) -> Optional[dict]:
         while time.monotonic() < deadline:
             try:
                 status, app_id, encrypted_secret, user_openid = _poll_bind_result(task_id)
-            except Exception:
+            except (httpx.HTTPError, RuntimeError) as e:
+                logger.debug("[QQBot onboard] poll transient error (will retry): %s", e)
                 time.sleep(ONBOARD_POLL_INTERVAL)
                 continue
 

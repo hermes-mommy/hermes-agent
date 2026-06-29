@@ -236,7 +236,8 @@ def copilot_device_code_login(
         try:
             with urllib.request.urlopen(poll_req, timeout=10) as resp:
                 result = json.loads(resp.read().decode())
-        except Exception:
+        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as exc:
+            logger.debug("Copilot device-code poll transient error (will retry): %s", exc)
             print(".", end="", flush=True)
             continue
 

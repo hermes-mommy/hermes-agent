@@ -31,7 +31,10 @@ version can change at runtime (editable installs, hot-reload tooling), and
 
 from __future__ import annotations
 
+import logging
 from typing import List
+
+logger = logging.getLogger(__name__)
 
 
 def _hermes_version() -> str:
@@ -43,7 +46,12 @@ def _hermes_version() -> str:
     try:
         from hermes_cli import __version__
         return __version__
-    except Exception:
+    except ImportError as e:
+        # hermes_cli is the canonical source of truth for the Hermes release
+        # version. In a real install this import always succeeds; we catch
+        # ImportError only as a guard for editable installs / hot-reload /
+        # defensive testing where the package may not be importable yet.
+        logger.debug("hermes_cli import failed; using 'unknown' tag: %s", e)
         return "unknown"
 
 

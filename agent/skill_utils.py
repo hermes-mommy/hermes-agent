@@ -10,7 +10,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, cast
 
 from hermes_constants import get_config_path, get_skills_dir, is_termux
 
@@ -111,8 +111,9 @@ def parse_frontmatter(content: str) -> Tuple[Dict[str, Any], str]:
         parsed = yaml_load(yaml_content)
         if isinstance(parsed, dict):
             frontmatter = parsed
-    except Exception:
+    except Exception as e:
         # Fallback: simple key:value parsing for malformed YAML
+        logger.debug("YAML parse failed for frontmatter, using line-split fallback: %s", e)
         for line in yaml_content.strip().split("\n"):
             if ":" not in line:
                 continue
@@ -260,7 +261,7 @@ def get_external_skills_dirs() -> List[Path]:
         stat = config_path.stat()
         cache_key: Tuple[str, int] = (str(config_path), stat.st_mtime_ns)
     except OSError:
-        cache_key = None  # type: ignore[assignment]
+        cache_key = cast(Optional[Tuple[str, int]], None)
 
     if cache_key is not None:
         cached = _EXTERNAL_DIRS_CACHE.get(cache_key)
@@ -270,7 +271,8 @@ def get_external_skills_dirs() -> List[Path]:
 
     try:
         parsed = yaml_load(config_path.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception as e:
+        logger.debug("Could not parse config.yaml for external dirs, skipping: %s", e)
         return []
     if not isinstance(parsed, dict):
         return []
@@ -437,7 +439,8 @@ def discover_all_skill_config_vars() -> List[Dict[str, Any]]:
             try:
                 raw = skill_file.read_text(encoding="utf-8")
                 frontmatter, _ = parse_frontmatter(raw)
-            except Exception:
+            except Exception as e:
+                logger.debug("Skipping unreadable skill file %s: %s", skill_file, e)
                 continue
 
             skill_name = frontmatter.get("name") or skill_file.parent.name
@@ -491,8 +494,8 @@ def resolve_skill_config_values(
             parsed = yaml_load(config_path.read_text(encoding="utf-8"))
             if isinstance(parsed, dict):
                 config = parsed
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Could not parse config.yaml for skill config values, using empty config: %s", e)
 
     resolved: Dict[str, Any] = {}
     for var in config_vars:
@@ -556,7 +559,8 @@ def parse_qualified_name(name: str) -> Tuple[Optional[str], str]:
     """
     if ":" not in name:
         return None, name
-    return tuple(name.split(":", 1))  # type: ignore[return-value]
+    namespace, bare_name = name.split(":", 1)
+    return namespace, bare_name
 
 
 def is_valid_namespace(candidate: Optional[str]) -> bool:

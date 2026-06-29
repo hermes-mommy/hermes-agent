@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 from utils import atomic_replace
+
+logger = logging.getLogger(__name__)
 
 
 # Env var name suffixes that indicate credential values.  These are the
@@ -205,8 +208,10 @@ def _sanitize_env_file_if_needed(path: Path) -> None:
                 except OSError:
                     pass
                 raise
-    except Exception:
-        pass  # best-effort — don't block gateway startup
+    except Exception as e:  # noqa: BLE001 — best-effort, don't block gateway startup
+        logger.debug("hermes env_loader: env-file sanitize failed at %s: %s",
+                     path, e)
+        pass
 
 
 def load_hermes_dotenv(
@@ -271,7 +276,9 @@ def _apply_external_secret_sources(home_path: Path) -> None:
 
     try:
         cfg = _load_secrets_config(home_path)
-    except Exception:  # noqa: BLE001 — config errors must not block startup
+    except Exception as e:  # noqa: BLE001 — config errors must not block startup
+        logger.debug("hermes env_loader: failed to load secrets config for %s: %s",
+                     home_path, e)
         return
 
     bw_cfg = (cfg or {}).get("bitwarden") or {}
@@ -333,12 +340,14 @@ def _load_secrets_config(home_path: Path) -> dict:
     if not config_path.exists():
         return {}
     try:
-        import yaml  # type: ignore
+        import yaml
     except ImportError:
         return {}
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
-    except Exception:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001 — config errors must not block startup
+        logger.debug("hermes env_loader: failed to parse secrets config at %s: %s",
+                     config_path, e)
         return {}
     return data.get("secrets") or {}

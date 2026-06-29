@@ -1564,7 +1564,8 @@ class SkillsShSource(SkillSource):
         for base_path in base_paths:
             try:
                 skills = self.github._list_skills_in_repo(repo, base_path)
-            except Exception:
+            except (httpx.HTTPError, ValueError, KeyError) as e:
+                logger.debug("Failed to list skills in %s/%s: %s", repo, base_path, e)
                 continue
             for meta in skills:
                 if self._matches_skill_tokens(meta, tokens):
@@ -1601,13 +1602,14 @@ class SkillsShSource(SkillSource):
                         # Try listing skills in this directory
                         try:
                             skills = self.github._list_skills_in_repo(repo, dir_name + "/")
-                        except Exception:
+                        except (httpx.HTTPError, ValueError, KeyError) as e:
+                            logger.debug("Failed to list skills in %s/%s/: %s", repo, dir_name, e)
                             continue
                         for meta in skills:
                             if self._matches_skill_tokens(meta, tokens):
                                 return meta.identifier
-        except Exception:
-            pass
+        except (httpx.HTTPError, ValueError, KeyError) as e:
+            logger.debug("Repo root scan failed for %s: %s", repo, e)
 
         return None
 
@@ -3285,7 +3287,8 @@ def check_for_skill_updates(
         for src in candidate_sources:
             try:
                 bundle = src.fetch(identifier)
-            except Exception:
+            except Exception as e:
+                logger.debug("Update check fetch failed for %s via %s: %s", identifier, src.source_id(), e)
                 bundle = None
             if bundle:
                 break
@@ -3634,8 +3637,8 @@ def parallel_search_sources(
                     all_results.extend(results)
                     if on_source_done:
                         on_source_done(sid, len(results))
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Parallel search future failed: %s", e)
         except TimeoutError:
             timed_out_ids = [
                 futures[f] for f in futures if not f.done()

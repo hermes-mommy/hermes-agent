@@ -29,10 +29,13 @@ Usage:
 """
 
 import difflib
+import logging
 import re
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple, Any
 from enum import Enum
+
+logger = logging.getLogger(__name__)
 
 
 class OperationType(Enum):
@@ -297,8 +300,8 @@ def _validate_operations(
                     try:
                         from tools.fuzzy_match import format_no_match_hint
                         msg += format_no_match_hint(match_error, count, search_pattern, simulated)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("format_no_match_hint unavailable in validate: %s", e)
                     errors.append(msg)
                 else:
                     # Advance simulation so subsequent hunks validate correctly.
@@ -577,8 +580,8 @@ def _apply_update(op: PatchOperation, file_ops: Any) -> Tuple[bool, str, Optiona
                     try:
                         from tools.fuzzy_match import format_no_match_hint
                         err_msg += format_no_match_hint(error, 0, search_pattern, new_content)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("format_no_match_hint unavailable in update: %s", e)
                     return False, err_msg, None
         else:
             # Addition-only hunk (no context or removed lines).

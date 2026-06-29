@@ -10,7 +10,10 @@ reasoning configuration, temperature handling, and extra_body assembly.
 """
 
 import copy
+import logging
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 from agent.lmstudio_reasoning import resolve_lmstudio_effort
 from agent.moonshot_schema import is_moonshot_model, sanitize_moonshot_tools
@@ -567,8 +570,14 @@ class ChatCompletionsTransport(ProviderTransport):
                     if hasattr(extra, "model_dump"):
                         try:
                             extra = extra.model_dump()
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            # Best-effort Pydantic normalization; if a provider
+                            # attaches a non-serializable object we keep it raw
+                            # rather than failing the whole response normalize.
+                            logger.debug(
+                                "chat_completions: extra_content.model_dump() failed: %r",
+                                e,
+                            )
                     tc_provider_data["extra_content"] = extra
                 tool_calls.append(
                     ToolCall(

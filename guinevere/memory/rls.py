@@ -98,9 +98,9 @@ async def apply_agent_rls(conn, agent_id: str) -> None:
     try:
         await conn.execute(SET_AGENT_ID_SQL, agent_id)
         logger.debug("RLS agent_id set to %s", agent_id)
-    except Exception:
+    except (ConnectionError, TimeoutError, OSError) as e:
         logger.warning(
-            "Failed to set RLS agent_id (PG may be unavailable)",
+            "Failed to set RLS agent_id (PG may be unavailable): %s", e,
             exc_info=True,
         )
 

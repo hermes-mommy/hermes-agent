@@ -76,7 +76,8 @@ def _load_security_config() -> dict:
     try:
         from hermes_cli.config import load_config
         cfg = load_config().get("security", {}) or {}
-    except Exception:
+    except Exception as e:
+        logger.debug("tirith config load failed, using defaults: %s", e)
         cfg = {}
 
     return {

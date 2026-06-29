@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import time
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional
+
+log = logging.getLogger(__name__)
 
 
 NousAccountInfoSource = Literal["jwt", "account_api", "inference_key", "none", "error"]
@@ -84,7 +87,7 @@ def nous_portal_billing_url(account_info: Optional[NousPortalAccountInfo] = None
     """Return the billing URL for a normalized Nous account snapshot."""
     try:
         from hermes_cli.auth import DEFAULT_NOUS_PORTAL_URL
-    except Exception:
+    except ImportError:
         DEFAULT_NOUS_PORTAL_URL = "https://portal.nousresearch.com"
 
     base = None
@@ -366,7 +369,8 @@ def _info_from_inference_key_pool(
             credential_source=f"pool:{getattr(entry, 'label', 'unknown')}",
             error="portal_oauth_missing",
         )
-    except Exception:
+    except Exception as exc:
+        log.debug("inference_key_pool_lookup_failed: %s", exc)
         return None
 
 
@@ -378,7 +382,8 @@ def _info_from_oauth_pool(
 ) -> Optional[NousPortalAccountInfo]:
     try:
         entry = _select_nous_pool_entry()
-    except Exception:
+    except Exception as exc:
+        log.debug("oauth_pool_entry_select_failed: %s", exc)
         return None
     if entry is None or not _pool_entry_is_portal_oauth(entry):
         return None
@@ -494,7 +499,7 @@ def _info_from_valid_jwt(
 ) -> Optional[NousPortalAccountInfo]:
     try:
         from hermes_cli.auth import _decode_jwt_claims
-    except Exception:
+    except ImportError:
         return None
 
     claims = _decode_jwt_claims(token)
@@ -642,7 +647,7 @@ def _parse_iso_timestamp(value: Any) -> Optional[float]:
         text = text[:-1] + "+00:00"
     try:
         return datetime.fromisoformat(text).timestamp()
-    except Exception:
+    except (ValueError, TypeError):
         return None
 
 

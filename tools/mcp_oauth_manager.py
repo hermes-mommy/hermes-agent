@@ -284,7 +284,7 @@ def _make_hermes_provider_class() -> Optional[type]:
             ):
                 storage.save_oauth_metadata(meta)
 
-        async def async_auth_flow(self, request):  # type: ignore[override]
+        async def async_auth_flow(self, request: Any):
             # Pre-flow hook: ask the manager to refresh from disk if needed.
             # Any failure here is non-fatal — we just log and proceed with
             # whatever state the SDK already has.
@@ -556,7 +556,12 @@ class MCPOAuthManager:
                             if callable(can_refresh_fn):
                                 try:
                                     can_refresh = bool(can_refresh_fn())
-                                except Exception:
+                                except Exception as exc:
+                                    logger.debug(
+                                        "MCP OAuth '%s': "
+                                        "can_refresh_token check failed: %s",
+                                        server_name, exc,
+                                    )
                                     can_refresh = False
                         if not pending.done():
                             pending.set_result(can_refresh)

@@ -125,11 +125,13 @@ def _read_default_model(codex_home: Path) -> Optional[str]:
         return None
     try:
         import tomllib
-    except Exception:
+    except ImportError as e:
+        logger.debug("tomllib unavailable for parsing Codex config.toml: %s", e)
         return None
     try:
         payload = tomllib.loads(config_path.read_text(encoding="utf-8"))
-    except Exception:
+    except (tomllib.TOMLDecodeError, ValueError, OSError) as e:
+        logger.debug("Failed to parse Codex config.toml: %s", e)
         return None
     model = payload.get("model") if isinstance(payload, dict) else None
     if isinstance(model, str) and model.strip():
@@ -143,7 +145,8 @@ def _read_cache_models(codex_home: Path) -> List[str]:
         return []
     try:
         raw = json.loads(cache_path.read_text(encoding="utf-8"))
-    except Exception:
+    except (json.JSONDecodeError, ValueError, OSError) as e:
+        logger.debug("Failed to parse Codex cache models JSON: %s", e)
         return []
 
     entries = raw.get("models") if isinstance(raw, dict) else None

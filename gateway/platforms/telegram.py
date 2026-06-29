@@ -16,7 +16,7 @@ import tempfile
 import html as _html
 import re
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +125,8 @@ def check_telegram_requirements() -> bool:
     try:
         from tools.lazy_deps import ensure as _lazy_ensure
         _lazy_ensure("platform.telegram", prompt=False)
-    except Exception:
+    except (ImportError, AttributeError, ModuleNotFoundError) as _e:
+        logger.debug("[Telegram] lazy dependency load failed: %s", _e)
         return False
     try:
         from telegram import Update as _Update, Bot as _Bot, Message as _Message
@@ -542,10 +543,11 @@ class TelegramAdapter(BasePlatformAdapter):
                     thread_id=str(thread_id) if thread_id is not None else None,
                 )
                 return bool(auth_fn(source))
-            except Exception:
+            except (TypeError, ValueError, AttributeError, KeyError, ImportError) as _e:
                 logger.debug(
-                    "[Telegram] Falling back to env-only callback auth for user %s",
+                    "[Telegram] Falling back to env-only callback auth for user %s: %s",
                     normalized_user_id,
+                    _e,
                     exc_info=True,
                 )
 
@@ -883,24 +885,25 @@ class TelegramAdapter(BasePlatformAdapter):
             # PTB 22.x: _request is a (get_updates, general) tuple;
             # no public accessor exists for the polling request.
             polling_req = self._app.bot._request[0]  # noqa: SLF001
-        except Exception:
+        except (AttributeError, TypeError, IndexError) as _e:
+            logger.debug("[%s] No polling request accessor available: %s", self.name, _e)
             return
         try:
             await polling_req.shutdown()
-        except Exception:
+        except (httpx.HTTPError, OSError, RuntimeError) as _e:
             logger.debug(
-                "[%s] Polling request shutdown failed (non-fatal)",
-                self.name, exc_info=True,
+                "[%s] Polling request shutdown failed (non-fatal): %s",
+                self.name, _e, exc_info=True,
             )
         try:
             await polling_req.initialize()
             logger.debug(
                 "[%s] Polling request pool drained before reconnect", self.name
             )
-        except Exception:
+        except (httpx.HTTPError, OSError, RuntimeError) as _e:
             logger.debug(
-                "[%s] Polling request re-initialize failed (non-fatal)",
-                self.name, exc_info=True,
+                "[%s] Polling request re-initialize failed (non-fatal): %s",
+                self.name, _e, exc_info=True,
             )
 
     async def _handle_polling_network_error(self, error: Exception) -> None:
@@ -946,8 +949,8 @@ class TelegramAdapter(BasePlatformAdapter):
         try:
             if self._app and self._app.updater and self._app.updater.running:
                 await self._app.updater.stop()
-        except Exception:
-            pass
+        except (AttributeError, RuntimeError, OSError) as _e:
+            logger.debug("[%s] Updater stop failed during reconnect: %s", self.name, _e)
 
         await self._drain_polling_connections()
 
@@ -1072,8 +1075,8 @@ class TelegramAdapter(BasePlatformAdapter):
             try:
                 if self._app and self._app.updater and self._app.updater.running:
                     await self._app.updater.stop()
-            except Exception:
-                pass
+            except (AttributeError, RuntimeError, OSError) as _e:
+                logger.debug("[%s] Updater stop failed during conflict retry: %s", self.name, _e)
 
             await asyncio.sleep(RETRY_DELAY)
             await self._drain_polling_connections()
@@ -1584,9 +1587,13 @@ class TelegramAdapter(BasePlatformAdapter):
             
             # Start polling — retry initialize() for transient TLS resets
             try:
-                from telegram.error import NetworkError, TimedOut
+                from telegram.error import NetworkError as _NetErr_init
+                from telegram.error import TimedOut as _TimedOut_init
             except ImportError:
-                NetworkError = TimedOut = OSError  # type: ignore[misc,assignment]
+                _NetErr_init = OSError
+                _TimedOut_init = OSError
+            NetworkError = _NetErr_init
+            TimedOut = _TimedOut_init
             _max_connect = 8
             for _attempt in range(_max_connect):
                 try:
@@ -1844,17 +1851,17 @@ class TelegramAdapter(BasePlatformAdapter):
             try:
                 from telegram.error import NetworkError as _NetErr
             except ImportError:
-                _NetErr = OSError  # type: ignore[misc,assignment]
+                _NetErr = cast(type, OSError)
 
             try:
                 from telegram.error import BadRequest as _BadReq
             except ImportError:
-                _BadReq = None  # type: ignore[assignment,misc]
+                _BadReq = cast(type, type(None))
 
             try:
                 from telegram.error import TimedOut as _TimedOut
             except (ImportError, AttributeError):
-                _TimedOut = None  # type: ignore[assignment,misc]
+                _TimedOut = cast(type, type(None))
 
             for i, chunk in enumerate(chunks):
                 retried_thread_not_found = False
@@ -2040,8 +2047,8 @@ class TelegramAdapter(BasePlatformAdapter):
             # messages like "Checking:" before running tools).
             try:
                 await self.send_typing(chat_id, metadata=metadata)
-            except Exception:
-                pass  # Typing failures are non-fatal
+            except (httpx.HTTPError, aiohttp.ClientError, OSError, RuntimeError) as _e:
+                logger.debug("[%s] Typing indicator failed (non-fatal): %s", self.name, _e)
 
             return SendResult(
                 success=True,
@@ -3029,16 +3036,17 @@ class TelegramAdapter(BasePlatformAdapter):
                     parse_mode=ParseMode.MARKDOWN_V2,
                     reply_markup=None,
                 )
-            except Exception:
+            except (BadRequest, ValueError, TypeError) as md_err:
                 # Markdown parse failure — retry as plain text
+                logger.debug("[%s] Markdown parse failed, retrying plain: %s", self.name, md_err)
                 try:
                     await query.edit_message_text(
                         text=result_text,
                         parse_mode=None,
                         reply_markup=None,
                     )
-                except Exception:
-                    pass
+                except (BadRequest, httpx.HTTPError, OSError, RuntimeError) as plain_err:
+                    logger.debug("[%s] Plain-text edit failed: %s", self.name, plain_err)
             await query.answer(text="Model switched!")
 
             # Clean up state
@@ -3061,8 +3069,9 @@ class TelegramAdapter(BasePlatformAdapter):
             keyboard = InlineKeyboardMarkup(rows)
 
             try:
-                provider_label = get_label(state["current_provider"])
-            except Exception:
+                provider_label = provider_label = get_label(state["current_provider"])
+            except (KeyError, TypeError, AttributeError, ValueError) as _e:
+                logger.debug("[%s] Provider label lookup failed: %s", self.name, _e)
                 provider_label = state["current_provider"]
 
             await query.edit_message_text(
@@ -3173,8 +3182,11 @@ class TelegramAdapter(BasePlatformAdapter):
                         parse_mode=ParseMode.MARKDOWN_V2,
                         reply_markup=None,
                     )
-                except Exception:
-                    pass  # non-fatal if edit fails
+                except (KeyError, ValueError, TypeError) as e:
+                    logger.debug(
+                        "[%s] approval edit_message_text failed (non-fatal): %s",
+                        self.name, e,
+                    )
 
                 # Resolve the approval — unblocks the agent thread
                 try:
@@ -3236,8 +3248,11 @@ class TelegramAdapter(BasePlatformAdapter):
                         parse_mode=ParseMode.MARKDOWN_V2,
                         reply_markup=None,
                     )
-                except Exception:
-                    pass
+                except (KeyError, ValueError, TypeError) as e:
+                    logger.debug(
+                        "[%s] slash-confirm edit_message_text failed (non-fatal): %s",
+                        self.name, e,
+                    )
 
                 # Resolve via the module-level primitive.  The runner stored
                 # a handler keyed by session_key; we run it on the event
@@ -3293,7 +3308,7 @@ class TelegramAdapter(BasePlatformAdapter):
                                 )
                             )
                         await self._send_message_with_thread_fallback(**send_kwargs)
-                except Exception as exc:
+                except (ImportError, AttributeError, RuntimeError, ValueError, TypeError, OSError) as exc:
                     logger.error("[%s] slash-confirm callback failed: %s", self.name, exc, exc_info=True)
             return
 
@@ -3332,7 +3347,7 @@ class TelegramAdapter(BasePlatformAdapter):
                     try:
                         from tools.clarify_gateway import mark_awaiting_text
                         mark_awaiting_text(clarify_id)
-                    except Exception as exc:
+                    except (ImportError, AttributeError, RuntimeError, ValueError, TypeError) as exc:
                         logger.warning("[%s] mark_awaiting_text failed: %s", self.name, exc)
 
                     await query.answer(text="✏️ Type your answer in the chat.")
@@ -3342,8 +3357,11 @@ class TelegramAdapter(BasePlatformAdapter):
                             parse_mode=ParseMode.HTML,
                             reply_markup=None,
                         )
-                    except Exception:
-                        pass
+                    except (KeyError, ValueError, TypeError) as e:
+                        logger.debug(
+                            "[%s] clarify-other edit_message_text failed (non-fatal): %s",
+                            self.name, e,
+                        )
                     return
 
                 # Numeric choice → resolve immediately with the chosen text
@@ -3358,11 +3376,15 @@ class TelegramAdapter(BasePlatformAdapter):
                 # has been cleaned up (race with timeout / session reset).
                 resolved_text: Optional[str] = None
                 try:
-                    from tools.clarify_gateway import _entries as _clarify_entries  # type: ignore
+                    from tools.clarify_gateway import _entries as _clarify_entries
                     entry = _clarify_entries.get(clarify_id)
                     if entry and entry.choices and 0 <= idx < len(entry.choices):
                         resolved_text = entry.choices[idx]
-                except Exception:
+                except (ImportError, AttributeError, TypeError, KeyError) as exc:
+                    logger.debug(
+                        "[%s] clarify entry lookup failed (race/cleanup): %s",
+                        self.name, exc,
+                    )
                     resolved_text = None
 
                 if resolved_text is None:
@@ -3376,7 +3398,7 @@ class TelegramAdapter(BasePlatformAdapter):
                 try:
                     from tools.clarify_gateway import resolve_gateway_clarify
                     resolved = resolve_gateway_clarify(clarify_id, resolved_text)
-                except Exception as exc:
+                except (ImportError, AttributeError, RuntimeError, ValueError, TypeError) as exc:
                     logger.error("[%s] resolve_gateway_clarify failed: %s", self.name, exc)
                     resolved = False
 
@@ -3387,8 +3409,11 @@ class TelegramAdapter(BasePlatformAdapter):
                         parse_mode=ParseMode.HTML,
                         reply_markup=None,
                     )
-                except Exception:
-                    pass
+                except (KeyError, ValueError, TypeError) as e:
+                    logger.debug(
+                        "[%s] clarify edit_message_text failed (non-fatal): %s",
+                        self.name, e,
+                    )
 
                 if resolved:
                     logger.info(
@@ -3425,8 +3450,11 @@ class TelegramAdapter(BasePlatformAdapter):
                 parse_mode=ParseMode.MARKDOWN_V2,
                 reply_markup=None,
             )
-        except Exception:
-            pass  # non-fatal if edit fails
+        except (KeyError, ValueError, TypeError) as e:
+            logger.debug(
+                "[%s] update_prompt edit_message_text failed (non-fatal): %s",
+                self.name, e,
+            )
         # Write the response file
         try:
             from hermes_constants import get_hermes_home
@@ -3437,7 +3465,7 @@ class TelegramAdapter(BasePlatformAdapter):
             tmp.replace(response_path)
             logger.info("Telegram update prompt answered '%s' by user %s",
                         answer, getattr(query.from_user, "id", "unknown"))
-        except Exception as exc:
+        except (ImportError, AttributeError, OSError, ValueError) as exc:
             logger.error("Failed to write update response from callback: %s", exc)
 
     # Maps `gt:<verb>` -> (script-name, extra-args, success-label, is_state).
@@ -3551,10 +3579,11 @@ class TelegramAdapter(BasePlatformAdapter):
             else:
                 # Per-email one-shot: strip keyboard so the action can't fire twice.
                 await query.edit_message_text(text=appended, reply_markup=None)
-        except Exception:
-            pass
-
-    def _missing_media_path_error(self, label: str, path: str) -> str:
+        except (KeyError, ValueError, TypeError) as e:
+            logger.debug(
+                "[%s] gmail-triage edit_message_text failed (non-fatal): %s",
+                self.name, e,
+            )
         """Build an actionable file-not-found error for gateway MEDIA delivery.
 
         Paths like /workspace/... or /output/... often only exist inside the
@@ -3761,8 +3790,11 @@ class TelegramAdapter(BasePlatformAdapter):
                     for fh in opened_files:
                         try:
                             fh.seek(0)
-                        except Exception:
-                            pass
+                        except OSError as e:
+                            logger.debug(
+                                "[%s] Failed to reset media file pointer: %s",
+                                self.name, e,
+                            )
 
                 await self._send_with_dm_topic_reply_anchor_retry(
                     self._bot.send_media_group,
@@ -3792,8 +3824,11 @@ class TelegramAdapter(BasePlatformAdapter):
                 for fh in opened_files:
                     try:
                         fh.close()
-                    except Exception:
-                        pass
+                    except OSError as e:
+                        logger.debug(
+                            "[%s] Failed to close media file handle: %s",
+                            self.name, e,
+                        )
 
     async def send_image_file(
         self,
@@ -4152,8 +4187,11 @@ class TelegramAdapter(BasePlatformAdapter):
                             action="typing",
                         )
                         return
-                    except Exception:
-                        pass
+                    except (OSError, asyncio.TimeoutError) as fb_e:
+                        logger.debug(
+                            "[%s] Typing fallback (no-thread_id) failed: %s",
+                            self.name, fb_e,
+                        )
                 # Typing failures are non-fatal; log at debug level only.
                 logger.debug(
                     "[%s] Failed to send Telegram typing indicator: %s",
@@ -4505,7 +4543,12 @@ class TelegramAdapter(BasePlatformAdapter):
             if raw:
                 try:
                     loaded = json.loads(raw)
-                except Exception:
+                except (ValueError, TypeError) as exc:
+                    logger.debug(
+                        "[%s] TELEGRAM_MENTION_PATTERNS not valid JSON, "
+                        "treating as line/comma list: %s",
+                        self.name, exc,
+                    )
                     loaded = [part.strip() for part in raw.splitlines() if part.strip()]
                     if not loaded:
                         loaded = [part.strip() for part in raw.split(",") if part.strip()]
@@ -5047,13 +5090,13 @@ class TelegramAdapter(BasePlatformAdapter):
         existing = self._pending_text_batches.get(key)
         chunk_len = len(event.text or "")
         if existing is None:
-            event._last_chunk_len = chunk_len  # type: ignore[attr-defined]
+            setattr(event, "_last_chunk_len", chunk_len)
             self._pending_text_batches[key] = event
         else:
             # Append text from the follow-up chunk
             if event.text:
                 existing.text = f"{existing.text}\n{event.text}" if existing.text else event.text
-            existing._last_chunk_len = chunk_len  # type: ignore[attr-defined]
+            setattr(existing, "_last_chunk_len", chunk_len)
             # Merge any media that might be attached
             if event.media_urls:
                 existing.media_urls.extend(event.media_urls)

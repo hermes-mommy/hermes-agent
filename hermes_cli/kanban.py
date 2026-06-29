@@ -16,16 +16,20 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import shlex
 import sys
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from hermes_cli import kanban_db as kb
 from hermes_cli import kanban_swarm as ks
 from hermes_cli.profiles import get_active_profile_name, get_profile_dir, seed_profile_skills
+
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -130,6 +134,34 @@ def _parse_branch_flag(value: Optional[str]) -> Optional[str]:
     return branch
 
 
+def _probe_running_pid() -> Optional[int]:
+    """Typed wrapper around ``gateway.status.get_running_pid``.
+
+    The gateway.status module sits outside the hermes_cli tree, has no
+    stubs installed, and is only reachable at runtime via the HERMES
+    runtime PATH. We import it via ``importlib`` (string-name lookup)
+    so static type checkers don't see a hard dependency on the module,
+    and any failure at runtime is swallowed into ``None``. Returns None
+    on import/lookup failure; never raises.
+    """
+    import importlib
+    import types as _types
+    try:
+        mod: _types.ModuleType = importlib.import_module("gateway.status")
+        getter: Optional[Callable[[], Optional[int]]] = getattr(
+            mod, "get_running_pid", None
+        )
+        if getter is None:
+            return None
+        return getter()
+    except (ImportError, AttributeError) as exc:
+        logger.debug("dispatcher-presence probe: cannot import gateway.status: %s", exc)
+        return None
+    except Exception as exc:
+        logger.debug("dispatcher-presence probe: gateway.status.get_running_pid failed: %s", exc)
+        return None
+
+
 def _check_dispatcher_presence() -> tuple[bool, str]:
     """Return ``(running, message)``.
 
@@ -146,21 +178,23 @@ def _check_dispatcher_presence() -> tuple[bool, str]:
     probe itself errors, we return ``(True, "")`` so we don't spam
     false warnings (better to miss a warning than to cry wolf).
     """
-    try:
-        from gateway.status import get_running_pid  # type: ignore
-    except Exception:
+    pid = _probe_running_pid()
+    if pid is None:
         return (True, "")  # can't probe — silent
-    try:
-        pid = get_running_pid()
-    except Exception:
-        return (True, "")  # probe errored — silent
 
     # Even if the gateway is up, dispatch_in_gateway may be off.
     try:
         from hermes_cli.config import load_config
         cfg = load_config()
         dispatch_on = bool(cfg.get("kanban", {}).get("dispatch_in_gateway", True))
-    except Exception:
+    except (ImportError, AttributeError) as exc:
+        logger.debug("dispatcher-presence probe: hermes_cli.config unavailable: %s", exc)
+        dispatch_on = True  # can't tell — assume default
+    except Exception as exc:
+        logger.warning(
+            "dispatcher-presence probe: load_config failed; assuming default dispatch_on=True: %s",
+            exc,
+        )
         dispatch_on = True  # can't tell — assume default
 
     if pid and dispatch_on:
@@ -979,7 +1013,8 @@ def _profile_author() -> str:
     try:
         from hermes_cli.profiles import get_active_profile_name
         return get_active_profile_name() or "user"
-    except Exception:
+    except Exception as exc:
+        logger.debug("_profile_author: get_active_profile_name failed; defaulting to 'user': %s", exc)
         return "user"
 
 
@@ -1026,7 +1061,9 @@ def _board_task_counts(slug: str) -> dict[str, int]:
                 "SELECT status, COUNT(*) AS n FROM tasks GROUP BY status"
             ).fetchall()
         return {r["status"]: int(r["n"]) for r in rows}
-    except Exception:
+    except Exception as exc:
+        # Fail-soft: never let a count probe break list output.
+        logger.debug("_board_task_counts(%s) failed; returning empty counts: %s", slug, exc)
         return {}
 
 
@@ -1230,9 +1267,10 @@ def _cmd_init(args: argparse.Namespace) -> int:
             copied = result.get("copied", [])
             if copied:
                 print(f"Seeded skill(s) into profile {profile_name}: {', '.join(copied)}")
-    except Exception:
+    except Exception as exc:
+        # Best-effort: a missing or broken profile is not fatal to `kanban init`.
+        logger.debug("_cmd_init: skill seeding into profile failed (non-fatal): %s", exc)
         pass  # best-effort
-
     print()
     # Enumerate profiles on disk so the user knows what assignees are
     # already addressable. Multica does this auto-detection on its
@@ -1241,7 +1279,8 @@ def _cmd_init(args: argparse.Namespace) -> int:
     # through to `hermes -p <name>`.
     try:
         profiles = kb.list_profiles_on_disk()
-    except Exception:
+    except Exception as exc:
+        logger.debug("_cmd_init: list_profiles_on_disk failed (non-fatal): %s", exc)
         profiles = []
     if profiles:
         print(f"Discovered {len(profiles)} profile(s) on disk; any of these can "
@@ -1418,7 +1457,8 @@ def _cmd_list(args: argparse.Namespace) -> int:
     # never see this — the feature stays invisible until you opt in.
     try:
         all_boards = kb.list_boards(include_archived=False)
-    except Exception:
+    except Exception as exc:
+        logger.debug("_cmd_list: list_boards failed; suppressing board header: %s", exc)
         all_boards = []
     if len(all_boards) > 1:
         current = kb.get_current_board()
@@ -1523,7 +1563,11 @@ def _cmd_show(args: argparse.Namespace) -> int:
             from hermes_cli.config import load_config
             cfg = load_config()
             cfg_val = (cfg.get("kanban", {}) or {}).get("failure_limit")
-        except Exception:
+        except (ImportError, AttributeError) as exc:
+            logger.debug("_cmd_show: hermes_cli.config unavailable: %s", exc)
+            cfg_val = None
+        except Exception as exc:
+            logger.warning("_cmd_show: load_config failed; using defaults: %s", exc)
             cfg_val = None
         if cfg_val is not None and int(cfg_val) != kb.DEFAULT_FAILURE_LIMIT:
             print(f"  max-retries: {int(cfg_val)} (config kanban.failure_limit)")
@@ -2259,7 +2303,8 @@ def _cmd_daemon(args: argparse.Namespace) -> int:
         try:
             with kb.connect_closing() as conn:
                 return kb.has_spawnable_ready(conn)
-        except Exception:
+        except Exception as exc:
+            logger.debug("_ready_queue_nonempty: has_spawnable_ready probe failed: %s", exc)
             return False
 
     try:
@@ -2314,7 +2359,18 @@ def _cmd_watch(args: argparse.Namespace) -> int:
                     continue
                 try:
                     payload = json.loads(r["payload"]) if r["payload"] else None
-                except Exception:
+                except (TypeError, ValueError) as exc:
+                    logger.debug(
+                        "_cmd_watch: malformed event payload for task %r id=%r; showing raw: %s",
+                        r.get("task_id"), r.get("id"), exc,
+                    )
+                    payload = None
+                except Exception as exc:
+                    # Genuinely-unknown decode failure: keep watching.
+                    logger.warning(
+                        "_cmd_watch: unexpected payload-parse error for event id=%r: %s",
+                        r.get("id"), exc,
+                    )
                     payload = None
                 pl = f" {payload}" if payload else ""
                 print(
@@ -2661,6 +2717,25 @@ def _cmd_gc(args: argparse.Namespace) -> int:
 # Slash-command entry point (used by /kanban from CLI and gateway)
 # ---------------------------------------------------------------------------
 
+def _disable_parser_exit_on_error(parser: argparse.ArgumentParser) -> None:
+    """Disable argparse's default ``sys.exit(2)`` for usage errors.
+
+    ``exit_on_error`` was added to ``argparse.ArgumentParser`` in
+    Python 3.9; some type-checkers (in strict=mypy mode) do not see
+    it as a defined attribute on the parser class, so direct
+    assignment reads as a ``[attr-defined]`` error at the call site.
+    Routing through this helper keeps the static type info intact
+    (the attribute is set via ``setattr`` on a known-good
+    ``ArgumentParser``) and gives every parser we touch a consistent
+    fail-soft error path -- callers catch ``ArgumentError`` and
+    format it themselves instead of letting argparse abort the
+    process. On Python < 3.9 the attribute does not exist; ``setattr``
+    simply creates the slot and argparse behavior is unchanged
+    (method ``error`` defaults to ``sys.exit`` regardless).
+    """
+    setattr(parser, "exit_on_error", False)
+
+
 _SLASH_KANBAN_HELP = """\
 **/kanban** — manage the shared task board.
 
@@ -2708,16 +2783,16 @@ def run_slash(rest: str) -> str:
     # the kanban_parser back out — then drive it directly so usage/error
     # text reads as ``/kanban`` (not ``/kanban-wrap kanban``).
     _wrap = argparse.ArgumentParser(prog="/kanban-wrap", add_help=False)
-    _wrap.exit_on_error = False  # type: ignore[attr-defined]
+    _disable_parser_exit_on_error(_wrap)
     _top_sub = _wrap.add_subparsers(dest="_top")
     kanban_parser = build_parser(_top_sub)
     kanban_parser.prog = "/kanban"
-    kanban_parser.exit_on_error = False  # type: ignore[attr-defined]
+    _disable_parser_exit_on_error(kanban_parser)
     for _action in kanban_parser._actions:
         if isinstance(_action, argparse._SubParsersAction):
             for _name, _choice in _action.choices.items():
                 _choice.prog = f"/kanban {_name}"
-                _choice.exit_on_error = False  # type: ignore[attr-defined]
+                _disable_parser_exit_on_error(_choice)
 
     def _usage_for_error() -> str:
         if tokens:
@@ -2753,6 +2828,12 @@ def run_slash(rest: str) -> str:
         except SystemExit:
             pass
         except Exception as exc:
+            # run_slash is the gateway/CLI catch-all — log + return so the
+            # chat bubble still renders something user-readable instead of
+            # propagating a stack trace out of an /kanban invocation.
+            logger.exception(
+                "run_slash: unhandled error from kanban_command; surfacing to user: %s", exc
+            )
             print(f"error: {exc}", file=sys.stderr)
 
     out = buf_out.getvalue().rstrip()

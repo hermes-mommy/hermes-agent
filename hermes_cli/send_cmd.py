@@ -28,9 +28,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
+
+
+logger = logging.getLogger(__name__)
 
 
 _USAGE_EXIT = 2
@@ -216,14 +220,17 @@ def _load_hermes_env() -> None:
     """
     # Step 1: dotenv
     try:
-        from dotenv import load_dotenv
-    except Exception:
-        load_dotenv = None  # type: ignore[assignment]
+        from dotenv import load_dotenv as _load_dotenv
+        load_dotenv = _load_dotenv
+    except ImportError as e:
+        logger.debug("python-dotenv not installed; skipping dotenv bridge: %s", e)
+        load_dotenv = None
 
     try:
         from hermes_cli.config import get_hermes_home
         home = get_hermes_home()
-    except Exception:
+    except ImportError as e:
+        logger.debug("hermes_cli.config not importable; skipping env bridge: %s", e)
         return
 
     env_path = home / ".env"
@@ -233,10 +240,10 @@ def _load_hermes_env() -> None:
         except UnicodeDecodeError:
             try:
                 load_dotenv(str(env_path), override=True, encoding="latin-1")
-            except Exception:
-                pass
-        except Exception:
-            pass
+            except (OSError, UnicodeDecodeError) as e:
+                logger.debug("dotenv latin-1 fallback failed for %s: %s", env_path, e)
+        except OSError as e:
+            logger.debug("dotenv load failed for %s: %s", env_path, e)
 
     # Step 2: bridge top-level config.yaml values into the environment so
     # gateway.config.load_gateway_config() sees them. Scalars only; don't
@@ -247,21 +254,25 @@ def _load_hermes_env() -> None:
         return
 
     try:
-        import yaml  # type: ignore[import-not-found]
-    except Exception:
+        import yaml
+    except ImportError as e:
+        logger.debug("PyYAML not installed; skipping config.yaml bridge: %s", e)
         return
 
     try:
         with open(config_path, "r", encoding="utf-8") as fh:
             raw = yaml.safe_load(fh) or {}
-    except Exception:
+    except (OSError, yaml.YAMLError) as e:
+        logger.debug("Failed to parse %s: %s", config_path, e)
         return
 
     try:
         from hermes_cli.config import _expand_env_vars
         raw = _expand_env_vars(raw)
-    except Exception:
-        pass
+    except ImportError as e:
+        logger.debug("hermes_cli.config not importable during expand: %s", e)
+    except Exception as e:
+        logger.debug("config env-var expansion failed (continuing with raw values): %s", e)
 
     if not isinstance(raw, dict):
         return

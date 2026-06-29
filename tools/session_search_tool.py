@@ -241,8 +241,8 @@ def _scroll(
                         )
                         try:
                             session_meta = db.get_session(owning) or session_meta
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logging.debug("get_session for rebind owner %s failed: %s", owning, e, exc_info=True)
                         session_id = owning
                 except Exception as e:
                     logging.debug("rebind get_messages_around failed: %s", e, exc_info=True)
@@ -341,7 +341,8 @@ def _discover(
 
         try:
             session_meta = db.get_session(lineage_root) or {}
-        except Exception:
+        except Exception as e:
+            logging.debug("get_session for lineage root %s failed: %s", lineage_root, e, exc_info=True)
             session_meta = {}
 
         entry = {
@@ -401,8 +402,8 @@ def session_search(
         try:
             from hermes_state import SessionDB
             db = SessionDB()
-        except Exception:
-            logging.debug("SessionDB unavailable for session_search", exc_info=True)
+        except Exception as e:
+            logging.debug("SessionDB unavailable for session_search: %s", e, exc_info=True)
             from hermes_state import format_session_db_unavailable
             return tool_error(format_session_db_unavailable(), success=False)
 

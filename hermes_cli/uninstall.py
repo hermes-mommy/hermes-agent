@@ -364,7 +364,8 @@ def _is_default_hermes_home(hermes_home: Path) -> bool:
     try:
         from hermes_constants import get_default_hermes_root
         return hermes_home.resolve() == get_default_hermes_root().resolve()
-    except Exception:
+    except (ImportError, OSError, ValueError) as e:
+        log_warn(f"Could not determine if {hermes_home} is the default HERMES_HOME: {e}")
         return False
 
 
@@ -374,7 +375,8 @@ def _discover_named_profiles():
     default root."""
     try:
         from hermes_cli.profiles import list_profiles
-    except Exception:
+    except ImportError as e:
+        log_warn(f"Profile discovery unavailable: {e}")
         return []
     try:
         return [p for p in list_profiles() if not getattr(p, "is_default", False)]

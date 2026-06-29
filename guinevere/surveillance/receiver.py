@@ -638,7 +638,7 @@ async def check_nonce(nonce: str, redis_client: Any = None) -> None:
             return
         except HTTPException:
             raise
-        except Exception:
+        except (ConnectionError, TimeoutError, OSError):
             logger.exception(
                 "replay_redis_error",
                 nonce_prefix=nonce[:8] if len(nonce) >= 8 else nonce,

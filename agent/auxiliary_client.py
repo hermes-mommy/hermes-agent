@@ -40,6 +40,7 @@ Payment / credit exhaustion fallback:
   their OpenRouter balance but has Codex OAuth or another provider available.
 """
 
+import binascii
 import json
 import logging
 import os
@@ -250,8 +251,9 @@ def _get_aux_model_for_provider(provider_id: str) -> str:
         _p = get_provider_profile(provider_id)
         if _p and _p.default_aux_model:
             return _p.default_aux_model
-    except Exception:
-        pass
+    except (ImportError, AttributeError, ValueError, TypeError) as exc:
+        logger.debug("Auxiliary: get_provider_profile lookup failed for %s: %s",
+                     provider_id, exc)
     return _API_KEY_PROVIDER_AUX_MODELS_FALLBACK.get(provider_id, "")
 
 
@@ -339,7 +341,8 @@ def build_or_headers(or_config: dict | None = None) -> dict:
         try:
             from hermes_cli.config import load_config
             or_config = load_config().get("openrouter", {})
-        except Exception:
+        except (ImportError, AttributeError, ValueError, TypeError) as exc:
+            logger.debug("Auxiliary: openrouter config load failed: %s", exc)
             or_config = {}
 
     # Determine cache enabled: env var overrides config.
@@ -465,8 +468,11 @@ def _codex_cloudflare_headers(access_token: str) -> Dict[str, str]:
         acct_id = claims.get("https://api.openai.com/auth", {}).get("chatgpt_account_id")
         if isinstance(acct_id, str) and acct_id:
             headers["ChatGPT-Account-ID"] = acct_id
-    except Exception:
-        pass
+    except (json.JSONDecodeError, ValueError, KeyError, TypeError, AttributeError, UnicodeDecodeError, binascii.Error) as exc:
+        # Malformed JWT — drop the account-ID header rather than raise.
+        logger.debug("Auxiliary: codex JWT claim decode failed: %s", exc)
+
+    return headers
     return headers
 
 
@@ -745,8 +751,8 @@ class _CodexCompletionsAdapter:
             if callable(close):
                 try:
                     close()
-                except Exception:
-                    logger.debug("Codex auxiliary: client close during timeout failed", exc_info=True)
+                except Exception as exc:
+                    logger.debug("Codex auxiliary: client close during timeout failed: %s", exc)
             # The cached auxiliary client wraps this same ``self._client``
             # (or *is* a ``CodexAuxiliaryClient`` whose ``_real_client`` is
             # this instance).  After we close the httpx transport above, the
@@ -755,8 +761,8 @@ class _CodexCompletionsAdapter:
             # and fails fast with a connection error.  See issue #23432.
             try:
                 _evict_cached_client_instance(self._client)
-            except Exception:
-                logger.debug("Codex auxiliary: cache eviction on timeout failed", exc_info=True)
+            except Exception as exc:
+                logger.debug("Codex auxiliary: cache eviction on timeout failed: %s", exc)
 
         def _check_cancelled() -> None:
             if deadline is not None and time.monotonic() >= deadline:
@@ -769,9 +775,10 @@ class _CodexCompletionsAdapter:
                     raise InterruptedError("Codex auxiliary Responses stream interrupted")
             except InterruptedError:
                 raise
-            except Exception:
+            except (ImportError, AttributeError, RuntimeError, ValueError, TypeError) as exc:
                 # Interrupt state is a best-effort UX hook; never make it a
                 # new failure mode for auxiliary calls.
+                logger.debug("Codex auxiliary: interrupt-state probe failed: %s", exc)
                 pass
 
         try:
@@ -813,8 +820,8 @@ class _CodexCompletionsAdapter:
                 if callable(close_fn):
                     try:
                         close_fn()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Codex auxiliary: event-stream close failed: %s", exc)
 
             if final is None:
                 raise RuntimeError("Codex auxiliary Responses stream did not return a final response")
@@ -1368,8 +1375,10 @@ def _read_codex_access_token() -> Optional[str]:
             if exp and time.time() > exp:
                 logger.debug("Codex access token expired (exp=%s), skipping", exp)
                 return None
-        except Exception:
-            pass  # Non-JWT token or decode error — use as-is
+        except (json.JSONDecodeError, ValueError, KeyError, TypeError, AttributeError, UnicodeDecodeError, binascii.Error) as exc:
+            # Non-JWT token or decode error — use as-is
+            logger.debug("Auxiliary: codex JWT decode failed in pool lookup: %s", exc)
+            pass
 
         return access_token.strip()
     except Exception as exc:
@@ -1439,8 +1448,9 @@ def _resolve_api_key_provider() -> Tuple[Optional[OpenAI], Optional[str]]:
                     _ph_aux = _gpf_aux(provider_id)
                     if _ph_aux and _ph_aux.default_headers:
                         extra["default_headers"] = dict(_ph_aux.default_headers)
-                except Exception:
-                    pass
+                except (ImportError, AttributeError, ValueError, TypeError) as exc:
+                    logger.debug("Auxiliary: provider profile lookup failed for %s: %s",
+                                 provider_id, exc)
             _client = OpenAI(api_key=api_key, base_url=base_url, **extra)
             _client = _maybe_wrap_anthropic(_client, model, api_key, raw_base_url)
             return _client, model
@@ -1476,8 +1486,9 @@ def _resolve_api_key_provider() -> Tuple[Optional[OpenAI], Optional[str]]:
                 _ph_aux2 = _gpf_aux2(provider_id)
                 if _ph_aux2 and _ph_aux2.default_headers:
                     extra["default_headers"] = dict(_ph_aux2.default_headers)
-            except Exception:
-                pass
+            except (ImportError, AttributeError, ValueError, TypeError) as exc:
+                logger.debug("Auxiliary: provider profile lookup (path 2) failed for %s: %s",
+                             provider_id, exc)
         _client = OpenAI(api_key=api_key, base_url=base_url, **extra)
         _client = _maybe_wrap_anthropic(_client, model, api_key, raw_base_url)
         return _client, model
@@ -1537,8 +1548,8 @@ def _try_nous(vision: bool = False) -> Tuple[Optional[OpenAI], Optional[str]]:
             )
             _mark_provider_unhealthy("nous", ttl=_remaining)
             return None, None
-    except Exception:
-        pass
+    except (ImportError, AttributeError, RuntimeError, ValueError, TypeError) as exc:
+        logger.debug("Auxiliary: Nous rate-limit guard probe failed: %s", exc)
 
     nous = _read_nous_auth()
     runtime = _resolve_nous_runtime_api(force_refresh=False)
@@ -1629,8 +1640,8 @@ def _read_main_model() -> str:
             default = model_cfg.get("default", "")
             if isinstance(default, str) and default.strip():
                 return default.strip()
-    except Exception:
-        pass
+    except (ImportError, AttributeError, ValueError, TypeError, OSError, KeyError) as exc:
+        logger.debug("Auxiliary: _read_main_model config load failed: %s", exc)
     return ""
 
 
@@ -1654,8 +1665,8 @@ def _read_main_provider() -> str:
             provider = model_cfg.get("provider", "")
             if isinstance(provider, str) and provider.strip():
                 return provider.strip().lower()
-    except Exception:
-        pass
+    except (ImportError, AttributeError, ValueError, TypeError, OSError, KeyError) as exc:
+        logger.debug("Auxiliary: _read_main_provider config load failed: %s", exc)
     return ""
 
 
@@ -1939,7 +1950,8 @@ def _try_azure_foundry(
         model_cfg = cfg.get("model") if isinstance(cfg, dict) else {}
         if not isinstance(model_cfg, dict):
             model_cfg = {}
-    except Exception:
+    except (ImportError, AttributeError, ValueError, TypeError, OSError, KeyError) as exc:
+        logger.debug("Auxiliary: azure-foundry config load failed: %s", exc)
         model_cfg = {}
 
     try:
@@ -2043,8 +2055,8 @@ def _try_anthropic(explicit_api_key: str = None) -> Tuple[Optional[Any], Optiona
                 cfg_base_url = (model_cfg.get("base_url") or "").strip().rstrip("/")
                 if cfg_base_url:
                     base_url = cfg_base_url
-    except Exception:
-        pass
+    except (ImportError, AttributeError, ValueError, TypeError, OSError, KeyError) as exc:
+        logger.debug("Auxiliary: anthropic base_url config check failed: %s", exc)
 
     from agent.anthropic_adapter import _is_oauth_token
     is_oauth = _is_oauth_token(token)
@@ -2419,8 +2431,8 @@ def _evict_cached_clients(provider: str) -> None:
                     close_fn = getattr(client, "close", None)
                     if callable(close_fn):
                         close_fn()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Auxiliary: evict_cached_clients close failed: %s", exc)
             _client_cache.pop(key, None)
 
 
@@ -2524,8 +2536,8 @@ def _recoverable_pool_provider(
                     rt_base = str(getattr(pconfig, "inference_base_url", "") or "").rstrip("/")
                     if rt_base and base_url_host_matches(base, base_url_hostname(rt_base)):
                         return rt_provider
-            except Exception:
-                pass
+            except (ImportError, AttributeError, KeyError, ValueError, TypeError) as exc:
+                logger.debug("Auxiliary: api_key provider registry lookup failed: %s", exc)
     return None
 
 
@@ -2823,7 +2835,9 @@ def _try_main_agent_model_fallback(
         client, resolved_model = resolve_provider_client(
             provider=main_provider, model=main_model,
         )
-    except Exception:
+    except Exception as e:
+        logger.debug("Auxiliary: main-agent fallback resolve failed for %s/%s: %s",
+                     main_provider, main_model, e)
         client, resolved_model = None, None
 
     if client is None:
@@ -2877,7 +2891,11 @@ def _try_configured_fallback_chain(
         try:
             fb_client = _resolve_single_provider(
                 fb_provider, fb_model, fb_base_url, fb_api_key)
-        except Exception:
+        except Exception as e:
+            logger.debug(
+                "Auxiliary: configured fallback_chain entry %s resolve failed: %s",
+                label, e,
+            )
             fb_client = None
 
         if fb_client is not None:
@@ -3092,7 +3110,11 @@ def _to_async_client(sync_client, model: str, is_vision: bool = False):
                 _ph_async = _gpf_async(_inferred)
                 if _ph_async and _ph_async.default_headers:
                     async_kwargs["default_headers"] = dict(_ph_async.default_headers)
-        except Exception:
+        except Exception as e:
+            logger.debug(
+                "Auxiliary: async provider-profile header lookup failed for %s: %s",
+                sync_base_url, e,
+            )
             pass
     return AsyncOpenAI(**async_kwargs), model
 
@@ -3105,7 +3127,11 @@ def _normalize_resolved_model(model_name: Optional[str], provider: str) -> Optio
         from hermes_cli.model_normalize import normalize_model_for_provider
 
         return normalize_model_for_provider(model_name, provider)
-    except Exception:
+    except Exception as e:
+        logger.debug(
+            "Auxiliary: model normalize failed for %s/%s (%s); returning raw model",
+            provider, model_name, e,
+        )
         return model_name
 
 
@@ -3379,7 +3405,11 @@ def resolve_provider_client(
                     _ph_custom = _gpf_custom(provider)
                     if _ph_custom and _ph_custom.default_headers:
                         extra["default_headers"] = dict(_ph_custom.default_headers)
-                except Exception:
+                except Exception as e:
+                    logger.debug(
+                        "Auxiliary: custom endpoint provider-profile header lookup failed for %s: %s",
+                        provider, e,
+                    )
                     pass
             client = OpenAI(api_key=custom_key, base_url=_clean_base, **extra)
             client = _wrap_if_needed(client, final_model, custom_base, custom_key)
@@ -3625,7 +3655,11 @@ def resolve_provider_client(
                 _ph_main = _gpf_main(provider)
                 if _ph_main and _ph_main.default_headers:
                     headers.update(_ph_main.default_headers)
-            except Exception:
+            except Exception as e:
+                logger.debug(
+                    "Auxiliary: vision-path provider-profile header lookup failed for %s: %s",
+                    provider, e,
+                )
                 pass
         client = OpenAI(api_key=api_key, base_url=base_url,
                         **({"default_headers": headers} if headers else {}))
@@ -3822,7 +3856,12 @@ def _main_model_supports_vision(provider: str, model: Optional[str]) -> bool:
         return True
     try:
         supports = _lookup_supports_vision(provider, model, load_config())
-    except Exception:  # pragma: no cover - defensive
+    except Exception as e:  # pragma: no cover - defensive
+        logger.debug(
+            "Auxiliary: vision capability lookup failed for %s/%s (%s); "
+            "falling back to attempting the call",
+            provider, model, e,
+        )
         return True
     if supports is None:
         # No capability data — keep current behaviour and let the call attempt
@@ -4131,7 +4170,10 @@ def _store_cached_client(cache_key: tuple, client: Any, default_model: Optional[
                 close_fn = getattr(old_entry[0], "close", None)
                 if callable(close_fn):
                     close_fn()
-            except Exception:
+            except Exception as e:
+                logger.debug(
+                    "Auxiliary: best-effort close on cache eviction failed: %s", e,
+                )
                 pass
         _client_cache[cache_key] = (client, default_model, bound_loop)
 
@@ -4208,7 +4250,11 @@ def neuter_async_httpx_del() -> None:
     """
     try:
         from openai._base_client import AsyncHttpxClientWrapper
-        AsyncHttpxClientWrapper.__del__ = lambda self: None  # type: ignore[assignment]
+
+        def _noop_del(self: object) -> None:
+            return None
+
+        AsyncHttpxClientWrapper.__del__ = _noop_del
     except (ImportError, AttributeError):
         pass  # Graceful degradation if the SDK changes its internals
 
@@ -4229,8 +4275,8 @@ def _force_close_async_httpx(client: Any) -> None:
         inner = getattr(client, "_client", None)
         if inner is not None and not getattr(inner, "is_closed", True):
             inner._state = ClientState.CLOSED
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Auxiliary: force_close_async_httpx failed: %s", exc)
 
 
 def shutdown_cached_clients() -> None:
@@ -4255,8 +4301,8 @@ def shutdown_cached_clients() -> None:
                 close_fn = getattr(client, "close", None)
                 if close_fn and not inspect.iscoroutinefunction(close_fn):
                     close_fn()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Auxiliary shutdown: client close failed: %s", exc)
         _client_cache.clear()
 
 
@@ -4547,8 +4593,9 @@ def _get_auxiliary_task_config(task: str) -> Dict[str, Any]:
                     merged.update(task_config)
                     return merged
                 break
-    except Exception:
+    except Exception as exc:
         # Plugin discovery failure must not break aux task config reads.
+        logger.debug("Auxiliary task config: plugin discovery failed: %s", exc)
         pass
 
     return task_config
@@ -5182,7 +5229,7 @@ def call_llm(
         if _is_connection_error(first_err):
             try:
                 _evict_cached_client_instance(client)
-            except Exception:
+            except Exception as e:
                 logger.debug("Auxiliary: cache eviction after connection error failed",
                              exc_info=True)
         raise
@@ -5581,7 +5628,7 @@ async def async_call_llm(
         if _is_connection_error(first_err):
             try:
                 _evict_cached_client_instance(client)
-            except Exception:
+            except Exception as e:
                 logger.debug("Auxiliary (async): cache eviction after connection error failed",
                              exc_info=True)
         raise

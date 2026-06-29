@@ -464,6 +464,7 @@ class GmailAdapter(ChannelSender):
                 message_id="simulated",
             )
         except Exception as exc:
+            logger.error("gmail send failed: %s", exc, exc_info=True)
             return SendResult(
                 success=False,
                 channel=self.channel_id,

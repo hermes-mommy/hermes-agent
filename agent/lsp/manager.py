@@ -99,8 +99,8 @@ class _BackgroundLoop:
         finally:
             try:
                 loop.close()
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as e:  # noqa: BLE001
+                logger.debug("background loop close failed: %s", e)
 
     def run(self, coro, *, timeout: Optional[float] = None) -> Any:
         """Submit a coroutine to the loop and block until done.
@@ -117,7 +117,8 @@ class _BackgroundLoop:
             raise RuntimeError("background loop not running")
         try:
             return fut.result(timeout=timeout)
-        except Exception:
+        except Exception as e:
+            logger.debug("background loop task raised: %s", e)
             fut.cancel()
             raise
 
@@ -277,7 +278,8 @@ class LSPService:
         # have used anyway when it failed).
         try:
             per_server_root = srv.resolve_root(file_path, ws_root) or ws_root
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
+            logger.debug("resolve_root failed for %s; using ws_root: %s", file_path, e)
             per_server_root = ws_root
         if (srv.server_id, per_server_root) in self._broken:
             return False
@@ -377,7 +379,8 @@ class LSPService:
             # diagnosticTracking.
             try:
                 fresh = self._loop.run(self._current_diags_async(file_path), timeout=2.0) or []
-            except Exception:  # noqa: BLE001
+            except Exception as e:  # noqa: BLE001
+                logger.debug("baseline roll forward failed for %s: %s", file_path, e)
                 fresh = []
             if fresh:
                 self._delta_baseline[abs_path] = fresh
@@ -413,7 +416,8 @@ class LSPService:
             return
         try:
             per_server_root = srv.resolve_root(file_path, ws_root) or ws_root
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
+            logger.debug("resolve_root failed for %s; using ws_root: %s", file_path, e)
             per_server_root = ws_root
         key = (srv.server_id, per_server_root)
         already_broken = key in self._broken
@@ -430,8 +434,8 @@ class LSPService:
                 # Fire-and-forget shutdown — give it a second to cleanup,
                 # but don't block.  We're already on a slow path.
                 self._loop.run(client.shutdown(), timeout=1.0)
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as e:  # noqa: BLE001
+                logger.debug("orphan client shutdown failed for %s: %s", key, e)
 
         if not already_broken:
             eventlog.log_spawn_failed(srv.server_id, per_server_root, exc)
@@ -519,7 +523,8 @@ class LSPService:
         if spawning is not None:
             try:
                 return await spawning
-            except Exception:  # noqa: BLE001
+            except Exception as e:  # noqa: BLE001
+                logger.debug("concurrent spawn future raised for %s: %s", key, e)
                 return None
 
         # Begin spawn

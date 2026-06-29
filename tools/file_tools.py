@@ -53,8 +53,8 @@ def _get_max_read_chars() -> int:
         if isinstance(val, (int, float)) and val > 0:
             _max_read_chars_cached = int(val)
             return _max_read_chars_cached
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to load file_read_max_chars from config: %s", e)
     _max_read_chars_cached = _DEFAULT_MAX_READ_CHARS
     return _max_read_chars_cached
 
@@ -90,7 +90,8 @@ def _get_live_tracking_cwd(task_id: str = "default") -> str | None:
     try:
         from tools.terminal_tool import _resolve_container_task_id
         container_key = _resolve_container_task_id(task_id)
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to resolve container task id: %s", e)
         container_key = task_id
 
     with _file_ops_lock:
@@ -110,8 +111,8 @@ def _get_live_tracking_cwd(task_id: str = "default") -> str | None:
             live_cwd = getattr(env, "cwd", None) if env is not None else None
         if live_cwd:
             return live_cwd
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to read _active_environments for cwd lookup: %s", e)
 
     return None
 
@@ -208,7 +209,8 @@ def _check_cross_profile_path(filepath: str, task_id: str = "default") -> str | 
     """
     try:
         from agent.file_safety import get_cross_profile_warning
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to import get_cross_profile_warning: %s", e)
         # Fail open on import error — the existing sensitive-path guard
         # plus the write_denied list still apply.
         return None
@@ -721,8 +723,8 @@ def read_file_tool(path: str, offset: int = 1, limit: int = 500, task_id: str = 
         try:
             _partial = (offset > 1) or bool(result_dict.get("truncated"))
             file_state.record_read(task_id, resolved_str, partial=_partial)
-        except Exception:
-            logger.debug("file_state.record_read failed", exc_info=True)
+        except Exception as e:
+            logger.debug("file_state.record_read failed: %s", e, exc_info=True)
 
         if count >= 4:
             # Hard block: stop returning content to break the loop
@@ -909,7 +911,8 @@ def write_file_tool(path: str, content: str, task_id: str = "default",
         # check below still runs.
         try:
             _resolved = str(_resolve_path_for_task(path, task_id))
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to resolve path for write_file: %s", e)
             _resolved = None
 
         if _resolved is None:
@@ -1000,7 +1003,8 @@ def patch_tool(mode: str = "replace", path: str = None, old_string: str = None,
         for _p in _paths_to_check:
             try:
                 _r = str(_resolve_path_for_task(_p, task_id))
-            except Exception:
+            except Exception as e:
+                logger.debug("Failed to resolve path '%s' for patch locking: %s", _p, e)
                 _r = None
             if _r and _r not in _seen:
                 _resolved_paths.append(_r)
@@ -1022,7 +1026,8 @@ def patch_tool(mode: str = "replace", path: str = None, old_string: str = None,
             for _p in _paths_to_check:
                 try:
                     _r = str(_resolve_path_for_task(_p, task_id))
-                except Exception:
+                except Exception as e:
+                    logger.debug("Failed to resolve path '%s' for patch staleness: %s", _p, e)
                     _r = None
                 _path_to_resolved[_p] = _r
                 _cross = file_state.check_stale(task_id, _r) if _r else None

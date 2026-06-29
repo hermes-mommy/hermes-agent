@@ -43,14 +43,22 @@ import sqlite3
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from aiohttp import web as web
+else:
+    web: Optional[Any] = None  # populated below if aiohttp import succeeds
 
 try:
-    from aiohttp import web
+    from aiohttp import web as _real_web
+    web = _real_web
+    del _real_web
     AIOHTTP_AVAILABLE = True
 except ImportError:
     AIOHTTP_AVAILABLE = False
-    web = None  # type: ignore[assignment]
+    # web stays None; callers must gate on AIOHTTP_AVAILABLE before touching it
+    web = None
 
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import (
@@ -145,7 +153,7 @@ def _normalize_chat_content(
                     if text:
                         try:
                             parts.append(str(text)[:MAX_NORMALIZED_TEXT_LENGTH])
-                        except Exception:
+                        except (TypeError, ValueError):
                             pass
                 # Silently skip image_url / other non-text parts
             elif isinstance(item, list):
@@ -162,7 +170,7 @@ def _normalize_chat_content(
     try:
         result = str(content)
         return result[:MAX_NORMALIZED_TEXT_LENGTH] if len(result) > MAX_NORMALIZED_TEXT_LENGTH else result
-    except Exception:
+    except (TypeError, ValueError):
         return ""
 
 
@@ -357,12 +365,14 @@ class ResponseStore:
             try:
                 from hermes_cli.config import get_hermes_home
                 db_path = str(get_hermes_home() / "response_store.db")
-            except Exception:
+            except (ImportError, OSError, RuntimeError, AttributeError, TypeError, ValueError) as e:
+                logger.debug("ResponseStore: falling back to in-memory db (no hermes_home): %s", e)
                 db_path = ":memory:"
         self._db_path: Optional[str] = db_path if db_path != ":memory:" else None
         try:
             self._conn = sqlite3.connect(db_path, check_same_thread=False)
-        except Exception:
+        except (sqlite3.Error, OSError) as e:
+            logger.debug("ResponseStore: sqlite3.connect failed for %s, using :memory: (%s)", db_path, e)
             self._conn = sqlite3.connect(":memory:", check_same_thread=False)
             self._db_path = None
         # Use shared WAL-fallback helper so response_store.db degrades
@@ -487,8 +497,8 @@ class ResponseStore:
         """Close the database connection."""
         try:
             self._conn.close()
-        except Exception:
-            pass
+        except (sqlite3.Error, OSError) as e:
+            logger.debug("ResponseStore.close failed (non-fatal): %s", e)
 
     def __len__(self) -> int:
         row = self._conn.execute("SELECT COUNT(*) FROM responses").fetchone()
@@ -503,6 +513,19 @@ _CORS_HEADERS = {
     "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Authorization, Content-Type, Idempotency-Key",
 }
+
+
+# Module-level typed placeholders for the aiohttp middleware factories
+# defined in the ``if AIOHTTP_AVAILABLE:`` blocks below (and the
+# ``None`` fallbacks when aiohttp is missing).  Declaring these up front
+# gives all four branches a single ``Optional[Any]`` view so the
+# decorator-assigned value and the ``None`` placeholder share the same
+# type and no type-suppression comment is needed.  Runtime behavior is
+# unchanged: callers gate on ``AIOHTTP_AVAILABLE`` and filter ``None``
+# entries (see the ``mws`` comprehension in the runner).
+cors_middleware: Optional[Any] = None
+body_limit_middleware: Optional[Any] = None
+security_headers_middleware: Optional[Any] = None
 
 
 if AIOHTTP_AVAILABLE:
@@ -526,8 +549,6 @@ if AIOHTTP_AVAILABLE:
         if cors_headers is not None:
             response.headers.update(cors_headers)
         return response
-else:
-    cors_middleware = None  # type: ignore[assignment]
 
 
 def _openai_error(message: str, err_type: str = "invalid_request_error", param: str = None, code: str = None) -> Dict[str, Any]:
@@ -556,7 +577,7 @@ if AIOHTTP_AVAILABLE:
                     return web.json_response(_openai_error("Invalid Content-Length header.", code="invalid_content_length"), status=400)
         return await handler(request)
 else:
-    body_limit_middleware = None  # type: ignore[assignment]
+    body_limit_middleware = None
 
 _SECURITY_HEADERS = {
     "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
@@ -577,8 +598,6 @@ if AIOHTTP_AVAILABLE:
         for k, v in _SECURITY_HEADERS.items():
             response.headers.setdefault(k, v)
         return response
-else:
-    security_headers_middleware = None  # type: ignore[assignment]
 
 
 class _IdempotencyCache:
@@ -750,7 +769,8 @@ class APIServerAdapter(BasePlatformAdapter):
             profile = get_active_profile_name()
             if profile and profile not in {"default", "custom"}:
                 return profile
-        except Exception:
+        except (ImportError, RuntimeError, TypeError, AttributeError, OSError, ValueError) as e:
+            logger.debug("API server: profile lookup failed, using default model name: %s", e)
             pass
         return "hermes-agent"
 
@@ -799,7 +819,8 @@ class APIServerAdapter(BasePlatformAdapter):
             peer = request.transport.get_extra_info("peername") if request.transport else None
             if isinstance(peer, (tuple, list)) and peer:
                 peer_ip = str(peer[0])
-        except Exception:
+        except (OSError, AttributeError, TypeError, ValueError) as e:
+            logger.debug("[api_server] peer_ip extraction failed: %s", e)
             peer_ip = ""
 
         return {
@@ -1165,8 +1186,8 @@ class APIServerAdapter(BasePlatformAdapter):
         try:
             from tools.skills_tool import _find_all_skills, _sort_skills
             skills = _sort_skills(_find_all_skills(skip_disabled=False))
-        except Exception:
-            logger.exception("GET /v1/skills failed")
+        except Exception as exc:
+            logger.exception("GET /v1/skills failed: %s", exc)
             return web.json_response(
                 _openai_error("Failed to enumerate skills", err_type="server_error"),
                 status=500,
@@ -1209,7 +1230,8 @@ class APIServerAdapter(BasePlatformAdapter):
             for name, label, desc in _get_effective_configurable_toolsets():
                 try:
                     tools = sorted(set(resolve_toolset(name)))
-                except Exception:
+                except (ImportError, RuntimeError, TypeError, ValueError, AttributeError, OSError) as exc:
+                    logger.debug("GET /v1/toolsets: toolset %r resolve failed (isolated): %s", name, exc)
                     tools = []
                 is_enabled = name in enabled_toolsets
                 data.append({
@@ -1220,8 +1242,8 @@ class APIServerAdapter(BasePlatformAdapter):
                     "configured": _toolset_has_keys(name, config),
                     "tools": tools,
                 })
-        except Exception:
-            logger.exception("GET /v1/toolsets failed")
+        except Exception as exc:
+            logger.exception("GET /v1/toolsets failed: %s", exc)
             return web.json_response(
                 _openai_error("Failed to enumerate toolsets", err_type="server_error"),
                 status=500,
@@ -1277,7 +1299,8 @@ class APIServerAdapter(BasePlatformAdapter):
     async def _read_json_body(self, request: "web.Request") -> tuple[Dict[str, Any], Optional["web.Response"]]:
         try:
             body = await request.json()
-        except Exception:
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
+            logger.debug("[api_server] JSON body parse failed: %s", e)
             return {}, web.json_response(_openai_error("Invalid JSON in request body"), status=400)
         if not isinstance(body, dict):
             return {}, web.json_response(_openai_error("Request body must be a JSON object"), status=400)
@@ -1474,7 +1497,8 @@ class APIServerAdapter(BasePlatformAdapter):
             base = source.get("title") or "fork"
             try:
                 title = db.get_next_title_in_lineage(base)
-            except Exception:
+            except (sqlite3.Error, RuntimeError, AttributeError, TypeError, ValueError) as e:
+                logger.debug("fork session: get_next_title_in_lineage failed for %r: %s", base, e)
                 title = f"{base} fork"
         try:
             db.set_session_title(fork_id, str(title))
@@ -2111,8 +2135,8 @@ class APIServerAdapter(BasePlatformAdapter):
             if agent is not None:
                 try:
                     agent.interrupt("SSE client disconnected")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("agent.interrupt failed during SSE disconnect cleanup: %s", e)
             if not agent_task.done():
                 agent_task.cancel()
                 try:
@@ -2134,8 +2158,8 @@ class APIServerAdapter(BasePlatformAdapter):
                 }
                 await response.write(f"data: {json.dumps(error_chunk)}\n\n".encode())
                 await response.write(b"data: [DONE]\n\n")
-            except Exception:
-                pass
+            except (OSError, ConnectionResetError, ConnectionAbortedError, BrokenPipeError, ValueError, TypeError) as e:
+                logger.debug("Failed to emit SSE error chunk after agent crash for %s: %s", completion_id, e)
 
         return response
 
@@ -2606,8 +2630,8 @@ class APIServerAdapter(BasePlatformAdapter):
                                 if isinstance(_args.get(_k), str) and len(_args[_k]) > 500:
                                     _args[_k] = "[" + str(len(_args[_k])) + " chars — truncated for response.completed]"
                             _item["arguments"] = json.dumps(_args)
-                    except Exception:
-                        pass
+                    except (json.JSONDecodeError, TypeError, ValueError, AttributeError) as e:
+                        logger.debug("SSE responses: tool call argument truncation failed: %s", e)
                 elif _item.get("type") == "function_call_output":
                     _output = _item.get("output", [])
                     if isinstance(_output, list) and _output:
@@ -2683,8 +2707,8 @@ class APIServerAdapter(BasePlatformAdapter):
             if agent is not None:
                 try:
                     agent.interrupt("SSE client disconnected")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("agent.interrupt failed during SSE disconnect cleanup: %s", e)
             if not agent_task.done():
                 agent_task.cancel()
                 try:
@@ -2702,8 +2726,8 @@ class APIServerAdapter(BasePlatformAdapter):
             if agent is not None:
                 try:
                     agent.interrupt("SSE task cancelled")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("agent.interrupt failed during SSE cancellation cleanup: %s", e)
             if not agent_task.done():
                 agent_task.cancel()
             logger.info("SSE task cancelled; persisted incomplete snapshot for %s", response_id)
@@ -2729,8 +2753,8 @@ class APIServerAdapter(BasePlatformAdapter):
                     "type": "response.failed",
                     "response": failed_env,
                 })
-            except Exception:
-                pass
+            except (OSError, ConnectionResetError, ConnectionAbortedError, BrokenPipeError, ValueError, TypeError, AttributeError) as e:
+                logger.debug("Failed to emit response.failed after agent crash for %s: %s", response_id, e)
             logger.error("Agent crashed mid-stream for %s: %s", response_id, str(agent_error)[:300])
 
         return response
@@ -3095,6 +3119,7 @@ class APIServerAdapter(BasePlatformAdapter):
             jobs = _cron_list(include_disabled=include_disabled)
             return web.json_response({"jobs": jobs})
         except Exception as e:
+            logger.error("cron list_jobs failed: %s", e, exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
 
     async def _handle_create_job(self, request: "web.Request") -> "web.Response":
@@ -3144,6 +3169,7 @@ class APIServerAdapter(BasePlatformAdapter):
             job = _cron_create(**kwargs)
             return web.json_response({"job": job})
         except Exception as e:
+            logger.error("cron create_job failed: %s", e, exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
 
     async def _handle_get_job(self, request: "web.Request") -> "web.Response":
@@ -3163,6 +3189,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 return web.json_response({"error": "Job not found"}, status=404)
             return web.json_response({"job": job})
         except Exception as e:
+            logger.error("cron get_job failed: %s", e, exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
 
     async def _handle_update_job(self, request: "web.Request") -> "web.Response":
@@ -3196,6 +3223,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 return web.json_response({"error": "Job not found"}, status=404)
             return web.json_response({"job": job})
         except Exception as e:
+            logger.error("cron update_job failed: %s", e, exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
 
     async def _handle_delete_job(self, request: "web.Request") -> "web.Response":
@@ -3215,6 +3243,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 return web.json_response({"error": "Job not found"}, status=404)
             return web.json_response({"ok": True})
         except Exception as e:
+            logger.error("cron delete_job failed: %s", e, exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
 
     async def _handle_pause_job(self, request: "web.Request") -> "web.Response":
@@ -3234,6 +3263,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 return web.json_response({"error": "Job not found"}, status=404)
             return web.json_response({"job": job})
         except Exception as e:
+            logger.error("cron pause_job failed: %s", e, exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
 
     async def _handle_resume_job(self, request: "web.Request") -> "web.Response":
@@ -3253,6 +3283,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 return web.json_response({"error": "Job not found"}, status=404)
             return web.json_response({"job": job})
         except Exception as e:
+            logger.error("cron resume_job failed: %s", e, exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
 
     async def _handle_run_job(self, request: "web.Request") -> "web.Response":
@@ -3272,6 +3303,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 return web.json_response({"error": "Job not found"}, status=404)
             return web.json_response({"job": job})
         except Exception as e:
+            logger.error("cron run_job failed: %s", e, exc_info=True)
             return web.json_response({"error": str(e)}, status=500)
 
     # ------------------------------------------------------------------
@@ -3478,8 +3510,8 @@ class APIServerAdapter(BasePlatformAdapter):
                 return
             try:
                 loop.call_soon_threadsafe(q.put_nowait, event)
-            except Exception:
-                pass
+            except (RuntimeError, asyncio.QueueFull, OSError, AttributeError, TypeError, ValueError) as e:
+                logger.debug("Run %s: failed to schedule event to SSE queue: %s", run_id, e)
 
         def _callback(event_type: str, tool_name: str = None, preview: str = None, args=None, **kwargs):
             ts = time.time()
@@ -3531,7 +3563,8 @@ class APIServerAdapter(BasePlatformAdapter):
 
         try:
             body = await request.json()
-        except Exception:
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
+            logger.debug("[api_server] _handle_runs: body JSON parse failed: %s", e)
             return web.json_response(_openai_error("Invalid JSON"), status=400)
 
         raw_input = body.get("input")
@@ -3613,8 +3646,8 @@ class APIServerAdapter(BasePlatformAdapter):
                     "timestamp": time.time(),
                     "delta": delta,
                 })
-            except Exception:
-                pass
+            except (RuntimeError, asyncio.QueueFull, OSError, AttributeError, TypeError, ValueError) as e:
+                logger.debug("Run %s: stream delta dispatch failed: %s", run_id, e)
 
         self._set_run_status(
             run_id,
@@ -3651,8 +3684,8 @@ class APIServerAdapter(BasePlatformAdapter):
                     )
                     try:
                         loop.call_soon_threadsafe(q.put_nowait, event)
-                    except Exception:
-                        pass
+                    except (RuntimeError, asyncio.QueueFull, OSError, AttributeError, TypeError, ValueError) as e:
+                        logger.debug("Run %s: approval.request dispatch failed: %s", run_id, e)
 
                 def _run_sync():
                     from gateway.session_context import clear_session_vars, set_session_vars
@@ -3688,13 +3721,13 @@ class APIServerAdapter(BasePlatformAdapter):
                             if approval_token is not None:
                                 try:
                                     reset_current_session_key(approval_token)
-                                except Exception:
-                                    pass
+                                except (RuntimeError, ValueError, TypeError, AttributeError, OSError) as e:
+                                    logger.debug("reset_current_session_key failed during cleanup: %s", e)
                             if session_tokens:
                                 try:
                                     clear_session_vars(session_tokens)
-                                except Exception:
-                                    pass
+                                except (RuntimeError, ValueError, TypeError, AttributeError, OSError) as e:
+                                    logger.debug("clear_session_vars failed during cleanup: %s", e)
                     u = {
                         "input_tokens": getattr(agent, "session_prompt_tokens", 0) or 0,
                         "output_tokens": getattr(agent, "session_completion_tokens", 0) or 0,
@@ -3748,8 +3781,8 @@ class APIServerAdapter(BasePlatformAdapter):
                         "run_id": run_id,
                         "timestamp": time.time(),
                     })
-                except Exception:
-                    pass
+                except (asyncio.QueueFull, RuntimeError, OSError, AttributeError, TypeError, ValueError) as e:
+                    logger.debug("Run %s: failed to enqueue run.cancelled event: %s", run_id, e)
                 raise
             except Exception as exc:
                 logger.exception("[api_server] run %s failed", run_id)
@@ -3766,8 +3799,8 @@ class APIServerAdapter(BasePlatformAdapter):
                         "timestamp": time.time(),
                         "error": str(exc),
                     })
-                except Exception:
-                    pass
+                except (asyncio.QueueFull, RuntimeError, OSError, AttributeError, TypeError, ValueError) as e:
+                    logger.debug("Run %s: failed to enqueue run.failed event: %s", run_id, e)
             finally:
                 # If the asyncio wrapper is cancelled (for example via
                 # /stop), the executor thread can still be blocked waiting
@@ -3778,13 +3811,13 @@ class APIServerAdapter(BasePlatformAdapter):
                     from tools.approval import unregister_gateway_notify
 
                     unregister_gateway_notify(approval_session_key)
-                except Exception:
-                    pass
+                except (ImportError, RuntimeError, ValueError, TypeError, AttributeError, OSError) as e:
+                    logger.debug("Run %s: unregister_gateway_notify failed in finally: %s", run_id, e)
                 # Sentinel: signal SSE stream to close
                 try:
                     q.put_nowait(None)
-                except Exception:
-                    pass
+                except (asyncio.QueueFull, RuntimeError, OSError, AttributeError, TypeError, ValueError) as e:
+                    logger.debug("Run %s: failed to enqueue EOS sentinel in finally: %s", run_id, e)
                 self._active_run_agents.pop(run_id, None)
                 self._active_run_tasks.pop(run_id, None)
                 self._run_approval_sessions.pop(run_id, None)
@@ -3888,7 +3921,8 @@ class APIServerAdapter(BasePlatformAdapter):
 
         try:
             body = await request.json()
-        except Exception:
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
+            logger.debug("[api_server] _handle_run_approval: body JSON parse failed: %s", e)
             return web.json_response(_openai_error("Invalid JSON"), status=400)
 
         raw_choice = str(body.get("choice", "")).strip().lower()
@@ -3950,8 +3984,8 @@ class APIServerAdapter(BasePlatformAdapter):
                     "choice": choice,
                     "resolved": resolved,
                 })
-            except Exception:
-                pass
+            except (asyncio.QueueFull, RuntimeError, OSError, AttributeError, TypeError, ValueError) as e:
+                logger.debug("Run %s: failed to enqueue approval.responded event: %s", run_id, e)
 
         return web.json_response({
             "object": "hermes.run.approval_response",
@@ -3978,8 +4012,8 @@ class APIServerAdapter(BasePlatformAdapter):
         if agent is not None:
             try:
                 agent.interrupt("Stop requested via API")
-            except Exception:
-                pass
+            except (RuntimeError, ValueError, TypeError, AttributeError, OSError) as e:
+                logger.debug("Run %s: agent.interrupt failed during stop: %s", run_id, e)
 
         if task is not None and not task.done():
             task.cancel()
@@ -4018,8 +4052,8 @@ class APIServerAdapter(BasePlatformAdapter):
                     approval_session_key = self._run_approval_sessions.get(run_id)
                     if approval_session_key:
                         unregister_gateway_notify(approval_session_key)
-                except Exception:
-                    pass
+                except (ImportError, RuntimeError, ValueError, TypeError, AttributeError, OSError) as e:
+                    logger.debug("Run %s: orphan sweep unregister failed: %s", run_id, e)
                 self._run_streams.pop(run_id, None)
                 self._run_streams_created.pop(run_id, None)
                 self._active_run_agents.pop(run_id, None)

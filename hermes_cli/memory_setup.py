@@ -7,6 +7,7 @@ the provider's config schema. Writes config to config.yaml + .env.
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 import shlex
@@ -14,6 +15,9 @@ from pathlib import Path
 
 from hermes_constants import get_hermes_home
 from hermes_cli.secret_prompt import masked_secret_prompt
+
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +71,8 @@ def _install_dependencies(provider_name: str) -> None:
         import yaml
         with open(yaml_path, encoding="utf-8") as f:
             meta = yaml.safe_load(f) or {}
-    except Exception:
+    except Exception as e:
+        logger.debug("Could not parse plugin.yaml for %s: %s", provider_name, e)
         return
 
     pip_deps = meta.get("pip_dependencies", [])
@@ -132,7 +137,8 @@ def _install_dependencies(provider_name: str) -> None:
                 subprocess.run(
                     shlex.split(check_cmd), check=True, capture_output=True, timeout=5
                 )
-            except Exception:
+            except Exception as e:
+                logger.debug("External dep check failed for '%s': %s", dep_name, e)
                 if install_cmd:
                     print(f"\n  ⚠ '{dep_name}' not found. Install with:")
                     print(f"    {install_cmd}")
@@ -146,7 +152,8 @@ def _get_available_providers() -> list:
     try:
         from plugins.memory import discover_memory_providers, load_memory_provider
         raw = discover_memory_providers()
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to discover memory providers: %s", e)
         raw = []
 
     results = []
@@ -155,7 +162,8 @@ def _get_available_providers() -> list:
             provider = load_memory_provider(name)
             if not provider:
                 continue
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to load memory provider '%s': %s", name, e)
             continue
 
         schema = provider.get_config_schema() if hasattr(provider, "get_config_schema") else []

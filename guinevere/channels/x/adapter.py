@@ -342,6 +342,7 @@ class XAdapter(ChannelSender):
                 message_id="simulated",
             )
         except Exception as exc:
+            logger.error("x send failed: %s", exc, exc_info=True)
             await self._circuit_breaker.record_failure()
             return SendResult(
                 success=False,

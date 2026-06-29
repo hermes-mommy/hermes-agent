@@ -751,8 +751,8 @@ def try_recover_primary_transport(
                 agent._close_openai_client(
                     agent.client, reason="primary_recovery", shared=True,
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Primary recovery: client close failed (non-fatal): %s", e)
 
         # Rebuild from primary snapshot
         rt = agent._primary_runtime
@@ -1487,7 +1487,8 @@ def switch_model(agent, new_model, new_provider, api_key='', base_url='', api_mo
                 reason="switch_model",
                 shared=True,
             )
-    except Exception:
+    except Exception as e:
+        logger.warning("Model switch failed, rolling back: %s", e)
         # Rollback every mutated field to the pre-swap snapshot so the agent
         # is left consistent (old model + old provider + old client) and the
         # caller's exception handler can surface a meaningful warning.  The
@@ -1499,8 +1500,8 @@ def switch_model(agent, new_model, new_provider, api_key='', base_url='', api_mo
                 continue
             try:
                 setattr(agent, _name, _value)
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as e:  # noqa: BLE001
+                logger.debug("Model switch rollback: setattr(%s) failed: %s", _name, e)
         raise
 
     # ── Re-evaluate prompt caching ──
@@ -1527,7 +1528,8 @@ def switch_model(agent, new_model, new_provider, api_key='', base_url='', api_mo
             from hermes_cli.config import load_config, get_compatible_custom_providers
             _sm_cfg = load_config()
             _sm_custom_providers = get_compatible_custom_providers(_sm_cfg)
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to load custom_providers config (non-fatal): %s", e)
             _sm_custom_providers = None
         # ``agent.api_key`` may be a callable (Azure Foundry Entra ID
         # token provider). ``get_model_context_length`` expects a
@@ -1627,8 +1629,8 @@ def invoke_tool(agent, function_name: str, function_args: dict, effective_task_i
             block_message = get_pre_tool_call_block_message(
                 function_name, function_args, task_id=effective_task_id or "",
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Pre-tool-call plugin hook failed (non-fatal): %s", e)
     if block_message is not None:
         return json.dumps({"error": block_message}, ensure_ascii=False)
 
@@ -1678,8 +1680,8 @@ def invoke_tool(agent, function_name: str, function_args: dict, effective_task_i
                         tool_call_id=tool_call_id,
                     ),
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Memory manager on_memory_write notification failed: %s", e)
         return result
     elif agent._memory_manager and agent._memory_manager.has_tool(function_name):
         return agent._memory_manager.handle_tool_call(function_name, function_args)
@@ -2048,7 +2050,8 @@ def _iter_pool_sockets(client: Any):
             or getattr(pool, "_pool", None)
             or []
         )
-    except Exception:
+    except Exception as e:
+        logger.debug("Pool socket traversal failed (non-fatal): %s", e)
         return
 
     seen: set[int] = set()
@@ -2070,7 +2073,8 @@ def _iter_pool_sockets(client: Any):
                 if callable(get_extra_info):
                     try:
                         sock = get_extra_info("socket")
-                    except Exception:
+                    except Exception as e:
+                        logger.debug("Pool socket: get_extra_info failed: %s", e)
                         sock = None
             if sock is None:
                 wrapped = getattr(stream, "stream", None)
@@ -2085,7 +2089,8 @@ def _iter_pool_sockets(client: Any):
                     try:
                         from anyio.abc import SocketAttribute
                         sock = extra(SocketAttribute.raw_socket)
-                    except Exception:
+                    except Exception as e:
+                        logger.debug("Pool socket: anyio raw_socket access failed: %s", e)
                         sock = None
             if sock is None:
                 continue
@@ -2272,7 +2277,8 @@ def apply_pending_steer_to_tool_results(agent, messages: list, num_tool_msgs: in
             blocks = list(existing_content) if existing_content else []
             blocks.append({"type": "text", "text": marker.lstrip()})
             messages[target_idx]["content"] = blocks
-        except Exception:
+        except Exception as e:
+            logger.debug("Steer delivery: multimodal content append failed, falling back to string: %s", e)
             # Fall back to string replacement if content shape is unexpected.
             messages[target_idx]["content"] = f"{existing_content}{marker}"
     else:

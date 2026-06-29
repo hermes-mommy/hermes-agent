@@ -27,6 +27,18 @@ import structlog
 
 logger = structlog.get_logger(__name__)
 
+# Redis raises its own exception hierarchy (redis.exceptions.RedisError) which
+# is NOT a subclass of builtins ConnectionError/OSError. Catch it explicitly so
+# redis connection failures are handled as fail-soft, not raised to callers.
+# When the redis package is absent, fall back to a sentinel that matches
+# nothing (the import-guarded code paths never raise redis errors then).
+try:
+    from redis.exceptions import RedisError as _RedisError
+except ImportError:  # pragma: no cover - redis optional
+
+    class _RedisError(Exception):
+        """Sentinel: redis absent, so no redis error can ever be raised."""
+
 
 # ---------------------------------------------------------------------------
 # Buffer protocol
@@ -116,11 +128,12 @@ class RedisSurveillanceBuffer:
                 buffer_size=size,
             )
             return True
-        except Exception:
+        except (ConnectionError, TimeoutError, OSError, ValueError, TypeError, _RedisError) as e:
             logger.exception(
                 "surveillance_buffer_push_failed",
                 event_type=event_data.get("event_type", "unknown"),
                 device_id=event_data.get("device_id", "unknown"),
+                error=str(e),
             )
             return False
 
@@ -143,24 +156,24 @@ class RedisSurveillanceBuffer:
                         error=str(exc),
                     )
             return events
-        except Exception:
-            logger.exception("surveillance_buffer_pop_failed")
+        except (ConnectionError, TimeoutError, OSError, _RedisError) as e:
+            logger.exception("surveillance_buffer_pop_failed", error=str(e))
             return []
 
     async def buffer_size(self) -> int:
         """Return the current number of events in the buffer."""
         try:
             return await self._redis.llen(self._buffer_key)
-        except Exception:
-            logger.exception("surveillance_buffer_size_failed")
+        except (ConnectionError, TimeoutError, OSError, _RedisError) as e:
+            logger.exception("surveillance_buffer_size_failed", error=str(e))
             return 0
 
     async def close(self) -> None:
         """Close the Redis connection gracefully."""
         try:
             await self._redis.aclose()
-        except Exception:
-            logger.exception("surveillance_buffer_close_failed")
+        except (ConnectionError, TimeoutError, OSError, _RedisError) as e:
+            logger.exception("surveillance_buffer_close_failed", error=str(e))
 
 
 def create_buffer(
@@ -186,8 +199,8 @@ def create_buffer(
             decode_responses=True,
         )
         return RedisSurveillanceBuffer(_redis=redis_client)
-    except Exception:
-        logger.warning("buffer_redis_unavailable_using_null_buffer")
+    except (ImportError, ConnectionError, TimeoutError, OSError, _RedisError) as e:
+        logger.warning("buffer_redis_unavailable_using_null_buffer", error=str(e))
         return NullBuffer()
 
 
@@ -249,8 +262,8 @@ class SurveillanceConsumer:
         while self._running:
             try:
                 await self._drain_and_process()
-            except Exception:
-                logger.exception("consumer_cycle_failed")
+            except Exception as e:
+                logger.exception("consumer_cycle_failed", error=str(e))
             await asyncio.sleep(self._poll_interval)
 
         await self._buffer.close()
@@ -308,13 +321,14 @@ class SurveillanceConsumer:
                     classification=classification.classification.value,
                 )
                 return True
-            except Exception:
+            except (ConnectionError, TimeoutError, OSError, ValueError, KeyError, TypeError, AttributeError) as e:
                 logger.exception(
                     "consumer_store_failed",
                     event_type=event_type,
                     device_id=device_id,
                     attempt=attempt,
                     max_retries=max_retries,
+                    error=str(e),
                 )
                 if attempt < max_retries:
                     backoff = 0.5 * attempt
@@ -328,8 +342,8 @@ class SurveillanceConsumer:
         """Pop a batch from the buffer and process each event."""
         try:
             events = await self._buffer.pop_events(self._batch_size)
-        except Exception:
-            logger.exception("consumer_buffer_pop_failed")
+        except (ConnectionError, TimeoutError, OSError) as e:
+            logger.exception("consumer_buffer_pop_failed", error=str(e))
             return
 
         if not events:
@@ -435,7 +449,8 @@ class SurveillanceConsumer:
                 },
             )
             await session.commit()
-        except Exception:
+        except Exception as e:
+            logger.exception("surveillance_store_event_failed", error=str(e))
             await session.rollback()
             raise
         finally:

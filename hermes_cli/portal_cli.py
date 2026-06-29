@@ -11,12 +11,15 @@ surface for the Portal subscription itself.
 """
 from __future__ import annotations
 
+import logging
 import sys
 import webbrowser
 from typing import Optional
 
 from hermes_cli.colors import Colors, color
 from hermes_cli.config import load_config
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_PORTAL_URL = "https://portal.nousresearch.com"
 SUBSCRIPTION_URL = "https://portal.nousresearch.com/manage-subscription"
@@ -27,12 +30,19 @@ def _nous_portal_base_url() -> str:
     """Resolve the Portal base URL from auth state or default."""
     try:
         from hermes_cli.auth import get_nous_auth_status
+    except ImportError as e:
+        # Module not present in this build — fall back silently to default.
+        logger.debug("get_nous_auth_status unavailable: %s", e)
+        return DEFAULT_PORTAL_URL
+    try:
         status = get_nous_auth_status() or {}
-        url = status.get("portal_base_url")
-        if isinstance(url, str) and url.strip():
-            return url.rstrip("/")
-    except Exception:
-        pass
+    except Exception as e:
+        # Auth lookup is fail-soft — surface debug info but keep the default URL.
+        logger.debug("get_nous_auth_status failed: %s", e)
+        status = {}
+    url = status.get("portal_base_url")
+    if isinstance(url, str) and url.strip():
+        return url.rstrip("/")
     return DEFAULT_PORTAL_URL
 
 
@@ -45,7 +55,10 @@ def _cmd_status(args) -> int:
 
     try:
         auth = get_nous_auth_status() or {}
-    except Exception:
+    except Exception as e:
+        # Auth lookup is fail-soft — fall back to empty status so the menu
+        # still renders a sensible default state.
+        logger.debug("get_nous_auth_status failed: %s", e)
         auth = {}
 
     logged_in = bool(auth.get("logged_in"))
@@ -79,7 +92,10 @@ def _cmd_status(args) -> int:
     print(color("  ────────────", Colors.MAGENTA))
     try:
         features = get_nous_subscription_features(config)
-    except Exception:
+    except Exception as e:
+        # Subscription lookup is fail-soft — render the "could not resolve"
+        # state so the menu still tells the user something useful.
+        logger.debug("get_nous_subscription_features failed: %s", e)
         features = None
 
     if features is None:
@@ -114,7 +130,9 @@ def _cmd_open(args) -> int:
     print(f"Opening {target}")
     try:
         opened = webbrowser.open(target)
-    except Exception:
+    except (OSError, webbrowser.Error) as e:
+        # Browser launch is optional best-effort — log + report URL.
+        logger.debug("webbrowser.open failed: %s", e)
         opened = False
     if not opened:
         print()
@@ -130,7 +148,11 @@ def _cmd_tools(args) -> int:
     config = load_config() or {}
     try:
         features = get_nous_subscription_features(config)
-    except Exception:
+    except Exception as e:
+        # Catalog listing is fail-soft — log and tell the operator,
+        # then exit cleanly so the rest of `hermes portal tools` isn't
+        # muddied by a stack trace.
+        logger.debug("get_nous_subscription_features failed: %s", e)
         print("Could not resolve Tool Gateway state.", file=sys.stderr)
         return 1
 

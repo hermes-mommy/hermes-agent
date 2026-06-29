@@ -247,8 +247,8 @@ class ConsciousnessLoop:
         except asyncio.CancelledError:
             logger.debug("substrate.cancelled", name=name)
             raise
-        except Exception:
-            logger.exception("substrate.failed", name=name)
+        except Exception as e:
+            logger.exception("substrate.failed", name=name, error=str(e))
             self._state.set_substrate_status(name, SubstrateStatus.FAILED)
         finally:
             logger.debug("substrate.exited", name=name)

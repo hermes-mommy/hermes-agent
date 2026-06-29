@@ -18,6 +18,7 @@ the async helper, never in the synchronous probe.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import signal
 import subprocess
@@ -25,6 +26,9 @@ import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+
+logger = logging.getLogger(__name__)
 
 
 _SIGNAL_NAME_BY_NUM: Dict[int, str] = {}
@@ -188,8 +192,8 @@ def snapshot_shutdown_context(received_signal: Any = None) -> Dict[str, Any]:
                     ctx["planned_stop_marker"] = raw[:300]
                 except OSError:
                     pass
-    except Exception:  # noqa: BLE001 — never raise from a signal handler
-        pass
+    except Exception as e:  # never raise from a signal handler
+        logger.debug("shutdown_snapshot marker probe failed: %s", e)
 
     return ctx
 

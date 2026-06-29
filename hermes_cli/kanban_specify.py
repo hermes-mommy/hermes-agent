@@ -205,7 +205,8 @@ def specify_task(
 
     try:
         raw = (resp.choices[0].message.content or "").strip()
-    except Exception:
+    except (AttributeError, IndexError, TypeError) as exc:
+        logger.debug("specify: malformed LLM response shape for %s: %s", task_id, exc)
         raw = ""
 
     parsed = _extract_json_blob(raw)

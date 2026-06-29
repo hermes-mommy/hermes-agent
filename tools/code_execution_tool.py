@@ -132,7 +132,7 @@ def _scrub_child_env(source_env, is_passthrough=None, is_windows=None):
     if is_passthrough is None:
         try:
             from tools.env_passthrough import is_env_passthrough as _ep
-        except Exception:
+        except ImportError:
             _ep = lambda _: False  # noqa: E731
         is_passthrough = _ep
     if is_windows is None:
@@ -952,8 +952,8 @@ def _execute_remote(
             env.execute(
                 f"rm -rf {quoted_sandbox_dir}", cwd="/", timeout=15,
             )
-        except Exception:
-            logger.debug("Failed to clean up remote sandbox %s", sandbox_dir)
+        except Exception as e:
+            logger.debug("Failed to clean up remote sandbox %s: %s", sandbox_dir, e)
 
     duration = round(time.monotonic() - exec_start, 2)
 
@@ -1319,8 +1319,8 @@ def execute_code(
             try:
                 from tools.environments.base import touch_activity_if_due
                 touch_activity_if_due(_activity_state, "execute_code running")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Activity touch failed (non-critical): %s", e)
             time.sleep(0.2)
 
         # Wait for readers to finish draining
@@ -1499,7 +1499,8 @@ def _load_config() -> dict:
 
         cfg = read_raw_config().get("code_execution", {})
         return cfg if isinstance(cfg, dict) else {}
-    except Exception:
+    except Exception as e:
+        logger.warning("config load failed, falling back to defaults: %s", e)
         return {}
 
 

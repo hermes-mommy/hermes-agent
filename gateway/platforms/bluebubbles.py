@@ -260,8 +260,11 @@ class BlueBubblesAdapter(BasePlatformAdapter):
             data = res.get("data")
             if isinstance(data, list):
                 return [wh for wh in data if wh.get("url") == url]
-        except Exception:
-            pass
+        except (httpx.HTTPError, asyncio.TimeoutError, OSError, ValueError) as e:
+            logger.debug(
+                "[bluebubbles] failed to enumerate registered webhooks (non-critical): %s",
+                e,
+            )
         return []
 
     async def _register_webhook(self) -> bool:
@@ -382,8 +385,12 @@ class BlueBubblesAdapter(BasePlatformAdapter):
                     if (part.get("address") or "").strip() == target and guid:
                         self._guid_cache[target] = guid
                         return guid
-        except Exception:
-            pass
+        except (httpx.HTTPError, asyncio.TimeoutError, OSError, ValueError) as e:
+            logger.debug(
+                "[bluebubbles] failed to resolve chat guid for %s: %s",
+                _redact(target),
+                e,
+            )
         return None
 
     async def _create_chat_for_handle(
@@ -538,7 +545,12 @@ class BlueBubblesAdapter(BasePlatformAdapter):
 
             local_path = await cache_image_from_url(image_url)
             return await self._send_attachment(chat_id, local_path, caption=caption)
-        except Exception:
+        except (httpx.HTTPError, asyncio.TimeoutError, OSError, ValueError) as e:
+            logger.debug(
+                "[bluebubbles] send_image fallback to base for %s: %s",
+                _redact(image_url),
+                e,
+            )
             return await super().send_image(chat_id, image_url, caption, reply_to)
 
     async def send_image_file(
@@ -612,8 +624,10 @@ class BlueBubblesAdapter(BasePlatformAdapter):
                 await self.client.post(
                     self._api_url(f"/api/v1/chat/{encoded}/typing"), timeout=5
                 )
-        except Exception:
-            pass
+        except (httpx.HTTPError, asyncio.TimeoutError, OSError, ValueError) as e:
+            logger.debug(
+                "[bluebubbles] send_typing dropped (non-critical): %s", e
+            )
 
     async def stop_typing(self, chat_id: str) -> None:
         if not self._private_api_enabled or not self._helper_connected or not self.client:
@@ -625,8 +639,10 @@ class BlueBubblesAdapter(BasePlatformAdapter):
                 await self.client.delete(
                     self._api_url(f"/api/v1/chat/{encoded}/typing"), timeout=5
                 )
-        except Exception:
-            pass
+        except (httpx.HTTPError, asyncio.TimeoutError, OSError, ValueError) as e:
+            logger.debug(
+                "[bluebubbles] stop_typing dropped (non-critical): %s", e
+            )
 
     # ------------------------------------------------------------------
     # Read receipts
@@ -643,8 +659,10 @@ class BlueBubblesAdapter(BasePlatformAdapter):
                     self._api_url(f"/api/v1/chat/{encoded}/read"), timeout=5
                 )
                 return True
-        except Exception:
-            pass
+        except (httpx.HTTPError, asyncio.TimeoutError, OSError, ValueError) as e:
+            logger.debug(
+                "[bluebubbles] mark_read dropped (non-critical): %s", e
+            )
         return False
 
     # ------------------------------------------------------------------
@@ -682,8 +700,11 @@ class BlueBubblesAdapter(BasePlatformAdapter):
                 info["name"] = display_name
                 if participants:
                     info["participants"] = participants
-        except Exception:
-            pass
+        except (httpx.HTTPError, asyncio.TimeoutError, OSError, ValueError) as e:
+            logger.debug(
+                "[bluebubbles] get_chat_info lookup failed (using defaults): %s",
+                e,
+            )
         return info
 
     def format_message(self, content: str) -> str:
@@ -795,7 +816,7 @@ class BlueBubblesAdapter(BasePlatformAdapter):
             body = raw.decode("utf-8", errors="replace")
             try:
                 payload = json.loads(body)
-            except Exception:
+            except json.JSONDecodeError:
                 from urllib.parse import parse_qs
 
                 form = parse_qs(body)
@@ -806,7 +827,7 @@ class BlueBubblesAdapter(BasePlatformAdapter):
                     or [""]
                 )[0]
                 payload = json.loads(payload_str) if payload_str else {}
-        except Exception as exc:
+        except (json.JSONDecodeError, ValueError, OSError) as exc:
             logger.error("[bluebubbles] webhook parse error: %s", exc)
             return web.json_response({"error": "invalid payload"}, status=400)
 

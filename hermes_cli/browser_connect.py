@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import platform
 import shlex
@@ -9,6 +10,8 @@ import shutil
 import subprocess
 
 from hermes_constants import get_hermes_home
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_BROWSER_CDP_PORT = 9222
@@ -135,7 +138,9 @@ def _chrome_debug_args(port: int) -> list[str]:
 
 def is_browser_debug_ready(url: str, timeout: float = 1.0) -> bool:
     """Return True when ``url`` exposes a reachable Chrome DevTools endpoint."""
+    import http.client
     import socket
+    import urllib.error
     import urllib.request
     from urllib.parse import urlparse
 
@@ -164,7 +169,8 @@ def is_browser_debug_ready(url: str, timeout: float = 1.0) -> bool:
             with urllib.request.urlopen(probe, timeout=timeout) as resp:
                 if 200 <= getattr(resp, "status", 200) < 300:
                     return True
-        except Exception:
+        except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError) as e:
+            logger.debug("browser_debug_probe_failed url=%s err=%s", probe, e)
             continue
     return False
 
@@ -212,6 +218,7 @@ def try_launch_chrome_debug(port: int = DEFAULT_BROWSER_CDP_PORT, system: str | 
                 **_detach_kwargs(system),
             )
             return True
-        except Exception:
+        except (OSError, ValueError) as e:
+            logger.debug("browser_launch_attempt_failed candidate=%s err=%s", candidate, e)
             continue
     return False

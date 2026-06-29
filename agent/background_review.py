@@ -352,8 +352,8 @@ def _run_review_in_thread(
         return "deny"
     try:
         _set_approval_callback(_bg_review_auto_deny)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to set bg-review approval callback: %s", e)
 
     review_agent = None
     review_messages: List[Dict] = []
@@ -494,12 +494,12 @@ def _run_review_in_thread(
             # below is a safety net for the exception path.
             try:
                 review_agent.shutdown_memory_provider()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Teardown: shutdown_memory_provider failed: %s", e)
             try:
                 review_agent.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Teardown: review_agent.close failed: %s", e)
             review_agent = None
 
         # Scan the review agent's messages for successful tool actions
@@ -524,8 +524,8 @@ def _run_review_in_thread(
                     _bg_cb(
                         f"💾 Self-improvement review: {summary}"
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Background review callback raised: %s", e)
 
     except Exception as e:
         logger.warning("Background memory/skill review failed: %s", e)
@@ -543,20 +543,20 @@ def _run_review_in_thread(
                      contextlib.redirect_stderr(_fn):
                     try:
                         review_agent.shutdown_memory_provider()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("Finally: shutdown_memory_provider failed: %s", e)
                     try:
                         review_agent.close()
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+                    except Exception as e:
+                        logger.debug("Finally: review_agent.close failed: %s", e)
+            except Exception as e:
+                logger.debug("Background review safety-net cleanup error: %s", e)
         # Clear the approval callback on this bg-review thread so a
         # recycled thread-id doesn't inherit a stale reference.
         try:
             _set_approval_callback(None)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to clear bg-review approval callback: %s", e)
 
 
 def spawn_background_review_thread(

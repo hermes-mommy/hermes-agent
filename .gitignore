@@ -41,3 +41,23 @@ Thumbs.db
 # Project
 *.log
 tmp/
+
+# Secrets — additional (P24 stabilize 2026-06-29)
+token.json
+discovery-rest.txt
+*.tar
+vps-mirror/audit/
+*.bak
+*.bak-*
+
+# Secrets — .env variants (prefix-dot, not caught by *.env suffix pattern)
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Caches / build artifacts (P24 stabilize 2026-06-29)
+.sisyphus/
+.research-cache/
+android/
+__pycache__/

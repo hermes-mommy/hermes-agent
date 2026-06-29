@@ -506,6 +506,7 @@ class WhatsAppAdapter(ChannelSender):
                     )
                     last_message_id = "simulated"
             except Exception as exc:
+                logger.error("whatsapp send failed: %s", exc, exc_info=True)
                 return SendResult(
                     success=False,
                     channel=self.channel_id,

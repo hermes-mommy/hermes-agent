@@ -175,15 +175,15 @@ def _inject_context_hermes_home(env: dict) -> None:
         value = get_hermes_home_override()
         if value:
             env["HERMES_HOME"] = value
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("_inject_context_hermes_home: ignoring error: %s", e)
 
 
 def _sanitize_subprocess_env(base_env: dict | None, extra_env: dict | None = None) -> dict:
     """Filter Hermes-managed secrets from a subprocess environment."""
     try:
         from tools.env_passthrough import is_env_passthrough as _is_passthrough
-    except Exception:
+    except ImportError:
         _is_passthrough = lambda _: False  # noqa: E731
 
     sanitized: dict[str, str] = {}
@@ -280,7 +280,7 @@ def _make_run_env(env: dict) -> dict:
     """Build a run environment with a sane PATH and provider-var stripping."""
     try:
         from tools.env_passthrough import is_env_passthrough as _is_passthrough
-    except Exception:
+    except ImportError:
         _is_passthrough = lambda _: False  # noqa: E731
 
     merged = dict(os.environ | env)
@@ -321,8 +321,8 @@ def _make_run_env(env: dict) -> dict:
             value = var.get()
             if value is not _UNSET and value:
                 run_env[var_name] = value
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("_make_run_env: session context injection skipped: %s", e)
 
     return run_env
 
@@ -343,7 +343,8 @@ def _read_terminal_shell_init_config() -> tuple[list[str], bool]:
             files = []
         auto_bashrc = bool(terminal_cfg.get("auto_source_bashrc", True))
         return [str(f) for f in files if f], auto_bashrc
-    except Exception:
+    except Exception as e:
+        logger.debug("_read_terminal_shell_init_config: config load failed, using defaults: %s", e)
         return [], True
 
 
@@ -382,7 +383,8 @@ def _resolve_shell_init_files() -> list[str]:
     for raw in candidates:
         try:
             path = os.path.expandvars(os.path.expanduser(raw))
-        except Exception:
+        except Exception as e:
+            logger.debug("_resolve_shell_init_files: path expansion failed for %r: %s", raw, e)
             continue
         if path and os.path.isfile(path):
             resolved.append(path)
@@ -452,7 +454,8 @@ class LocalEnvironment(BaseEnvironment):
             try:
                 from hermes_constants import get_hermes_home
                 cache_dir = get_hermes_home() / "cache" / "terminal"
-            except Exception:
+            except Exception as e:
+                logger.debug("get_temp_dir: hermes_constants fallback to system temp: %s", e)
                 cache_dir = Path(tempfile.gettempdir()) / "hermes_terminal"
             cache_dir.mkdir(parents=True, exist_ok=True)
             # Force forward slashes so the same string serves both contexts.
@@ -563,15 +566,15 @@ class LocalEnvironment(BaseEnvironment):
                 # still makes killpg(pgid, 0) report the group as alive.
                 try:
                     proc.poll()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("_wait_for_group_exit: proc.poll() error (in-loop): %s", e)
                 if not _group_alive(pgid):
                     return True
                 time.sleep(0.05)
             try:
                 proc.poll()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("_wait_for_group_exit: proc.poll() error (post-loop): %s", e)
             return not _group_alive(pgid)
 
         try:
@@ -609,8 +612,8 @@ class LocalEnvironment(BaseEnvironment):
         except (ProcessLookupError, PermissionError, OSError):
             try:
                 proc.kill()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("_kill_process: proc.kill() fallback error: %s", e)
 
     def _update_cwd(self, result: dict):
         """Read CWD from temp file (local-only, no round-trip needed).

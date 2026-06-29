@@ -31,12 +31,13 @@ Config: ``logging.memory_monitor`` in ``config.yaml`` — see
 from __future__ import annotations
 
 import gc
+import importlib
 import logging
 import os
 import sys
 import threading
 import time
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -67,16 +68,20 @@ def _get_rss_mb() -> Optional[int]:
             return int(maxrss / _BYTES_TO_MB)
         # Linux / other unices: KB
         return int(maxrss / 1024)
-    except Exception:
-        pass
+    except OSError as e:
+        logger.debug("resource.getrusage failed: %s", e)
+        # Fall through to psutil fallback below.
 
     # Fallback: psutil (Windows, or unusual unix without resource).
+    # importlib.import_module returns Any-typed bindings by default,
+    # which sidesteps missing-stub errors on statically-typed installs.
     try:
-        import psutil  # type: ignore
+        psutil = importlib.import_module("psutil")
 
         rss = psutil.Process(os.getpid()).memory_info().rss
         return int(rss / _BYTES_TO_MB)
-    except Exception:
+    except (ImportError, AttributeError, OSError) as e:
+        logger.debug("psutil RSS read failed: %s", e)
         return None
 
 
@@ -98,12 +103,14 @@ def log_memory_usage(prefix: str = "") -> None:
     # is a cheap proxy for "how much garbage have we created".
     try:
         gc_counts = gc.get_count()  # (gen0, gen1, gen2)
-    except Exception:
+    except Exception as e:
+        logger.debug("gc.get_count() failed: %s", e)
         gc_counts = (0, 0, 0)
     # Thread count is a handy correlate when diagnosing thread leaks.
     try:
         thread_count = threading.active_count()
-    except Exception:
+    except Exception as e:
+        logger.debug("threading.active_count() failed: %s", e)
         thread_count = 0
 
     tag = f"{prefix} " if prefix else ""
@@ -207,8 +214,8 @@ def stop_memory_monitoring(timeout: float = 2.0) -> None:
         # Final snapshot before teardown so "last RSS" is always in the log.
         try:
             log_memory_usage(prefix="shutdown")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Shutdown memory snapshot failed: %s", e)
 
         _stop_event.set()
         thread = _monitor_thread
@@ -218,8 +225,8 @@ def stop_memory_monitoring(timeout: float = 2.0) -> None:
     # Join outside the lock so a stuck log call can't deadlock shutdown.
     try:
         thread.join(timeout=timeout)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Memory monitor thread join failed: %s", e)
 
     logger.info("[MEMORY] Periodic memory monitoring stopped")
 

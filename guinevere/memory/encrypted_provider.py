@@ -126,7 +126,8 @@ class EncryptedMemoryProvider(MemoryProvider):
             import base64
             key = base64.b64decode(raw)
             return len(key) == 32
-        except Exception:
+        except ValueError:
+            logger.debug("MEMORY_S4_AES_KEY is not valid base64 or wrong length")
             return False
 
     def initialize(self, session_id: str, **kwargs) -> None:
@@ -469,5 +470,6 @@ class EncryptedMemoryProvider(MemoryProvider):
                 return False
             # Don't actually connect — just check if URL is configured
             return "postgresql" in db_url
-        except Exception:
+        except (TypeError, OSError):
+            logger.debug("PG probe failed reading GUINEVERE_DATABASE_URL")
             return False

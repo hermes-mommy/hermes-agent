@@ -7,8 +7,11 @@ credentials are not provisioned (D2 pattern).
 
 from __future__ import annotations
 
+import logging
 from enum import Enum
 from typing import Any
+
+_log = logging.getLogger(__name__)
 
 
 class ChannelId(str, Enum):
@@ -82,7 +85,8 @@ def get_all_channel_statuses() -> dict[str, str]:
                 statuses[cid.value] = ChannelStatus.CONFIG_MISSING.value
             else:
                 statuses[cid.value] = ChannelStatus.READY.value
-        except Exception:
+        except Exception as e:
+            _log.warning("Channel %s instantiation failed: %s", cid.value, e)
             statuses[cid.value] = ChannelStatus.ERROR.value
     return statuses
 

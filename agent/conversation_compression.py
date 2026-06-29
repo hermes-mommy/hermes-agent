@@ -77,7 +77,8 @@ def check_compression_model_feasibility(agent: Any) -> None:
         # where the compression model is actually being called.
         try:
             _aux_cfg_provider, _, _, _, _ = _resolve_task_provider_model("compression")
-        except Exception:
+        except Exception as e:  # provider-resolution can raise any of: config/pydantic/YAML/IO
+            logger.debug("aux provider-model resolution failed (non-fatal): %s", e)
             _aux_cfg_provider = ""
         if client is None or not aux_model:
             if _aux_cfg_provider and _aux_cfg_provider != "auto":
@@ -184,7 +185,8 @@ def check_compression_model_feasibility(agent: Any) -> None:
                     _aux_provider_label = (
                         urlparse(aux_base_url).hostname or aux_base_url
                     )
-                except Exception:
+                except (ValueError, TypeError) as e:
+                    logger.debug("aux base_url parse failed (non-fatal): %s", e)
                     _aux_provider_label = aux_base_url or "auto"
             _main_label = (
                 f"{_main_model} ({_main_provider})"
@@ -244,8 +246,8 @@ def replay_compression_warning(agent: Any) -> None:
     if msg and agent.status_callback:
         try:
             agent.status_callback("lifecycle", msg)
-        except Exception:
-            pass
+        except Exception as e:  # gateway callbacks are plugins — isolate per-callback failures
+            logger.debug("compression warning replay via status_callback failed (non-fatal): %s", e)
 
 
 def compress_context(
@@ -309,8 +311,8 @@ def compress_context(
     if agent._memory_manager:
         try:
             agent._memory_manager.on_pre_compress(messages)
-        except Exception:
-            pass
+        except Exception as e:  # memory providers are plugins — isolate per-provider failures
+            logger.debug("memory provider on_pre_compress failed (non-fatal): %s", e)
 
     try:
         compressed = agent.context_compressor.compress(messages, current_tokens=approx_tokens, focus_topic=focus_topic, force=force)
@@ -385,7 +387,8 @@ def compress_context(
                 from gateway.session_context import set_current_session_id
 
                 set_current_session_id(agent.session_id)
-            except Exception:
+            except Exception as e:  # session-context bridge may be unavailable in CLI/non-gateway runs
+                logger.debug("set_current_session_id unavailable — fell back to HERMES_SESSION_ID env: %s", e)
                 os.environ["HERMES_SESSION_ID"] = agent.session_id
             agent._session_db_created = False
             agent._session_db.create_session(
@@ -472,8 +475,8 @@ def compress_context(
     try:
         from tools.file_tools import reset_file_dedup
         reset_file_dedup(task_id)
-    except Exception:
-        pass
+    except Exception as e:  # dedup reset is cleanup — best-effort, don't block compression
+        logger.debug("file_dedup reset after compression failed (non-fatal): %s", e)
 
     logger.info(
         "context compression done: session=%s messages=%d->%d tokens=~%s",
@@ -551,8 +554,8 @@ def try_shrink_image_parts_in_messages(api_messages: list) -> bool:
             finally:
                 try:
                     Path(tmp.name).unlink(missing_ok=True)
-                except Exception:
-                    pass
+                except OSError as e:  # best-effort tempfile cleanup — never propagate in finally
+                    logger.debug("tempfile unlink failed during image shrink (non-fatal): %s", e)
             if not resized or len(resized) >= len(url):
                 # Shrink didn't help (or made it bigger — corrupt input?).
                 return None

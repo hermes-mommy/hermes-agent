@@ -305,8 +305,8 @@ def _looks_like_error_output(content: str) -> bool:
                 status = str(parsed.get("status") or "").strip().lower()
                 if status in {"error", "failed", "failure", "timeout"}:
                     return True
-        except Exception:
-            pass
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
+            logger.debug("JSON parse/type-check failed in error-output detection: %s", e)
 
     first = content.splitlines()[0].strip().lower() if content.splitlines() else ""
     return (
@@ -470,7 +470,8 @@ def _is_mcp_toolset_name(name: str) -> bool:
         from tools.registry import registry
 
         target = registry.get_toolset_alias_target(str(name))
-    except Exception:
+    except (ImportError, AttributeError) as e:
+        logger.debug("MCP toolset alias lookup failed for '%s': %s", name, e)
         target = None
     return bool(target and str(target).startswith("mcp-"))
 
@@ -670,7 +671,8 @@ def _resolve_workspace_hint(parent_agent) -> Optional[str]:
             continue
         try:
             text = os.path.abspath(os.path.expanduser(str(candidate)))
-        except Exception:
+        except (OSError, ValueError, TypeError) as e:
+            logger.debug("Workspace path resolution failed for candidate %r: %s", candidate, e)
             continue
         if os.path.isabs(text) and os.path.isdir(text):
             return text
@@ -1212,7 +1214,8 @@ def _dump_subagent_timeout_diagnostic(
         logs_dir = hermes_home / "logs"
         try:
             logs_dir.mkdir(parents=True, exist_ok=True)
-        except Exception:
+        except OSError as e:
+            logger.debug("Failed to create subagent timeout diagnostic directory %s: %s", logs_dir, e)
             return None
 
         subagent_id = getattr(child, "_subagent_id", None) or f"idx{task_index}"
@@ -1252,7 +1255,8 @@ def _dump_subagent_timeout_diagnostic(
                 if isinstance(val, str) and attr == "base_url":
                     pass
                 _w(f"  {attr}: {val!r}")
-            except Exception:
+            except Exception as e:
+                logger.debug("Could not read child attr '%s' for diagnostic: %s", attr, e)
                 _w(f"  {attr}: <unreadable>")
         _w("")
 
@@ -1264,8 +1268,8 @@ def _dump_subagent_timeout_diagnostic(
             _w(f"  loaded tool count: {len(tool_names)}")
             try:
                 _w(f"  loaded tools:      {sorted(tool_names)}")
-            except Exception:
-                pass
+            except (TypeError, ValueError) as e:
+                logger.debug("Could not sort tool names for diagnostic: %s", e)
         _w("")
 
         _w("## Prompt / schema sizes")
@@ -1455,12 +1459,12 @@ def _run_single_child(
                             f"delegate_task: subagent {child_desc} "
                             f"(iteration {child_iter}/{child_max})"
                         )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Heartbeat activity summary read failed: %s", e)
             try:
                 touch(desc)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Heartbeat parent activity touch failed: %s", e)
 
     _heartbeat_thread = threading.Thread(target=_heartbeat_loop, daemon=True)
 
@@ -1563,8 +1567,8 @@ def _run_single_child(
                     child.interrupt()
                 elif hasattr(child, "_interrupt_requested"):
                     child._interrupt_requested = True
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Child interrupt propagation failed: %s", e)
 
             is_timeout = isinstance(_timeout_exc, (FuturesTimeoutError, TimeoutError))
             duration = round(time.monotonic() - child_start, 2)
@@ -1583,8 +1587,8 @@ def _run_single_child(
             try:
                 _summary = child.get_activity_summary()
                 child_api_calls = int(_summary.get("api_call_count", 0) or 0)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Could not read activity summary for timeout diagnostic: %s", e)
             if is_timeout and child_api_calls == 0:
                 diagnostic_path = _dump_subagent_timeout_diagnostic(
                     child=child,
@@ -1614,8 +1618,8 @@ def _run_single_child(
                         duration_seconds=duration,
                         summary="",
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Timeout progress callback failed: %s", e)
 
             if is_timeout:
                 if child_api_calls == 0:
@@ -1794,8 +1798,8 @@ def _run_single_child(
                             entry["summary"] = entry["summary"] + reminder
                         else:
                             entry["stale_paths"] = mod_paths
-        except Exception:
-            logger.debug("file_state sibling-write check failed", exc_info=True)
+        except Exception as e:
+            logger.debug("file_state sibling-write check failed: %s", e, exc_info=True)
 
         # Per-branch observability payload: tokens, cost, files touched, and
         # a tail of tool-call results.  Fed into the TUI's overlay detail
@@ -1805,13 +1809,15 @@ def _run_single_child(
         _reasoning_tokens = getattr(child, "session_reasoning_tokens", 0)
         try:
             _files_read = list(file_state.known_reads(child_task_id))[:40]
-        except Exception:
+        except Exception as e:
+            logger.debug("file_state.known_reads failed for observability: %s", e)
             _files_read = []
         try:
             _files_written_map = file_state.writes_since(
                 "", wall_start, []
             )  # all writes since wall_start
-        except Exception:
+        except Exception as e:
+            logger.debug("file_state.writes_since failed for observability: %s", e)
             _files_written_map = {}
         _files_written = sorted(
             {
@@ -1936,8 +1942,8 @@ def _run_single_child(
         try:
             if hasattr(child, "close"):
                 child.close()
-        except Exception:
-            logger.debug("Failed to close child agent after delegation")
+        except Exception as e:
+            logger.debug("Failed to close child agent after delegation: %s", e)
 
 
 def _recover_tasks_from_json_string(
@@ -2241,7 +2247,8 @@ def delegate_task(
                     if spinner_ref:
                         try:
                             spinner_ref.print_above(completion_line)
-                        except Exception:
+                        except Exception as e:
+                            logger.debug("Spinner print_above failed: %s", e)
                             print(f"  {completion_line}")
                     else:
                         print(f"  {completion_line}")
@@ -2280,8 +2287,8 @@ def delegate_task(
                         else ""
                     ),
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Memory manager on_delegation notification failed: %s", e)
 
     # Fire subagent_stop hooks once per child, serialised on the parent thread.
     # This keeps Python-plugin and shell-hook callbacks off of the worker threads
@@ -2292,7 +2299,7 @@ def delegate_task(
     _parent_session_id = getattr(parent_agent, "session_id", None)
     try:
         from hermes_cli.plugins import invoke_hook as _invoke_hook
-    except Exception:
+    except ImportError:
         _invoke_hook = None
     # Aggregate child spend here so the parent's footer/UI reflect the true
     # cost of a subagent-heavy turn.  Port of Kilo-Org/kilocode#9448.  Each
@@ -2319,8 +2326,8 @@ def delegate_task(
                 child_status=entry.get("status"),
                 duration_ms=int((entry.get("duration_seconds") or 0) * 1000),
             )
-        except Exception:
-            logger.debug("subagent_stop hook invocation failed", exc_info=True)
+        except Exception as e:
+            logger.debug("subagent_stop hook invocation failed: %s", e)
 
     # Fold the aggregated child cost into the parent's session total.  This is
     # additive — each delegate_task call contributes its own children — so
@@ -2341,8 +2348,8 @@ def delegate_task(
                 parent_agent.session_cost_source = "subagent"
             if getattr(parent_agent, "session_cost_status", "unknown") in {None, "", "unknown"}:
                 parent_agent.session_cost_status = "estimated"
-        except Exception:
-            logger.debug("Subagent cost rollup failed", exc_info=True)
+        except Exception as e:
+            logger.debug("Subagent cost rollup failed: %s", e)
 
     total_duration = round(time.monotonic() - overall_start, 2)
 
@@ -2516,14 +2523,14 @@ def _load_config() -> dict:
         cfg = CLI_CONFIG.get("delegation") or {}
         if cfg:
             return cfg
-    except Exception:
+    except (ImportError, AttributeError, KeyError):
         pass
     try:
         from hermes_cli.config import load_config
 
         full = load_config()
         return full.get("delegation") or {}
-    except Exception:
+    except (ImportError, AttributeError, KeyError):
         return {}
 
 
@@ -2543,15 +2550,15 @@ def _build_top_level_description() -> str:
     """
     try:
         max_children = _get_max_concurrent_children()
-    except Exception:
+    except (ValueError, KeyError):
         max_children = _DEFAULT_MAX_CONCURRENT_CHILDREN
     try:
         max_depth = _get_max_spawn_depth()
-    except Exception:
+    except (ValueError, KeyError):
         max_depth = MAX_DEPTH
     try:
         orchestrator_on = _get_orchestrator_enabled()
-    except Exception:
+    except (ValueError, KeyError):
         orchestrator_on = True
 
     if max_depth >= 2 and orchestrator_on:
@@ -2634,7 +2641,7 @@ def _build_tasks_param_description() -> str:
     """Compose the 'tasks' parameter description with current concurrency limit."""
     try:
         max_children = _get_max_concurrent_children()
-    except Exception:
+    except (ValueError, KeyError):
         max_children = _DEFAULT_MAX_CONCURRENT_CHILDREN
     return (
         f"Batch mode: tasks to run in parallel (up to {max_children} for this "
@@ -2648,11 +2655,11 @@ def _build_role_param_description() -> str:
     """Compose the 'role' parameter description with current spawn-depth limit."""
     try:
         max_depth = _get_max_spawn_depth()
-    except Exception:
+    except (ValueError, KeyError):
         max_depth = MAX_DEPTH
     try:
         orchestrator_on = _get_orchestrator_enabled()
-    except Exception:
+    except (ValueError, KeyError):
         orchestrator_on = True
 
     if max_depth >= 2 and orchestrator_on:

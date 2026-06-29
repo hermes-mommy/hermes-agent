@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 from pathlib import Path
 from typing import Dict, Iterable, Optional, Set
 
@@ -118,7 +121,8 @@ def _toolset_enabled(config: Dict[str, object], toolset_key: str) -> bool:
                 continue
             try:
                 available_tools.update(resolve_toolset(toolset_name))
-            except Exception:
+            except Exception as e:
+                logger.debug("resolve_toolset(%r) failed: %s", toolset_name, e)
                 continue
 
         if target_tools and target_tools.issubset(available_tools):
@@ -242,7 +246,8 @@ def get_nous_subscription_features(
             account_info = get_nous_portal_account_info(force_fresh=True)
         else:
             account_info = get_nous_portal_account_info()
-    except Exception:
+    except Exception as e:
+        logger.debug("get_nous_portal_account_info failed: %s", e)
         account_info = None
 
     managed_tools_flag = bool(
@@ -739,7 +744,8 @@ def prompt_enable_tool_gateway(
 
     try:
         from hermes_cli.setup import prompt_choice
-    except Exception:
+    except Exception as e:
+        logger.debug("hermes_cli.setup import failed: %s", e)
         return set()
 
     # Build description lines showing full status of all gateway tools

@@ -66,8 +66,8 @@ def stream_diag_capture_response(agent: Any, diag: Dict[str, Any], http_response
         return
     try:
         diag["http_status"] = getattr(http_response, "status_code", None)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("stream_diag: failed to capture http_status: %s", e)
     try:
         headers = getattr(http_response, "headers", None) or {}
         captured: Dict[str, str] = {}
@@ -79,11 +79,12 @@ def stream_diag_capture_response(agent: Any, diag: Dict[str, Any], http_response
                 if val:
                     # Truncate single-value to keep log lines bounded.
                     captured[name] = str(val)[:120]
-            except Exception:
+            except Exception as e:
+                logger.debug("stream_diag: failed to read header %s: %s", name, e)
                 continue
         diag["headers"] = captured
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("stream_diag: failed to capture headers: %s", e)
 
 
 def flatten_exception_chain(error: BaseException) -> str:
@@ -144,7 +145,8 @@ def log_stream_retry(
     try:
         try:
             _summary = agent._summarize_api_error(error)
-        except Exception:
+        except Exception as e:
+            logger.debug("stream_diag: _summarize_api_error failed: %s", e)
             _summary = str(error)
         if _summary and len(_summary) > 240:
             _summary = _summary[:240] + "…"
@@ -152,7 +154,8 @@ def log_stream_retry(
         # Inner-cause chain (httpx errors hide under openai.APIError).
         try:
             _chain = flatten_exception_chain(error)
-        except Exception:
+        except Exception as e:
+            logger.debug("stream_diag: flatten_exception_chain failed: %s", e)
             _chain = type(error).__name__
 
         # Per-attempt counters and upstream headers.
@@ -179,8 +182,8 @@ def log_stream_retry(
                     )
                 if diag.get("http_status") is not None:
                     _http_status = str(diag.get("http_status"))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("stream_diag: failed to extract diag counters: %s", e)
 
         logger.warning(
             "Stream %s on attempt %s/%s — retrying. "
@@ -207,8 +210,8 @@ def log_stream_retry(
             _headers_repr,
             extra={"mid_tool_call": mid_tool_call},
         )
-    except Exception:
-        logger.debug("stream-retry log emit failed", exc_info=True)
+    except Exception as e:
+        logger.debug("stream-retry log emit failed: %s", e, exc_info=True)
 
 
 def emit_stream_drop(
@@ -255,8 +258,8 @@ def emit_stream_drop(
             started = diag.get("started_at")
             if started is not None:
                 _suffix = f" after {max(0.0, time.time() - float(started)):.1f}s"
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("stream_diag: failed to build after-Xs suffix: %s", e)
     try:
         agent._buffer_status(
             f"⚠️ {provider} stream {kind} ({type(error).__name__}){_suffix} "
@@ -266,8 +269,8 @@ def emit_stream_drop(
             f"stream retry {attempt}/{max_attempts} "
             f"after {type(error).__name__}"
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("stream_diag: failed to emit status/activity: %s", e)
 
 
 __all__ = [

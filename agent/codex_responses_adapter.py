@@ -164,7 +164,8 @@ def _summarize_user_message_for_log(content: Any) -> str:
         return summary
     try:
         return str(content)
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to stringify message content for log summary: %s", e)
         return ""
 
 
@@ -930,8 +931,8 @@ def _preflight_codex_api_kwargs(
         try:
             from tools.schema_sanitizer import strip_slash_enum
             normalized["tools"], _ = strip_slash_enum(normalized["tools"])
-        except Exception:
-            pass  # Best-effort — the caller-level sanitization should have handled it
+        except Exception as e:
+            logger.debug("strip_slash_enum best-effort sanitization skipped: %s", e)
 
     unexpected = sorted(key for key in api_kwargs if key not in allowed_keys)
     if unexpected:

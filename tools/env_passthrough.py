@@ -62,7 +62,12 @@ def _is_hermes_provider_credential(name: str) -> bool:
     """
     try:
         from tools.environments.local import _HERMES_PROVIDER_ENV_BLOCKLIST
-    except Exception:
+    except ImportError:
+        logger.debug(
+            "env passthrough: could not import _HERMES_PROVIDER_ENV_BLOCKLIST "
+            "from tools.environments.local; treating %r as non-credential.",
+            name,
+        )
         return False
     return name in _HERMES_PROVIDER_ENV_BLOCKLIST
 

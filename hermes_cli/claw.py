@@ -99,8 +99,10 @@ def _detect_openclaw_processes() -> list[str]:
             )
             if result.stdout.strip():
                 found.append(f"node.exe process with openclaw in command line (PID {result.stdout.strip()})")
-        except Exception:
-            pass
+        except Exception as e:
+            # Process-detection probe — fail-soft, but log so unexpected
+            # failures aren't completely silent.
+            logger.debug("OpenClaw process detection failed: %s", e)
     else:
         try:
             result = subprocess.run(
@@ -212,8 +214,9 @@ def _load_migration_module(script_path: Path):
     sys.modules[spec.name] = mod
     try:
         spec.loader.exec_module(mod)
-    except Exception:
+    except Exception as e:
         sys.modules.pop(spec.name, None)
+        logger.debug("Failed to load OpenClaw migration module: %s", e)
         raise
     return mod
 

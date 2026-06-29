@@ -261,3 +261,13 @@ Research wave complete: **17 PASS + 1 BLOCKED (r08)**, but r08's BLOCKED is a **
 **Ready for PHASE 3 planner gate.** The planner will encode the 18 corrections into per-wave scaffolds so sub-agents implement against ACTUAL symbols/line-numbers, not the plan's shorthand.
 
 Footer: Guinevere, 2026-06-29, PHASE 2 synthesis complete, 18 corrections consolidated, parent-verified.
+
+---
+
+## Addendum — v3.1 Status Update (2026-06-29)
+
+**Module wiring: 17/17 wired.** The original P24 implementation wired 14 modules into the Hermes agent runtime via `agent_init.py`. v3.1 WAVE 1 wired the remaining 3 standalone modules (consciousness, surveillance, observability) via a new append-only `Group G` block, completing 17/17. The prompt's template `wire.py` referenced 7 APIs that do not exist; each was rewritten against the verified real API surface (ConsciousnessLoop constructor, create_buffer, init_sentry env-based, existing METRIC_* objects). See `evidence/wiring-fix-verification.md`.
+
+**Forbidden patterns: 0 across the full codebase.** v3.1 WAVE 2 swept agent/+tools/+gateway/+hermes_cli/+guinevere/ (228 files). Parent-grep ground truth (the prior audit undercounted by 3.8x-7.3x): 155 `# type: ignore` -> 0; 1700 bare `except Exception:` -> 0; 1 bare `except:` -> 0. Operator-approved strategy: root-cause type fixes + narrow-to-specific-exceptions-with-logging (library-aware: redis->RedisError, asyncpg->PostgresError, httpx->HTTPError, etc.). See `evidence/forbidden-patterns-sweep-verification.md`.
+
+**Tests: 556 passing (541 baseline + 15 new wire tests), 0 failures, 0 regressions across all 5 waves.**

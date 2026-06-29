@@ -836,10 +836,11 @@ def check_image_generation_requirements() -> bool:
             try:
                 if provider.is_available():
                     return True
-            except Exception:
+            except Exception as e:
+                logger.debug("Plugin provider %s unavailable: %s", provider, e)
                 continue
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Plugin image gen discovery failed: %s", e)
 
     return False
 

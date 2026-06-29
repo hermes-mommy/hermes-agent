@@ -42,6 +42,7 @@ import logging
 import os
 import re
 import shutil
+import sys
 import tarfile
 import tempfile
 import time
@@ -612,9 +613,12 @@ def rollback(backup_id: Optional[str] = None) -> Tuple[bool, str, Optional[Path]
                     raise tarfile.TarError(
                         f"refusing to extract unsafe path: {name!r}"
                     )
-            try:
-                tf.extractall(str(skills), filter="data")  # type: ignore[call-arg]
-            except TypeError:
+            # Python 3.12+ supports filter='data' for safer extraction.
+            # Fall back to the unfiltered call for older interpreters but
+            # still reject absolute paths and .. components defensively.
+            if sys.version_info >= (3, 12):
+                tf.extractall(str(skills), filter="data")
+            else:
                 # Python < 3.12 — no filter kwarg
                 tf.extractall(str(skills))
     except (OSError, tarfile.TarError) as e:

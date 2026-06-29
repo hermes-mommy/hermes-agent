@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import json
+import logging
 import re
 import sys
 import urllib.error
@@ -31,6 +32,8 @@ from pathlib import Path
 from typing import Any, Iterable, Optional
 
 from hermes_constants import get_hermes_home
+
+logger = logging.getLogger(__name__)
 
 OSV_BATCH_URL = "https://api.osv.dev/v1/querybatch"
 OSV_VULN_URL = "https://api.osv.dev/v1/vulns/{vid}"
@@ -90,7 +93,8 @@ def _discover_venv() -> list[Component]:
     for dist in distributions():
         try:
             name = (dist.metadata["Name"] or "").strip()
-        except Exception:
+        except (KeyError, OSError, AttributeError) as e:
+            logger.debug("skipping dist with unreadable name metadata: %s", e)
             continue
         version = (dist.version or "").strip()
         if not name or not version:
@@ -145,7 +149,8 @@ def _parse_pyproject_pins(text: str) -> list[tuple[str, str]]:
         return []
     try:
         data = tomllib.loads(text)
-    except Exception:
+    except tomllib.TOMLDecodeError as e:
+        logger.debug("skipping invalid pyproject.toml: %s", e)
         return []
     deps: list[str] = []
     project = data.get("project") or {}
@@ -259,7 +264,8 @@ def _discover_mcp() -> list[Component]:
     """Pinned MCP server packages from ``config.yaml``."""
     try:
         from hermes_cli.mcp_config import _get_mcp_servers
-    except Exception:
+    except ImportError as e:
+        logger.debug("hermes_cli.mcp_config unavailable: %s", e)
         return []
 
     out: list[Component] = []
