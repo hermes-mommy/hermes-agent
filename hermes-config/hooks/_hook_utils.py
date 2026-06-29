@@ -269,11 +269,11 @@ def timing_guard(max_ms: float, label: str = "operation") -> Generator[None, Non
 
     Example:
         start = time.perf_counter()
-        with timing_guard(50.0, "hard_stop"):
+        with timing_guard(50.0, "safety_scan"):
             # ... fast operations ...
         elapsed_ms = (time.perf_counter() - start) * 1000
         if elapsed_ms > 50.0:
-            logger.warning("hard_stop exceeded %dms budget: %.2fms", 50, elapsed_ms)
+            logger.warning("safety_scan exceeded %dms budget: %.2fms", 50, elapsed_ms)
     """
     _ = (max_ms, label)  # markers consumed by caller logic
     yield
