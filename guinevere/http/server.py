@@ -49,6 +49,31 @@ async def _noop_placeholder() -> None:
         pass
 
 
+def _build_mock_llm_router() -> Any:
+    """Build a MockLLMRouter for D3 (mock-only LLM in consciousness loop).
+
+    Returns an object with an async ``chat()`` method that returns
+    deterministic responses.  Used for local development and tests.
+    """
+
+    class _MockLLMRouter:
+        """Deterministic mock LLM router — D3 compliance."""
+
+        async def chat(
+            self,
+            messages: list[dict[str, str]],
+            task_type: str = "CORE_REASONING",
+            max_tokens: int = 256,
+        ) -> dict[str, Any]:
+            return {
+                "content": '{"thought": "I am thinking.", "quality_score": 0.8}',
+                "usage": {"input_tokens": 10, "output_tokens": 20},
+                "model": "mock-llm",
+            }
+
+    return _MockLLMRouter()
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Lifespan context manager — starts background TaskGroup, yields, shuts down.
@@ -105,18 +130,40 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
                 logger.warning("redis_client_creation_failed", exc_info=True)
                 app.state.redis_client = None
 
-    # ── Phase 4: start TaskGroup with placeholder tasks ───────────────
+    # ── Phase 4: start TaskGroup with real M3 + placeholder M16 ──────
     _shutdown_event = asyncio.Event()
     app.state.shutdown_event = _shutdown_event
 
     async with asyncio.TaskGroup() as tg:
         app.state.task_group = tg
 
-        # M3 consciousness substrates wire here (W6)
-        consciousness_task = tg.create_task(
-            _noop_placeholder(),
-            name="m3-consciousness-placeholder",
-        )
+        # M3 consciousness loop (W6 — replaces placeholder).
+        # Construct with MockLLMRouter (D3) and settings (fail-soft).
+        try:
+            from guinevere.consciousness import ConsciousnessLoop
+
+            _mock_router = _build_mock_llm_router()
+            _consciousness_settings = getattr(settings, "consciousness", None)
+            _consciousness_loop = ConsciousnessLoop(
+                llm_router=_mock_router,
+                settings=settings,
+            )
+            _consciousness_loop.on_session_start()
+
+            consciousness_task = tg.create_task(
+                _consciousness_loop.run(),
+                name="m3-consciousness",
+            )
+            app.state.consciousness_loop = _consciousness_loop
+            logger.info("m3_consciousness_wired", substrates=len(_consciousness_loop.substrate_names))
+        except Exception:
+            logger.warning("m3_consciousness_wire_failed", exc_info=True)
+            consciousness_task = tg.create_task(
+                _noop_placeholder(),
+                name="m3-consciousness-fallback",
+            )
+            app.state.consciousness_loop = None
+
         app.state.consciousness_task = consciousness_task
 
         # M16 surveillance consumer wires here (W5)
@@ -126,7 +173,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
         app.state.surveillance_task = surveillance_task
 
-        logger.info("task_group_started", tasks=["m3-placeholder", "m16-placeholder"])
+        logger.info("task_group_started", tasks=["m3-consciousness", "m16-placeholder"])
 
         yield  # ── FastAPI serves requests here ──
 
@@ -140,6 +187,11 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         # before the cancel. Instant-cancel is correct for placeholders.
         logger.info("shutdown_signaled")
         _shutdown_event.set()
+
+        # Gracefully stop the consciousness loop (signals substrates).
+        _cl = getattr(app.state, "consciousness_loop", None)
+        if _cl is not None:
+            _cl.on_session_end()
 
         # Cancel all tasks in the group; the TaskGroup will wait for
         # them to finish (CancelledError) before exiting.
