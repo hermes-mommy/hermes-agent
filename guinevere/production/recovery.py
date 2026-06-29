@@ -135,7 +135,7 @@ WantedBy=multi-user.target
 
 
 def wire(agent: Any) -> None:
-    """Wire auto-recovery into the agent lifecycle.
+    """Wire circuit breakers + auto-recovery into the agent lifecycle.
 
     This function appends recovery hooks to the agent's initialization.
     Parent-owned agent_init.py should NOT be edited — this wire() function
@@ -147,8 +147,13 @@ def wire(agent: Any) -> None:
     recovery = AutoRecovery()
     recovery.setup_signal_handlers()
 
-    # Attach recovery manager to agent for lifecycle integration
+    # Attach circuit-breaker set + recovery manager to agent for lifecycle
+    # integration. The breaker set is consulted by M3 consciousness + the
+    # HTTP lifespan before expensive operations (cost/loop/dream/sub-agent).
     if hasattr(agent, "__dict__"):
+        from guinevere.production.circuit_breakers import CircuitBreakerSet
+
+        agent._circuit_breaker_set = CircuitBreakerSet()
         agent._auto_recovery = recovery
 
     logger.info(

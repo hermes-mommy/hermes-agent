@@ -4,7 +4,7 @@ Absorbs and replaces src/self_improve/promotion.py keyword-drift approach
 with compositional drift (embedding-based cos_sim at 0.68 threshold).
 
 ADR-061: cos_sim(new, baseline) with hysteresis at 0.68.
-ADR-062: No HARD_STOP patterns.
+ADR-062: runtime safety-net patterns removed (paradigm shift — structural only).
 P5 inheritance: PromotionPolicy thresholds (3 successes, 0.7 failure ratio,
 5 min evaluations) carried forward as defaults.
 """
