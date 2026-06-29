@@ -51,7 +51,7 @@
 | P21 | Voice Interface | 🟣 DEFINITION COMPLETE — IMPL HOLD | TBD | TBD | 0h (planning) | P2+P8 + P20-gate | P20 prod-pass | Definition complete (plan+9 research+2 audit rounds); impl waves P21-001..009 held until P20 pass |
 | P22 | Life Integration Hub | 🟢 DEPLOYED — AUDIT REMEDIATED + AUDITOR PASS (32/32) — POST-DEPLOY VERIFIED LIVE (scp 2026-06-28) | 19 core + 13 adapters + 972 tests | $0 | ~100h (impl+fix+deploy done) | P8 | Deployed via scp (operator-directed, no git push). 5 CRITICAL (F01-F05) + 10 HIGH + 17 MEDIUM all live-verified on VPS: Discord cmds registered (COMMAND_SPECS=41), ConsentGate fail-closed, unknown→L2_WRITE default, AuditWriter wired to DB (79 hash-chained rows), rate limiting live (429 reproduced), WORM TRUNCATE revoked. Service active NRestarts=0, P20 cycle 3015+ no regression. 8/8 deploy auditors PASS. Local commit 4c1c7cc (unpushed). Caveats: GUINEVERE_API_KEY unprovisioned, consent_checker=None (L2+ blocked until wired), F10 x_poster untracked. See brutal-2026-06-28/deploy-evidence.md |
 | P23 | Execution Layer (8 Executors) | 🟣 REPLANNED — AUDITOR PASS — IMPL READY | 16 waves | TBD | 0h (planning) | P24 Module 8 | None — execution-layer-only |
-| P24 | Hermes Native Fork v3.0 (17 Built-Ins) | 🟣 REPLANNED v3.0 — AUDITOR PASS round-6 — IMPL READY | 20 waves | TBD | 0h (planning) | P20-pass | None — independent fork |
+| P24 | Hermes Native Fork v3.0 | COMPLETE — 20 waves, 17 modules, 541 tests, src/→0, 0 forbidden patterns | FULL RUNTIME COMPLETE WITH EXPLICIT OPERATOR-PROVISIONING BLOCKERS (D2 local-only, D3 mock-LLM) | feat/p24-hermes-fork (25 commits, unpushed) | 0h (planning) | P20-pass | ⛔ VPS deploy / Discord live-connect / real LLM (D2/D3) |
 | **Total** | | | **327/343+** | **$29+** | **503-1008h+** | | |
 
 ## P0: Infrastructure Foundation (29 steps)
@@ -1081,7 +1081,7 @@ P22 is **implemented** (19 core files in `src/life_integrations/`, 13 adapters, 
 | P21 Voice Interface | TBD | TBD | TBD | TBD | TBD |
 | P22 Life Integration Hub | 🟢 AUDIT REMEDIATED + AUDITOR PASS | 19 core + 13 adapters + 972 tests | ~100h | 32 findings FIXED + audited | Deploy + post-deploy audit |
 | P23 Execution Layer | REPLANNED — AUDITOR PASS | 16 waves | 0h (planning) | impl-ready | impl-ready |
-| P24 Hermes Native Fork v3.0 | REPLANNED v3.0 — AUDITOR PASS round-6 | 20 waves | 0h (planning) | impl-ready | impl-ready |
+| P24 Hermes Native Fork v3.0 | COMPLETE — 20 waves, 17 modules, 541 tests | 20 waves | FULL RUNTIME COMPLETE (D2/D3 blockers) | feat/p24-hermes-fork (25 commits, unpushed) | feat/p24-hermes-fork |
 
 **Critical path** (P0→P1→P3→P5→P8): 228-456h = 57-114 days at 4h/day
 **With parallels** (P2∥P1, P6∥P3-5, P7∥P1-3, P4∥P5): no added duration
