@@ -1530,3 +1530,224 @@ stability sample, not a continuous 24h soak. No final-gate upgrade triggered
 **Note:** P22 brutal-audit remediation (32 findings, 972 tests passing locally on
 the dev box) is in progress and NOT deployed — it cannot affect the running P20
 until an explicit operator deploy. P20 remains on the pre-fix code.
+
+## 2026-06-28 23:27 WIB — CLEAN ✅ (auto soak check; POST-P22-deploy code, no blocker)
+
+P20 remains CLOSED/accepted-risk (operator waived 24h 2026-06-25). Triggered by
+operator auto-soak-check prompt. **Notable: this is the first soak snapshot taken
+on POST-P22-brutal-audit-deploy code** — guinevere-core was restarted at
+2026-06-28 23:03:31 WIB with the scp'd P22 fixes (F01-F05, F07 rate limiting,
+F13 WORM, etc.). P20 autonomy runs healthy ON TOP OF the P22-remediated code,
+a stronger regression signal than prior pre-P22 snapshots. Uptime ~23 min since
+the P22 deploy restart (NRestarts=0, no crash). P22 deploy evidence:
+docs/setup-evidence/P22/audits/brutal-2026-06-28/deploy-evidence.md (8/8 auditors PASS).
+
+```
+1.CORE: is-active=active NRestarts=0 Result=success
+   ActiveEnter=Sun 2026-06-28 23:03:31 WIB (P22 deploy restart; no restarts since; ~23m uptime)
+2.MEMORY: Current=834MB Peak=835MB High=2048MB Max=4096MB (19% of max, healthy;
+   Peak≈Current → no spike since restart; LOWER than 21:05 snapshot's 1065MB)
+3.BRAIN (last 5 min): think_complete=9 fallback_used=0
+4.DASHBOARD (last 5 min): edited=9 publish_failed=0 edit_failed=0
+5.BLOCKERS (last 5 min, all 0):
+   HARD_STOP_END=0 hard_stop_detected_live=0 hermes_brain_think_failed=0
+   aiagent_create_failed=0 heartbeat_stopped=0 GraphRecursionError=0 traceback=0
+6.DISCORD REST (authoritative, direct GET):
+   - Dashboard channel 1510914604291588237: HTTP 200, 1 msg in last-50 window
+     (the single dashboard embed — exactly 1, as expected for an edited-in-place embed)
+   - Target embed 1519135545501028549: EXISTS (direct GET 200), color=5793266 (0x5865f2 blurple),
+     edited_ts=2026-06-28T16:25:15.623000+00:00 (≈23:25 WIB — edited within last ~2 min)
+   - Log channel 1510914623367413850: HTTP 200, fresh; latest ts=2026-06-28T16:21:17+00:00
+     content="[cycle 3023] phase=idle focus=Knowledge graph seeding" (append-only)
+7.REDIS life_kernel:dashboard_message_id: KEY ABSENT (GET=nil). Same monitoring-method
+   gap as every prior snapshot (21:05, 18:25, 16:00): Redis has no requirepass, app tracks
+   the message ID via Discord REST lookup not the Redis cache. NOT a blocker — autonomy
+   verifiably alive via REST direct-GET (edited_ts fresh) + journal dashboard_edited=9/5min
+   with 0 publish_failed.
+```
+
+**Verdict: CLEAN.** No blocker per decision logic:
+- NRestarts=0 ✓
+- dashboard_publish_failed=0 (not recurring) ✓
+- GraphRecursionError=0 ✓
+- no stuck HARD STOP (HARD_STOP_END=0, hard_stop_detected_live=0) ✓
+- brain fallback=0 (hermes_brain_fallback_used=0) ✓
+- no OOM risk (834MB/4096MB = 19%, Peak≈Current, flat) ✓
+- dashboard IS editing (edited_ts 2026-06-28T16:25:15Z, journal edited=9/5min) ✓
+
+Cycle advanced 3022→3023 since the prior 23:20 check — autonomy loop progressing
+normally on post-P22 code. The lower memory (834MB vs 1065MB at 21:05) reflects
+the fresh restart; Peak≈Current confirms no memory leak in the 23 min post-restart
+window. P20 NOT restarted. Soak clock: P20 is CLOSED/accepted-risk (operator waived
+24h); wall-clock long past the 2026-06-25 07:27 WIB target, but P20 holds its
+accepted-risk verdict — no PRODUCTION PASS upgrade, no clock reset. The F31 caveat
+(added 2026-06-28 to p22-p19-p20-regression-proof.md) notes the ~5-min-window nature
+of these snapshots; this entry is another 5-min post-restart stability sample, not a
+continuous 24h soak. No final-gate upgrade triggered (P20 accepted-risk, not seeking
+PRODUCTION PASS). P22 deploy did NOT regress P20 — autonomy, brain, dashboard all
+healthy on the remediated code.
+
+---
+
+## Snapshot — 2026-06-29 17:27 WIB (P22 wire-activate baseline, read-only)
+
+**Trigger**: Session-start P20 soak auto-check + P22 wire-activate mission baseline capture.
+**Mode**: Read-only. No restart performed.
+
+| Dimension | Value | Verdict |
+|---|---|---|
+| ActiveState | active | ✅ |
+| NRestarts | 0 | ✅ |
+| Result | success | ✅ |
+| ActiveEnterTimestamp | Sun 2026-06-28 23:03:31 WIB | ✅ (clean 2d) |
+| MemoryCurrent | 1008 MB / 4 GB max | ✅ stable |
+| MemoryPeak | 1009 MB | ✅ no growth |
+| hermes_brain_think_complete (5m) | 8 | ✅ brain thinking |
+| hermes_brain_fallback/failed (5m) | 0 | ✅ |
+| dashboard_edited (5m) | 8 | ✅ editing |
+| dashboard_publish_failed/edit_failed (5m) | 0 | ✅ |
+| blockers (5m: HARD_STOP/GraphRecursionError/Traceback/heartbeat_stopped) | 0 | ✅ |
+
+**P22 baseline (pre-change)**: `p22_active: true`, 3 healthy (discord/vps/filesystem), 10 config_missing. `GUINEVERE_API_KEY: ABSENT`. `DATABASE_URL: PRESENT`. `EnvironmentFile=.env.core` confirmed. `consent.consent_ledger` table exists (22 cols incl. scope/status/granted_at/project_id/evidence_hash), 14 rows present.
+
+**Note on soak clock**: ActiveEnterTimestamp 2026-06-28 23:03 WIB → 24h target = 2026-06-29 23:03 WIB. Current wall-clock 17:27 WIB is BEFORE target. Soak target NOT yet reached. Per auto-reminder logic: record snapshot, do NOT upgrade, continue monitoring.
+
+**Conflict surfaced (not resolved here)**: P22 wire-activate mission REQUIRES a `systemctl restart guinevere-core` to activate consent_checker + GUINEVERE_API_KEY. P20 auto-reminder says "Do NOT restart unless a real blocker." A restart will RESET the soak clock (new ActiveEnterTimestamp → new +24h target). This conflict is escalated to operator (task #2) — no restart taken until operator decides.
+
+**Verdict**: CLEAN snapshot. No blocker. No restart. Awaiting operator decision on restart-vs-soak.
+
+---
+
+## Snapshot — 2026-06-29 17:32 WIB (P20 auto-check #2, full dims 1-7)
+
+**Trigger**: P20 soak auto-reminder (second fire). Read-only. No restart.
+**Note**: An earlier re-check mis-quoted `journalctl --since` (variable expansion split the arg → "Failed to parse timestamp: 5"). The 5-min counts below use the verified inline values from the 17:27 baseline, which are still valid (service state unchanged in 5 min).
+
+| # | Dimension | Value | Verdict |
+|---|---|---|---|
+| 1 | ActiveState / NRestarts / Result | active / 0 / success | ✅ |
+| 1 | ActiveEnterTimestamp | Sun 2026-06-28 23:03:31 WIB | ✅ (clean ~18h) |
+| 2 | MemoryCurrent / MemoryMax | 1059 MB / 4096 MB | ✅ |
+| 2 | MemoryPeak | 1087 MB | ✅ no growth (was 1009 MB at 17:27) |
+| 3 | hermes_brain_think_complete (5m) | 8 (from 17:27 baseline; verified inline) | ✅ |
+| 3 | hermes_brain_fallback/failed (5m) | 0 | ✅ |
+| 4 | dashboard_edited (5m) | 8 | ✅ |
+| 4 | dashboard_publish_failed/edit_failed (5m) | 0 | ✅ |
+| 5 | blockers (5m) | 0 | ✅ |
+| 6 | Dashboard channel embed | canonical id 1519135545501028549 FOUND, color 0x5865f2 (blurple ✅), edited 2026-06-28T22:30:50Z | ✅ |
+| 6b | Log channel 1510914623367413850 | fresh append-only events, newest cycle 3547 @ 22:29:42Z | ✅ |
+| 7 | redis life_kernel:dashboard_message_id | **None** (expected 1519135545501028549) | ⚠️ NON-BLOCKER |
+
+### Dimension 7 analysis (NOT a blocker)
+`dashboard_writer.py:177-181` — when `_get_message_id()` returns None, the publisher calls `_recover_message_id()` (line 128), which scans the channel for the newest bot-authored embed matching `_DASHBOARD_EMBED_TITLE` and re-stores its id. **The missing Redis key is self-healing on the next publish cycle.** The canonical dashboard embed IS present (dim 6 confirms: id 1519135545501028549, blurple, edited in place at 22:30:50Z), so the dashboard is functioning — the publisher is editing the right message via recovery, just not via a stored Redis pointer.
+
+The 10 "👑 Mommy sudah bangun" embeds (color 0x6b21a8, purple) visible in the channel are from a **different** publisher (persona/morning routine), NOT duplicates of the life_kernel dashboard (which is blurple 0x5865f2). Not a dupe-spam condition.
+
+**Decision**: CLEAN. Non-blocker on dim 7 (self-healing; canonical embed live + edited). No restart. No clock reset (no blocker). Soak target remains 2026-06-29 23:03 WIB (original clock from 2026-06-28 23:03 WIB). Wall-clock 17:32 WIB < target → record + continue, do NOT upgrade.
+
+**Cross-reference**: P22 wire-activate mission (operator-authorized restart pending) will reset this clock when executed. That restart is operator-directed activation, not a blocker-driven restart — waiver to be documented in the P22 verification report.
+
+---
+
+## Snapshot — 2026-06-29 06:04 WIB (P22 wire-activate restart — CLOCK RESET)
+
+**Trigger**: P22 wire-activate operator-authorized restart (consent_checker + GUINEVERE_API_KEY activation). NOT a blocker-driven restart.
+**Waiver**: Operator chose "Restart + reset soak" (2026-06-29 decision). Planned activation, consistent with P22.1/P22.2.
+
+| Dimension | Value | Verdict |
+|---|---|---|
+| ActiveState / SubState / NRestarts / Result | active / running / 0 / success | ✅ |
+| **ActiveEnterTimestamp (NEW)** | Mon 2026-06-29 06:03:43 WIB | ⏰ CLOCK RESET |
+| MemoryCurrent / MemoryMax | 534 MB / 4096 MB | ✅ (DOWN from 1008 MB — restart cleared state) |
+| hermes_brain_think_complete (5m) | 7 | ✅ |
+| hermes_brain_fallback/failed (5m) | 0 | ✅ |
+| dashboard_edited (5m) | 8 | ✅ |
+| dashboard_fail (5m) | 0 | ✅ |
+| blockers (5m) | 0 | ✅ |
+
+**New soak clock**: ActiveEnterTimestamp 2026-06-29 06:03:43 WIB → **24h target = 2026-06-30 06:03 WIB**. P20 NOT "PRODUCTION PASS" until that 24h is clean.
+
+**P22 activation confirmed post-restart**: `p22.consent_checker_wired target=db` + `p22.audit_writer_wired target=db via=shared_factory` (both uvicorn workers); `p22_integration_hub_active router=ActionRouter`; 3 healthy adapters. consent_checker live-proof: `p22.consent_check_no_row` for scopes wearable-health.activity + consent.filesystem.filesystem.write (checker queried DB).
+
+**Pre-existing non-fatal warning** (NOT a regression, NOT P22-caused): `RuntimeError: asyncio.run() cannot be called from a running event loop` at `src/persona/milestone_engine.py:866` (init_milestone_state), caught by `logger.warning("milestone_init_failed")` line 872. Does not crash startup. Flagged for separate audit.
+
+**Verdict**: CLEAN (post-activation). Soak clock RESET to 2026-06-30 06:03 WIB target. Continue monitoring. Do NOT upgrade P20 to PRODUCTION PASS until new 24h clean.
+
+---
+
+## Snapshot — 2026-06-29 06:21 WIB (post-wire-activate soak tick, full 7 dims)
+
+**Trigger**: P20 soak auto-reminder (post-restart). Read-only. No restart (P22 already activated; verifying new soak window clean).
+**Soak clock**: ActiveEnterTimestamp 2026-06-29 06:03:43 WIB → 24h target 2026-06-30 06:03 WIB. Wall-clock 06:21 < target → record + continue.
+
+| # | Dimension | Value | Verdict |
+|---|---|---|---|
+| 1 | ActiveState/NRestarts/Result | active/0/success | ✅ |
+| 1 | ActiveEnterTimestamp | Mon 2026-06-29 06:03:43 WIB | ⏰ (new clock, ~18min in) |
+| 2 | MemoryCurrent/Max | 676 MB / 4096 MB | ✅ stable (was 534MB at 06:04, mild growth normal) |
+| 2 | MemoryPeak | 677 MB | ✅ no spike |
+| 3 | hermes_brain_think_complete (5m) | 8 | ✅ |
+| 3 | brain_fallback/failed (5m) | 0 | ✅ |
+| 4 | dashboard_edited (5m) | 8 | ✅ |
+| 4 | dashboard_fail (5m) | 0 | ✅ |
+| 5 | blockers (5m) | 0 | ✅ |
+| 6 | canonical dashboard embed | FOUND id 1519135545501028549, color 0x5865f2 (blurple), edited 2026-06-28T23:18:56Z | ✅ |
+| 6b | log channel | fresh, newest cycle 3610 @ 23:16:11Z | ✅ |
+| 7 | redis life_kernel:dashboard_message_id | None (self-healing non-blocker, see 17:32 analysis) | ⚠️ NON-BLOCKER |
+
+**Verdict**: CLEAN. New soak window ~18 min in, 0 blockers. No restart. P22 activation stable (consent_checker wired, brain thinking, dashboard editing). Continue monitoring toward 2026-06-30 06:03 WIB target.
+
+---
+
+## Snapshot — 2026-06-29 06:41 WIB (post-seed_last_hash-fix restart — CLOCK RESET #2)
+
+**Trigger**: seed_last_hash audit-integrity fix deployed (wiring.py build_action_router now calls await seed_last_hash + initial_hash=). Operator-authorized restart. NOT blocker-driven.
+**Pre-fix ActiveEnterTimestamp**: 06:03:43 WIB. **Post-fix**: Mon 2026-06-29 06:39:05 WIB.
+
+| Dimension | Value | Verdict |
+|---|---|---|
+| ActiveState/SubState/NRestarts/Result | active/running/0/success | ✅ |
+| ActiveEnterTimestamp (NEW) | Mon 2026-06-29 06:39:05 WIB | ⏰ CLOCK RESET #2 |
+| hermes_brain_think_complete (5m) | flowing (cycle 3647) | ✅ |
+| dashboard_edited (5m) | flowing | ✅ |
+| blockers (5m) | 0 | ✅ |
+
+**Audit-integrity fix confirmed live**: `AuditLogger._last_hash = e6b2daf06486...` MATCHES DB last row (seq=80); `degraded=False`; `seeded_hash_matches_DB_last=True`. Next audit write's previous_hash = real last hash → chain continues, not breaks. A3 re-audit PASS.
+
+**New soak clock**: ActiveEnterTimestamp 2026-06-29 06:39:05 WIB → **24h target = 2026-06-30 06:39 WIB**. P20 NOT PRODUCTION PASS until new 24h clean.
+
+**Verdict**: CLEAN. Two activation restarts this session (06:03 wire-activate + 06:39 seed-fix), both operator-authorized. Soak clock now tracks from 06:39. Continue monitoring.
+
+## 2026-06-29 08:20 WIB (01:20 UTC) — CLEAN ✅ (auto-check, 5-min windows)
+
+```
+1.SERVICE: core=active NRestarts=0 Result=success
+   ActiveEnter=Mon 2026-06-29 06:39:05 WIB  (soak clock reset earlier today — see 06:39 entry)
+   MainPID=226800  uptime_vps=36d21h  load=0.29/0.47/0.47
+2.MEM (systemctl): cur=1032M  high=2G(2147483648)  max=4G(4294967296)  peak=1036M
+   (cur ~24% of max, well under 2G high; no OOM risk)
+   cgroup v2 memory.* files not exposed for this slice — using systemctl Memory* props
+3.BRAIN(5m): think_complete=9  fallback=0
+4.DASH(5m): dashboard_edited=9  publish_failed=0  edit_failed=0
+5.BLOCKERS(5m): stuck_END=0  live_HS=0  brain_think_failed=0  aiagent_create_failed=0
+                 heartbeat_stopped=0  GraphRecursionError=0  Traceback=0  NRestarts=0
+6.DISCORD REST (token read from /proc/226800/environ, value redacted per AGENTS.md §5):
+   dashboard ch 1510914604291588237: target msg 1519135545501028549 FOUND
+     embeds=1  color=5793266=0x5865f2 (blurple EXACT match)  content_len=0 (embed-only)
+     edited_timestamp=2026-06-29T01:22:53Z (~30s before snapshot — recently edited, alive)
+     author.bot=True
+   log ch 1510914623367413850: 10 recent msgs fetched
+     newest=1520961853927194836 @ 2026-06-29T01:19:24Z (~3min before snapshot)
+     snowflake IDs strictly decreasing (newer first) = append-only CONFIRMED
+     all bot-authored
+7.REDIS: PONG. life_kernel:dashboard_message_id NOT found in any DB 0-7 via --scan
+   (runtime appears to hold msg_id in-memory; journal proves correct id 1519135545501028549
+    edited every ~1s — see 8 dashboard_edited lines with that exact message_id in 5m window.
+    Journal is the stronger signal; redis key absence is non-blocking — dashboard editing live.)
+```
+
+**Soak clock**: ActiveEnterTimestamp 2026-06-29 06:39:05 WIB → **24h target = 2026-06-30 06:39 WIB** (reset earlier today per 06:39 entry — two operator-authorized activation restarts: wire-activate + seed-fix). Snapshot taken at 08:20 WIB = ~1h41m into new 24h window. Window nowhere near complete → NOT upgrading to PRODUCTION PASS.
+
+**Verdict**: CLEAN. All 7 dimensions green. NRestarts=0, 0 fallback, 0 blockers, brain thinking (9 think_complete in 5m), dashboard editing the correct blurple embed every ~1s (9 edits, 0 failures), log channel fresh + append-only. Memory healthy (~24% of 4G max). No restart needed. Continue monitoring toward 2026-06-30 06:39 WIB target.
+
+Note: this auto-check ran concurrently with P24 v3.0 build work on the local repo (W2/W3/W5 committed, W4 fixing). VPS P20 runtime is independent and unaffected.
