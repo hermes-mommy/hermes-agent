@@ -1685,6 +1685,29 @@ def init_agent(
         agent._peer_monitor = None
     # ── end Group C wire ───────────────────────────────────────────────────
 
+    # ── Group D consolidated wire (P24 fork, W12+W13+W14) ──────────────────
+    # Tool registry (M8), life kernel (M9), self-modification (M10). Each
+    # fail-soft: a missing or broken module never aborts ``init_agent``.
+    # W12's tool registry also auto-registers its 9 backends via the Hermes
+    # ToolRegistry AST discovery (tools/registry.py) — this wire attaches the
+    # guinevere-side registry to the agent for consciousness/HTTP access.
+    try:
+        from guinevere.tools.registry import wire as _wire_tools
+        _wire_tools(agent)
+    except Exception:
+        agent._guinevere_tool_registry = None
+    try:
+        from guinevere.life_kernel.simple_tools import wire as _wire_life_kernel
+        _wire_life_kernel(agent)
+    except Exception:
+        agent._life_kernel = None
+    try:
+        from guinevere.self_modify.mutation import wire as _wire_self_modify
+        _wire_self_modify(agent)
+    except Exception:
+        agent._mutation_engine = None
+    # ── end Group D wire ───────────────────────────────────────────────────
+
 
 
 __all__ = ["init_agent"]
