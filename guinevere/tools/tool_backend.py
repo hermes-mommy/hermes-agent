@@ -109,7 +109,7 @@ class _DurableQueue:
         """Best-effort enqueue.  Returns True if persisted."""
         # Try Redis first (fast path)
         try:
-            import redis.asyncio as aioredis  # type: ignore[import-untyped]
+            import redis.asyncio as aioredis
 
             if self._redis is None:
                 self._redis = aioredis.from_url(
@@ -124,7 +124,7 @@ class _DurableQueue:
 
         # Try PG (slow path)
         try:
-            import asyncpg  # type: ignore[import-untyped]
+            import asyncpg
 
             if self._pg_conn is None:
                 self._pg_conn = await asyncpg.connect(

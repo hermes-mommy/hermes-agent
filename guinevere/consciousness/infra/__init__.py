@@ -1,6 +1,5 @@
-"""Consciousness infrastructure — ported clean utilities from src/loops/.
-
-Re-exports the 4 modules required by M10 (optimizer.py / W14):
+"""Consciousness infrastructure — clean utilities ported from the legacy loop
+subsystem (now deleted). Re-exports the 4 modules required by M10 (W14):
 AuditWriter, IterationBudget, ReflectionExtractor, TestingGate.
 
 All public APIs are preserved exactly so W14 can import from here.
