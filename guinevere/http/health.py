@@ -66,7 +66,7 @@ async def build_liveness() -> dict[str, Any]:
     }
 
 
-async def build_readiness(app_state: Any) -> dict[str, Any]:
+async def build_readiness(app_state: Any) -> tuple[dict[str, Any], int]:
     """Readiness probe — config loaded, background tasks alive, infra fail-soft.
 
     Returns a tuple of (body_dict, status_code).

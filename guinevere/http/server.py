@@ -131,6 +131,13 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield  # ── FastAPI serves requests here ──
 
         # ── Phase 5: two-phase shutdown ───────────────────────────────
+        # Signal background tasks to drain gracefully via the shutdown event,
+        # then cancel. NOTE (W4 audit F01): the 30s bounded drain window is
+        # deferred until W6 — current placeholder tasks block on their own
+        # asyncio.Event forever, so awaiting them would always hit the 30s
+        # timeout (hanging test teardown). Once W6 wires real drainable M3
+        # substrates, add `await asyncio.wait_for(gather(...), timeout=30)`
+        # before the cancel. Instant-cancel is correct for placeholders.
         logger.info("shutdown_signaled")
         _shutdown_event.set()
 
