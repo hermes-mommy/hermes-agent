@@ -455,13 +455,15 @@ class GmailAdapter(ChannelSender):
                     error="Gmail API quota exceeded",
                 )
             # Actual send via Gmail API deferred to runtime.
-            logger.info("gmail_send_simulated", target=target, subject=subject)
-            self._quota_tracker.record(5)
+            # P9.5: channel adapter does not wire real Gmail API send.
+            # Honest config_missing — use guinvere.tools.backends.email
+            # (EmailBackend, wired to prod secrets/gmail-token.json) for real sends.
             return SendResult(
-                success=True,
+                success=False,
                 channel=self.channel_id,
                 target=target,
-                message_id="simulated",
+                error="Gmail API send not wired in channel adapter — use tools/backends/email",
+                config_missing=True,
             )
         except Exception as exc:
             logger.error("gmail send failed: %s", exc, exc_info=True)
@@ -486,12 +488,15 @@ class GmailAdapter(ChannelSender):
                 target=target,
                 error=f"CONFIG_MISSING: {'; '.join(self._config_missing_reasons)}",
             )
-        logger.info("gmail_draft_simulated", target=target)
+        logger.info("gmail_draft_config_missing", target=target)  # P9.5: not wired
         return SendResult(
             success=True,
             channel=self.channel_id,
             target=target,
-            message_id="draft_simulated",
+            # P9.5: draft not wired — config_missing
+                success=False,
+                error="Gmail draft API not wired",
+                config_missing=True,
         )
 
     async def sync_emails(self) -> list[GmailMessageEnvelope]:

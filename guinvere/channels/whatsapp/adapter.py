@@ -500,11 +500,18 @@ class WhatsAppAdapter(ChannelSender):
                     last_message_id = str(response) if response else None
                 else:
                     logger.info(
-                        "whatsapp_send_simulated",
+                        "whatsapp_send_config_missing_neonize_absent",
                         target=target,
                         chunk_length=len(chunk),
                     )
-                    last_message_id = "simulated"
+                    # P9.5: honest config_missing when neonize client absent
+                    return SendResult(
+                        success=False,
+                        channel=self.channel_id,
+                        target=target,
+                        error="WhatsApp neonize client not initialized — config_missing",
+                        config_missing=True,
+                    )
             except Exception as exc:
                 logger.error("whatsapp send failed: %s", exc, exc_info=True)
                 return SendResult(
