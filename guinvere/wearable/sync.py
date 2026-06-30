@@ -2,7 +2,7 @@
 
 Orchestrates: Consent Gate → Data Source (Mi Fitness / Gadgetbridge) → Normalizer → Redis Buffer.
 Called by systemd timer (guinevere-wearable-sync.timer) every 30 minutes.
-Can also be invoked manually: python -m guinvere.wearable.sync
+Can also be invoked manually: python -m src.wearable.sync
 """
 
 from __future__ import annotations
