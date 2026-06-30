@@ -41,4 +41,6 @@ __all__ = [
     "FinanceTool",
     "NotionTool",
     "wire",
+    "HermesBrain",
+    "HermesBrainConfig",
 ]
