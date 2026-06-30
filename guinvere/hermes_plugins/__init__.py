@@ -1,0 +1,1 @@
+"""Hermes plugins package for Guinevere Phase 2 Discord migration."""
