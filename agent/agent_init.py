@@ -1764,7 +1764,7 @@ def init_agent(
         from guinevere.consciousness import wire as _wire_consciousness_mod
         _wire_consciousness_mod.wire(agent)
     except (ImportError, AttributeError, TypeError, ValueError) as _e:
-        log.warning(f"[guinevere] consciousness loop wiring failed: {_e}")
+        logger.warning(f"[guinevere] consciousness loop wiring failed: {_e}")
         agent._consciousness_loop = None
         agent._consciousness_task = None
 
@@ -1772,14 +1772,14 @@ def init_agent(
         from guinevere.surveillance import wire as _wire_surveillance_mod
         _wire_surveillance_mod.wire(agent)
     except (ImportError, AttributeError, TypeError, ValueError) as _e:
-        log.warning(f"[guinevere] surveillance wiring failed: {_e}")
+        logger.warning(f"[guinevere] surveillance wiring failed: {_e}")
         agent._surveillance_buffer = None
 
     try:
         from guinevere.observability import wire as _wire_observability_mod
         _wire_observability_mod.wire(agent)
     except (ImportError, AttributeError, TypeError, ValueError) as _e:
-        log.warning(f"[guinevere] observability wiring failed: {_e}")
+        logger.warning(f"[guinevere] observability wiring failed: {_e}")
         agent._sentry_initialized = False
         agent._metrics = {}
     # ── end Group G wire ───────────────────────────────────────────────────
