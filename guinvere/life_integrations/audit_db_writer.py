@@ -197,6 +197,7 @@ def get_audit_write_failure_count() -> int:
             for sample in metric.samples:
                 total += int(sample.value)
     except Exception:
+        logger.debug("audit_metrics_collect_failed", exc_info=True)
         # Never raise from health accessor.
         return total
     return total

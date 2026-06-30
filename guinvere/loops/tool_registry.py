@@ -375,6 +375,7 @@ def _build_schema_from_signature(func: Callable[..., Any]) -> dict[str, Any]:
     try:
         hints = get_type_hints(func)
     except Exception:  # noqa: BLE001
+        logger.debug("get_type_hints_fallback", func_name=getattr(func, "__name__", str(func)), exc_info=True)
         hints = {}
 
     properties: dict[str, Any] = {}

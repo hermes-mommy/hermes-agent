@@ -138,6 +138,7 @@ async def backfill_null_embeddings(
         remaining = count_result.scalar()
         result.remaining = remaining if isinstance(remaining, int) else None
     except Exception:
+        logger.debug("embedding_backfill_remaining_count_failed", exc_info=True)
         result.remaining = None
 
     logger.info(

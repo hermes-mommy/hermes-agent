@@ -155,11 +155,13 @@ class BaseIntegrationAdapter(ABC):
                 if hs:
                     return IntegrationStatus.DEFERRED_FOR_SAFETY
             except Exception:  # noqa: BLE001 — fail-closed on checker error
+                logger.warning("hard_stop_checker_raised", exc_info=True)
                 return IntegrationStatus.DEFERRED_FOR_SAFETY
         # (b) client/secret unavailable
         try:
             health = await self.health_check()
         except Exception:  # noqa: BLE001
+            logger.debug("health_check_failed", exc_info=True)
             health = IntegrationHealth.UNKNOWN
         if health == IntegrationHealth.UNKNOWN:
             return IntegrationStatus.CLIENT_MISSING
@@ -182,6 +184,7 @@ class BaseIntegrationAdapter(ABC):
                 if not granted:
                     return IntegrationStatus.CONSENT_MISSING
             except Exception:  # noqa: BLE001 — fail-closed
+                logger.warning("consent_checker_raised", exc_info=True)
                 return IntegrationStatus.CONSENT_MISSING
         # (e) healthy
         return IntegrationStatus.HEALTHY

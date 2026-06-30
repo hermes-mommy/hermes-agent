@@ -57,6 +57,7 @@ def _fmt_dt(iso_str: str | None) -> str:
         relative = f"{hours}h{minutes}m ago" if hours else f"{minutes}m ago"
         return f"{wib.strftime('%H:%M:%S')} ({relative})"
     except Exception:
+        logger.debug("x_poster.dashboard.parse_time_fallback", raw=iso_str, exc_info=True)
         return str(iso_str)
 
 
@@ -185,6 +186,7 @@ class XPosterDashboard:
                     resp.raise_for_status()
                     return resp.json()
             except Exception:
+                logger.debug("x_poster.dashboard.fetch_fallback", url=url, exc_info=True)
                 return {}
 
         status_task = asyncio.create_task(get("/api/status"))
@@ -439,6 +441,7 @@ class XPosterDashboard:
             dt = datetime.datetime.fromisoformat(str(next_slot))
             return dt.strftime("%Y-%m-%d %H:%M %Z")
         except Exception:
+            logger.debug("x_poster.dashboard.format_next_slot_fallback", raw=next_slot, exc_info=True)
             return str(next_slot)
 
 

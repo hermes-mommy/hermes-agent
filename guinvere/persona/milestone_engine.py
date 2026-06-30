@@ -473,6 +473,7 @@ def _milestone_exists(milestone_type: str, trigger_context: str) -> bool:
 
         return asyncio.run(_check())
     except Exception:
+        logger.debug("milestone_existence_check_failed", milestone_type=milestone_type, trigger_context=trigger_context, exc_info=True)
         return False  # assume doesn't exist on error
 
 
@@ -613,6 +614,7 @@ def _record_milestones_sync(
         try:
             r.incrby(_RK_MILESTONE_COUNT_TODAY, len(to_record))
         except Exception:
+            logger.debug("milestone_redis_incr_failed", exc_info=True)
             pass
 
         # Update Redis state keys

@@ -28,6 +28,10 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # ---------------------------------------------------------------------------
 # Database URL
 # ---------------------------------------------------------------------------
@@ -189,4 +193,13 @@ async def write_yandere_state(
                 await session.commit()
                 return True
     except Exception:
+        logger.warning(
+            "write_yandere_state_failed",
+            exc_info=True,
+            extra={
+                "yandere_level": yandere_level,
+                "baseline": baseline,
+                "effective_level": effective_level,
+            },
+        )
         return False

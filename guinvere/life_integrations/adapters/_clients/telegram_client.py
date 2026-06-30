@@ -545,5 +545,6 @@ class TelegramClient:
             try:
                 await self._client.aclose()
             except Exception:
+                logger.debug("telegram_client_close_failed", exc_info=True)
                 # Best-effort shutdown; never raise.
                 pass

@@ -438,6 +438,7 @@ class ProjectAwareCognitionRegistry:
         try:
             raw = redis_client.get(self._flag_key)
         except Exception:
+                logger.debug("project_flag_read_failed_defaulting_off", exc_info=True)
                 return False
         if raw is None:
             return False

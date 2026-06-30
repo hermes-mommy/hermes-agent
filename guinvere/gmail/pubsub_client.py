@@ -142,7 +142,7 @@ class PubSubClient:
             try:
                 self._streaming_future.cancel()
             except Exception:
-                pass
+                logger.debug("gmail.pubsub.future_cancel_failed", exc_info=True)
             self._streaming_future = None
 
         if self._reconnect_task is not None:
@@ -290,7 +290,7 @@ class PubSubClient:
             try:
                 await asyncio.to_thread(future.result)
             except Exception:
-                pass
+                logger.debug("gmail.pubsub.future_result_failed", exc_info=True)
 
             if not self._active:
                 break

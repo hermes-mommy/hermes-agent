@@ -186,6 +186,7 @@ class DiscordRestClient:
             body = response.json()
             return str(body.get("code", "?"))
         except Exception:
+            logger.debug("failed_to_extract_discord_error_code", exc_info=True)
             return "?"
 
     async def send_message(

@@ -195,6 +195,7 @@ class DiscordRestShim:
         try:
             return bool(getattr(self._rest, "enabled", False))
         except Exception:  # noqa: BLE001
+            logger.debug("discord_shim_health_check_failed", exc_info=True)
             return False
 
     async def get_messages(self, channel_id: Any, limit: int = 50) -> list[dict[str, Any]]:

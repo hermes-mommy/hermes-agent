@@ -377,6 +377,7 @@ async def email_search_callback(interaction: Any) -> None:
                     dt = date_raw[:10]
                     date_str = dt
                 except Exception:
+                    logger.debug("email_date_parse_fallback", date_raw=date_raw)
                     date_str = date_raw[:10] if len(date_raw) >= 10 else date_raw
 
             items.append(

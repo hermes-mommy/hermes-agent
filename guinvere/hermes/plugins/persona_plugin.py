@@ -763,7 +763,10 @@ class PersonaPlugin:
                     punishment = int(p) if p else 0
                     r.close()
                 except Exception:
-                    pass
+                    logger.debug(
+                        "persona_plugin_distress_punishment_read_failed",
+                        exc_info=True,
+                    )
 
                 # Detect milestones
                 candidates = engine.detect_milestones(

@@ -18,11 +18,14 @@ Usage:
 from __future__ import annotations
 
 import importlib
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Final, Protocol, cast, runtime_checkable
 
 from .colors import PRIMARY
+
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 # ── Timezone ────────────────────────────────────────────────────────────────
@@ -390,6 +393,7 @@ async def status_callback(interaction: object) -> None:
         embed = to_discord_embed(data)
         await _followup_send(interaction, embed=embed)
     except Exception:
+        logger.warning("status_callback_failed")
         await _followup_send(
             interaction,
             content="\u26a0\ufe0f Mommy's status is temporarily unavailable.",

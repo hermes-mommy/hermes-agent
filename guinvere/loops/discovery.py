@@ -137,6 +137,7 @@ class SurveillanceCollector(SignalCollector):
                 try:
                     facts = {}  # ignore malformed JSON for safety
                 except Exception:
+                    logger.debug("malformed_extracted_facts", facts_type=type(facts).__name__)
                     facts = {}
             summary = row.get("summary") or f"surveillance {row.get('event_type')}"
             occurred_at = row.get("occurred_at")

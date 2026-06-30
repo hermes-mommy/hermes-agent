@@ -30,6 +30,7 @@ def _is_projects_flag_on(redis_client: Any) -> bool:
     try:
         raw = redis_client.get(_FEATURE_FLAG_KEY)
     except Exception:
+        logger.debug("feature_flag_read_failed_defaulting_off", exc_info=True)
         return False
     if raw is None:
         return False

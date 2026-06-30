@@ -612,6 +612,7 @@ class GmailService:
             try:
                 redis_ok = bool(await self._redis.ping())
             except Exception:
+                logger.debug("gmail.service.redis_ping_failed", exc_info=True)
                 redis_ok = False
             result["redis_ok"] = redis_ok
         else:
@@ -628,6 +629,7 @@ class GmailService:
                     "last_sync_time": state.last_sync_time,
                 }
             except Exception:
+                logger.debug("gmail.service.sync_state_unavailable", exc_info=True)
                 result["sync"] = {"error": "unavailable"}
         else:
             result["sync"] = None
@@ -874,6 +876,7 @@ class GmailService:
                     "extracted_at": entry.get("extracted_at", ""),
                 })
             except Exception:
+                logger.debug("gmail.service.financial_entry_parse_failed", exc_info=True)
                 continue
 
         return results

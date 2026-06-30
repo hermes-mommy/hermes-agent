@@ -194,7 +194,8 @@ class EmailBackend(ToolBackend):
                         full = messages.get(userId="me", id=m["id"], format="metadata",
                                             metadataHeaders=["From", "To", "Subject", "Date"]).execute()
                         enriched.append(_summarize_message(full))
-                    except Exception:
+                    except Exception as exc:
+                        logger.debug("email: metadata enrichment fallback for %s: %s", m["id"], exc)
                         enriched.append({"id": m["id"], "thread_id": m.get("threadId", "")})
                 return {
                     "ok": True,
@@ -217,7 +218,8 @@ class EmailBackend(ToolBackend):
                         full = messages.get(userId="me", id=m["id"], format="metadata",
                                             metadataHeaders=["From", "To", "Subject", "Date"]).execute()
                         enriched.append(_summarize_message(full))
-                    except Exception:
+                    except Exception as exc:
+                        logger.debug("email: metadata enrichment fallback for %s: %s", m["id"], exc)
                         enriched.append({"id": m["id"], "thread_id": m.get("threadId", "")})
                 return {
                     "ok": True,

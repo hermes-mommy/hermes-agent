@@ -260,7 +260,8 @@ async def integrations_status(request: Request) -> dict[str, Any]:
                 if hasattr(health_obj, "value")
                 else str(health_obj)
             )
-        except Exception:
+        except Exception as exc:
+            logger.debug("routes.integration_health_value_unknown", integration_id=getattr(adapter, "integration_id", "?"), error=str(exc))
             health_value = "unknown"
 
         status_obj = statuses.get(adapter.integration_id)

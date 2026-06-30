@@ -166,7 +166,8 @@ class VPSBackend(ToolBackend):
                     try:
                         r = subprocess.run(c, shell=True, capture_output=True, text=True, timeout=5)
                         return r.stdout.strip()
-                    except Exception:
+                    except Exception as exc:
+                        logger.debug("vps: health_metrics subprocess failed for %r: %s", c, exc)
                         return ""
 
                 load = _run_sync("cat /proc/loadavg | awk '{print $1}'")

@@ -937,6 +937,7 @@ async def health_detailed(request: Request):
                 "active_loops": len(loops),
             }
         except Exception:
+            logger.debug("health_check.loop_manager_failed", exc_info=True)
             components["loop_manager"] = {"status": "error"}
             status_code = 503
     else:
@@ -961,7 +962,8 @@ async def health_detailed(request: Request):
         await r.ping()
         await r.aclose()
         components["redis"] = {"status": "ok"}
-    except Exception:
+    except Exception as exc:
+        logger.debug("health_check.redis_unavailable", error=str(exc))
         components["redis"] = {"status": "unavailable"}
         # Redis is non-critical for health — don't set 503
 
@@ -979,7 +981,8 @@ async def health_detailed(request: Request):
         await _pg_conn.fetchval("SELECT 1")
         await _pg_conn.close()
         components["postgresql"] = {"status": "ok"}
-    except Exception:
+    except Exception as exc:
+        logger.debug("health_check.postgresql_unavailable", error=str(exc))
         components["postgresql"] = {"status": "unavailable"}
         _HEALTH_FAILURES.labels(component="postgresql", check="connectivity").inc()
 
@@ -994,7 +997,8 @@ async def health_detailed(request: Request):
             else:
                 components["9router"] = {"status": "degraded", "http_status": _resp.status_code}
                 _HEALTH_FAILURES.labels(component="9router", check="models_endpoint").inc()
-    except Exception:
+    except Exception as exc:
+        logger.debug("health_check.9router_unavailable", error=str(exc))
         components["9router"] = {"status": "unavailable"}
         _HEALTH_FAILURES.labels(component="9router", check="connectivity").inc()
 

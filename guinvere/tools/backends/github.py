@@ -354,7 +354,9 @@ class GitHubBackend(ToolBackend):
                     if d.get("encoding") == "base64" and d.get("content"):
                         try:
                             content = base64.b64decode(d["content"]).decode("utf-8")
-                        except Exception:
+                        except Exception as exc:
+                            logger.debug("github: base64 decode fallback for %s/%s/%s: %s",
+                                         owner, repo, path, exc)
                             content = d["content"]
                     return {
                         "ok": True, "action": action,

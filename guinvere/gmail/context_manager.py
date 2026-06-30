@@ -242,7 +242,10 @@ class ThreadContextManager:
                 msg_category = envelope.classify()
                 existing["category"] = msg_category.value
             except Exception:
-                pass
+                logger.debug(
+                    "gmail.context.classify_fallback",
+                    thread_id=envelope.thread_id,
+                )
 
             # Update last known subject
             if envelope.subject:
@@ -428,6 +431,10 @@ class ThreadContextManager:
                 cat = msg.classify()
                 categories.append(cat)
             except Exception:
+                logger.debug(
+                    "gmail.context.msg_classify_failed",
+                    message_id=getattr(msg, "message_id", "unknown"),
+                )
                 continue
 
         if not categories:

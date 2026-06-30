@@ -113,6 +113,7 @@ def _handle_github_http_error(response: Any, url: str) -> None:
     try:
         body_text = response.text[:200]
     except Exception:  # pragma: no cover - text attr may fail on mocks
+        logger.debug("github_response_text_failed", exc_info=True)
         body_text = ""
 
     remainder_header = headers.get("X-RateLimit-Remaining") if headers else None
