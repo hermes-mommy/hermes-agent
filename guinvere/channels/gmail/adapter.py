@@ -490,13 +490,11 @@ class GmailAdapter(ChannelSender):
             )
         logger.info("gmail_draft_config_missing", target=target)  # P9.5: not wired
         return SendResult(
-            success=True,
+            success=False,
             channel=self.channel_id,
             target=target,
-            # P9.5: draft not wired — config_missing
-                success=False,
-                error="Gmail draft API not wired",
-                config_missing=True,
+            error="Gmail draft API not wired in channel adapter — use tools/backends/email",
+            config_missing=True,
         )
 
     async def sync_emails(self) -> list[GmailMessageEnvelope]:

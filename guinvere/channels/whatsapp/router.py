@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .adapter import WhatsAppIngressEgressAdapter
+from .adapter import WhatsAppAdapter
 from .bridge import HermesResult, WhatsAppHermesBridge
 from .envelope import WhatsAppDeliveryEnvelope, WhatsAppMessageEnvelope
 from .formatter import WhatsAppFormatter
@@ -29,7 +29,7 @@ class WhatsAppRouter:
         bridge: WhatsAppHermesBridge,
         commands: WhatsAppOpsCommandHandler,
         formatter: WhatsAppFormatter,
-        adapter: WhatsAppIngressEgressAdapter,
+        adapter: WhatsAppAdapter,
         presence: TypingIndicator,
     ) -> None:
         self._bridge = bridge

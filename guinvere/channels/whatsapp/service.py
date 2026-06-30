@@ -19,7 +19,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 import asyncpg
 import structlog
 
-from .adapter import WhatsAppIngressEgressAdapter
+from .adapter import WhatsAppAdapter
 from .auth import WhatsAppAuthManager, build_whatsapp_redis_client
 from .bridge import (
     HermesBridgeError,
@@ -71,7 +71,7 @@ class WhatsAppService:
             redis_client=self._redis,
             auth_manager=self._auth,
         )
-        self._adapter = WhatsAppIngressEgressAdapter(self._client)
+        self._adapter = WhatsAppAdapter()  # P9.5: new adapter lazy-loads neonize client
         self._whitelist = WhitelistManager(redis_client=self._redis)
         self._hard_stop = WhatsAppHardStopGate(get_shared_hard_stop_handler())
         self._consent = WhatsAppConsentManager(redis_client=self._redis)
