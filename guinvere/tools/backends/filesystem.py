@@ -43,48 +43,97 @@ class FilesystemBackend(ToolBackend):
         return True  # Local filesystem always available
 
     async def dispatch(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
-        """Execute a filesystem action.  External calls are mocked in tests."""
+        """Execute a real filesystem action via pathlib.
+
+        All actions perform real I/O. Errors are caught and returned as
+        ``{"ok": False, "error": ...}`` (fail-soft — never raise to caller).
+        """
+        import glob as _glob
+        import shutil
+        from pathlib import Path
+
         action_lower = action.lower()
-        path = args.get("path", "")
+        path_str = args.get("path", "")
 
-        if action_lower == "read":
-            return {"ok": True, "action": action, "path": path, "content": ""}
+        try:
+            if action_lower == "read":
+                p = Path(path_str)
+                content = p.read_text(encoding="utf-8")
+                return {"ok": True, "action": action, "path": path_str, "content": content}
 
-        if action_lower == "list":
-            return {"ok": True, "action": action, "path": path, "entries": []}
+            if action_lower == "list":
+                p = Path(path_str)
+                entries = sorted([e.name for e in p.iterdir()])
+                return {"ok": True, "action": action, "path": path_str, "entries": entries}
 
-        if action_lower == "glob":
-            pattern = args.get("pattern", "*")
-            return {"ok": True, "action": action, "pattern": pattern, "matches": []}
+            if action_lower == "glob":
+                pattern = args.get("pattern", "*")
+                base = Path(path_str) if path_str else Path(".")
+                matches = sorted([str(m) for m in base.glob(pattern)])
+                return {"ok": True, "action": action, "path": path_str, "pattern": pattern, "matches": matches}
 
-        if action_lower == "grep":
-            query = args.get("query", "")
-            return {"ok": True, "action": action, "query": query, "matches": []}
+            if action_lower == "grep":
+                query = args.get("query", "")
+                p = Path(path_str)
+                matches = []
+                if p.is_file():
+                    for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+                        if query in line:
+                            matches.append({"line": i, "text": line})
+                elif p.is_dir():
+                    for fp in p.rglob("*"):
+                        if fp.is_file():
+                            try:
+                                for i, line in enumerate(fp.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
+                                    if query in line:
+                                        matches.append({"file": str(fp), "line": i, "text": line})
+                            except (OSError, UnicodeDecodeError):
+                                continue
+                return {"ok": True, "action": action, "path": path_str, "query": query, "matches": matches}
 
-        if action_lower == "write":
-            content = args.get("content", "")
-            return {"ok": True, "action": action, "path": path, "bytes_written": len(content)}
+            if action_lower == "write":
+                content = args.get("content", "")
+                p = Path(path_str)
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(content, encoding="utf-8")
+                return {"ok": True, "action": action, "path": path_str, "bytes_written": len(content.encode("utf-8"))}
 
-        if action_lower == "append":
-            content = args.get("content", "")
-            return {"ok": True, "action": action, "path": path, "bytes_written": len(content)}
+            if action_lower == "append":
+                content = args.get("content", "")
+                p = Path(path_str)
+                p.parent.mkdir(parents=True, exist_ok=True)
+                with p.open("a", encoding="utf-8") as f:
+                    f.write(content)
+                return {"ok": True, "action": action, "path": path_str, "bytes_written": len(content.encode("utf-8"))}
 
-        if action_lower == "copy":
-            dest = args.get("dest", "")
-            return {"ok": True, "action": action, "src": path, "dest": dest}
+            if action_lower == "copy":
+                dest = args.get("dest", "")
+                src_p = Path(path_str)
+                dst_p = Path(dest)
+                dst_p.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src_p, dst_p)
+                return {"ok": True, "action": action, "src": path_str, "dest": dest}
 
-        if action_lower == "move":
-            dest = args.get("dest", "")
-            return {"ok": True, "action": action, "src": path, "dest": dest}
+            if action_lower == "move":
+                dest = args.get("dest", "")
+                src_p = Path(path_str)
+                dst_p = Path(dest)
+                dst_p.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(src_p), str(dst_p))
+                return {"ok": True, "action": action, "src": path_str, "dest": dest}
 
-        if action_lower == "delete":
-            # Pre-delete hash (P22 pattern)
-            return {
-                "ok": True,
-                "action": action,
-                "path": path,
-                "deleted": True,
-                "restore_method": "check recycle bin or backup",
-            }
+            if action_lower == "delete":
+                p = Path(path_str)
+                if p.is_dir():
+                    shutil.rmtree(p)
+                else:
+                    p.unlink()
+                return {"ok": True, "action": action, "path": path_str, "deleted": True}
 
-        return {"ok": False, "error": f"unknown filesystem action: {action}"}
+            return {"ok": False, "error": f"unknown filesystem action: {action}"}
+        except FileNotFoundError as e:
+            return {"ok": False, "action": action, "error": f"not found: {e}"}
+        except PermissionError as e:
+            return {"ok": False, "action": action, "error": f"permission denied: {e}"}
+        except OSError as e:
+            return {"ok": False, "action": action, "error": f"os error: {e}"}
