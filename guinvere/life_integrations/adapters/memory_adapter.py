@@ -1,7 +1,7 @@
 """Memory/KG integration adapter.
 
-Wraps existing src/memory/ (write_pipeline, read_pipeline) and
-src/knowledge_graph/ for integration data enrichment. All writes pass
+Wraps existing guinvere/memory/ (write_pipeline, read_pipeline) and
+guinvere/knowledge_graph/ for integration data enrichment. All writes pass
 consent + DNR + classification + HARD STOP gates.
 
 Consent: consent.memory.{read,write,delete}

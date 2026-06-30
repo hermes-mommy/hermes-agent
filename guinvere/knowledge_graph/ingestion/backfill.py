@@ -127,7 +127,7 @@ MAX_BATCH_SIZE: Final[int] = 10_000
 
 _SAFE_TOKEN_RE: Final[str] = r"^[a-z0-9_]{1,32}$"
 """Allowed character set for consent scope and category components.
-Mirrors the safety check in :class:`src.knowledge_graph.consent.manager`."""
+Mirrors the safety check in :class:`guinvere.knowledge_graph.consent.manager`."""
 
 
 # ---------------------------------------------------------------------------
@@ -150,9 +150,9 @@ class _AsyncSessionProto(Protocol):
 
     Mirrors the real ``sqlalchemy.ext.asyncio.AsyncSession`` API used
     by the rest of the KG module (see e.g.
-    :mod:`src.knowledge_graph.consent.manager`).  The shape is
+    :mod:`guinvere.knowledge_graph.consent.manager`).  The shape is
     intentionally compatible with the :class:`AsyncSessionProtocol`
-    declared in :mod:`src.knowledge_graph.repository` but extends it
+    declared in :mod:`guinvere.knowledge_graph.repository` but extends it
     with the :meth:`commit` / :meth:`rollback` calls the backfill
     engine makes (the base protocol deliberately omits them because
     the repository wrapper handles commit semantics externally).
@@ -439,7 +439,7 @@ class KGBackfillEngine:
 
     Args:
         session_factory: Callable that returns a fresh async session
-            (typically :func:`src.memory.db.get_async_session`).  All
+            (typically :func:`guinvere.memory.db.get_async_session`).  All
             session lifecycle goes through :class:`KGRepository` so the
             engine shares Guinevere's existing connection pool.
         batch_size: Number of facts per batch.  Clamped to
@@ -532,11 +532,11 @@ class KGBackfillEngine:
            ``id`` ASC.  For each batch:
 
            a.  Extract typed entities (subject, object) using
-               :class:`src.knowledge_graph.extraction.entity_extractor.EntityExtractor`.
+               :class:`guinvere.knowledge_graph.extraction.entity_extractor.EntityExtractor`.
            b.  Resolve / upsert each entity with
                ``ON CONFLICT (canonical_key) DO NOTHING``.
            c.  Extract the typed relation using
-               :class:`src.knowledge_graph.extraction.relation_extractor.RelationExtractor`.
+               :class:`guinvere.knowledge_graph.extraction.relation_extractor.RelationExtractor`.
            d.  Insert the edge with
                ``ON CONFLICT (src, dst, rel, source_fact_id) DO NOTHING``.
            e.  Capture per-fact errors (never empty excepts — every
@@ -1536,7 +1536,7 @@ def _classify_lexical(text: str) -> str:
     """Lightweight lexical classifier used by the backfill engine.
 
     This is a deliberately small helper that mirrors the L1 priority
-    pass in :class:`src.knowledge_graph.extraction.entity_extractor`
+    pass in :class:`guinvere.knowledge_graph.extraction.entity_extractor`
     but without the full pattern table.  The goal here is to assign
     a *closed-taxonomy* entity type to the subject and object slots
     so the canonical key (and downstream relation classification) is
@@ -1569,7 +1569,7 @@ def _classify_relation(
     """Return a closed-taxonomy relation type for ``predicate``.
 
     Mirrors the type-aware fallback table in
-    :class:`src.knowledge_graph.extraction.relation_extractor` so the
+    :class:`guinvere.knowledge_graph.extraction.relation_extractor` so the
     backfill's edge labels are consistent with the live ingestor.
     """
     cleaned = (predicate or "").strip().lower()

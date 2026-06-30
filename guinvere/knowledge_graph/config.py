@@ -6,7 +6,7 @@ SOPS-decrypted env at runtime.  This module is intentionally free of any
 DB / LLM client imports so it can be imported during config validation
 without triggering heavy side effects.
 
-Pattern matches ``src.gmail.config`` and ``src.x_poster.config``.
+Pattern matches ``guinvere.gmail.config`` and ``guinvere.x_poster.config``.
 
 Env-var name mapping
 --------------------
@@ -66,7 +66,7 @@ def _parse_list_field(v: str | list[str]) -> list[str]:
     - ``""`` (empty → ``[]``)
     - ``["scope"]`` (JSON single-element)
 
-    Mirrors ``src.gmail.config._parse_list_field`` to keep env-loading
+    Mirrors ``guinvere.gmail.config._parse_list_field`` to keep env-loading
     behaviour consistent across Guinevere modules.
     """
     if isinstance(v, list):

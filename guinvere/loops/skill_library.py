@@ -36,7 +36,7 @@ SKILL_TYPES: set[str] = {"draft", "validated", "permanent", "deprecated"}
 """Allowed skill lifecycle states."""
 
 _RRF_K: int = 60
-"""Reciprocal rank fusion constant (mirrors ``src.memory.read_pipeline.RRF_K``)."""
+"""Reciprocal rank fusion constant (mirrors ``guinvere.memory.read_pipeline.RRF_K``)."""
 
 _EXPANDED_LIMIT_MULTIPLIER: int = 3
 """Expand per-signal queries so RRF has candidates to fuse."""

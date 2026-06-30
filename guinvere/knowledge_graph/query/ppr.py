@@ -18,7 +18,7 @@ inherits some of their score, and the seed itself remains the highest-
 scoring node by construction.
 
 The output scores feed directly into the KG-aware RRF fusion module
-(see :mod:`src.knowledge_graph.query.rrf_fusion`) — the PPR rank
+(see :mod:`guinvere.knowledge_graph.query.rrf_fusion`) — the PPR rank
 becomes the ``graph_rank`` signal in the recall formula.
 
 Implementation
@@ -126,7 +126,7 @@ class PersonalizedPageRank:
 
     Args:
         session_factory: Callable that returns a fresh async session
-            (typically ``src.memory.db.get_async_session``).  Required
+            (typically ``guinvere.memory.db.get_async_session``).  Required
             — the PPR scorer must reach the KG edges table.
         damping: Probability of *following an edge* at each step.
             Higher damping → walks are longer → scores spread
@@ -140,7 +140,7 @@ class PersonalizedPageRank:
     Example::
 
         ppr = PersonalizedPageRank(
-            session_factory=src.memory.db.get_async_session,
+            session_factory=guinvere.memory.db.get_async_session,
             damping=0.85,
         )
         top = await ppr.compute(seed_entity_ids=[seed], top_k=50)
@@ -622,7 +622,7 @@ class PersonalizedPageRank:
 def _escape_like(value: str) -> str:
     """Escape SQL ``LIKE``-special characters in a user-supplied string.
 
-    Mirrors the helper in :mod:`src.knowledge_graph.query.engine` —
+    Mirrors the helper in :mod:`guinvere.knowledge_graph.query.engine` —
     keeps the wildcards the user types from inflating the result set.
     """
     return (

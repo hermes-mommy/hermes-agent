@@ -164,7 +164,7 @@ class DriveClient:
     Methods on this class are synchronous; the adapter invokes them
     from inside ``asyncio.to_thread`` if it needs non-blocking calls.
     The adapter signature here matches the call sites in
-    ``src/life_integrations/adapters/drive_adapter.py``.
+    ``guinvere/life_integrations/adapters/drive_adapter.py``.
     """
 
     def __init__(

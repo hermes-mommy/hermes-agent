@@ -1,6 +1,6 @@
 """FastAPI application factory with lifespan-managed TaskGroup.
 
-Ported from ``src/core/main.py`` L239-847 (lifespan) and L847-1052 (app).
+Ported from ``guinvere/core/main.py`` L239-847 (lifespan) and L847-1052 (app).
 
 Design (per r11):
   - M15's lifespan OWNS the TaskGroup.

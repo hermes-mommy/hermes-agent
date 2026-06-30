@@ -1,6 +1,6 @@
 """Hermes command plugin — /surveillance-resume.
 
-Migrated from src/discord/cmd_surveillance_resume.py for Phase 2 Discord migration.
+Migrated from guinvere/discord/cmd_surveillance_resume.py for Phase 2 Discord migration.
 Resumes surveillance data collection that was previously paused. Consent
 state is unchanged — only the pause flag is cleared.
 

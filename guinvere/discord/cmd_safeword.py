@@ -2,7 +2,7 @@
 
 Provides deterministic embed data builders, slash command callback, and
 text-based HARD STOP detection, all integrated with the HardStopHandler
-from P1-021 (src/core/services/hard_stop_handler.py).
+from P1-021 (guinvere/core/services/hard_stop_handler.py).
 
 The handler is the **sole source of truth** for safe-mode state. No parallel
 ``_safe_mode_active`` global exists in this module.
@@ -276,7 +276,7 @@ Why a singleton instead of passing the handler around:
 def _get_handler() -> HardStopHandler:
     """Return the module-level ``HardStopHandler`` singleton.
 
-    Lazily imported from ``src.core.services.hard_stop_handler`` to avoid
+    Lazily imported from ``guinvere.core.services.hard_stop_handler`` to avoid
     circular imports at module load time.
 
     Returns:

@@ -3,8 +3,8 @@
 This adapter lets the life-mind kernel ask the Memory subsystem (P18) for
 relevant past memories given a contextual observation. When a real
 ``memory_client`` callable is injected (wrapping
-``src.memory.read_pipeline.recall_memories`` with a pre-bound session, as
-wired in ``src/core/main.py``), the adapter calls it and normalises the
+``guinvere.memory.read_pipeline.recall_memories`` with a pre-bound session, as
+wired in ``guinvere/core/main.py``), the adapter calls it and normalises the
 results (``safe_content``→``content``, ``combined_score``→``relevance``,
 ``created_at``→``timestamp``). When no client is injected, or recall
 fails, the adapter returns ``_degraded: True`` with empty results so the
@@ -49,7 +49,7 @@ class MemoryRecallAdapter:
         """Return relevance-scored memories related to the provided context.
 
         When ``memory_client`` is a callable (expected to wrap
-        ``src.memory.read_pipeline.recall_memories`` with a pre-bound
+        ``guinvere.memory.read_pipeline.recall_memories`` with a pre-bound
         async session), calls it with ``query_text=`` and transforms the
         result list into a standardised ``memories`` list. When
         ``memory_client`` is ``None``, returns ``_degraded: True`` with

@@ -3,7 +3,7 @@ from __future__ import annotations
 """P12-001 — Main Gmail service that wires all components together.
 
 Follows the ``WhatsAppService`` pattern from
-``src/channels/whatsapp/service.py``:
+``guinvere/channels/whatsapp/service.py``:
 
 - ``__init__`` wires all dependencies (lazy init)
 - ``start()`` boots OAuth, Pub/Sub, sync, watch, commands, health/metrics
@@ -788,7 +788,7 @@ class GmailService:
         """Build a permissive stub consent checker when none was injected.
 
         The caller should normally inject a real ``ConsentChecker``
-        from ``src.surveillance.consent_gate``.  This fallback
+        from ``guinvere.surveillance.consent_gate``.  This fallback
         always returns allowed=True so the pipeline can proceed.
         """
         from datetime import UTC, datetime

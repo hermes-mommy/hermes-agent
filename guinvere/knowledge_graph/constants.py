@@ -4,8 +4,8 @@ Pure value module — no internal imports.  All defaults live here so they
 can be referenced by ``types``, ``config``, and downstream modules without
 creating circular dependencies.
 
-Conventions follow ``src.memory.read_pipeline`` (``RRF_K = 60``) and
-``src.memory.consolidation`` (``SAFE_WORD_INDICATORS`` frozenset).
+Conventions follow ``guinvere.memory.read_pipeline`` (``RRF_K = 60``) and
+``guinvere.memory.consolidation`` (``SAFE_WORD_INDICATORS`` frozenset).
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from __future__ import annotations
 # ---------------------------------------------------------------------------
 
 RRF_K: int = 60
-"""RRF damping constant.  Matches ``src.memory.read_pipeline.RRF_K``."""
+"""RRF damping constant.  Matches ``guinvere.memory.read_pipeline.RRF_K``."""
 
 KG_RRF_WEIGHT: float = 0.20
 """Default KG weight when fusing KG subgraph evidence with vector/recency
@@ -61,7 +61,7 @@ DEFAULT_ENTITY_TYPES: list[str] = [
 ]
 """Default entity categories.
 
-Mirrors the :class:`EntityCategory` enum in :mod:`src.knowledge_graph.types`.
+Mirrors the :class:`EntityCategory` enum in :mod:`guinvere.knowledge_graph.types`.
 Defined here as a plain ``list[str]`` so this module stays import-free and
 ``config.py`` can wire it into Pydantic without a circular import.
 """
@@ -86,7 +86,7 @@ DEFAULT_RELATION_TYPES: list[str] = [
 ]
 """Default relation types.
 
-Mirrors the :class:`RelationType` enum in :mod:`src.knowledge_graph.types`.
+Mirrors the :class:`RelationType` enum in :mod:`guinvere.knowledge_graph.types`.
 """
 
 
@@ -103,7 +103,7 @@ SAFE_WORD_INDICATORS: frozenset[str] = frozenset({
 })
 """Tags / episode_type / title / summary values that mark a record as
 off-limits for KG extraction, resolution, and recall.  Mirrors
-``src.memory.consolidation.SAFE_WORD_INDICATORS`` — Guinevere persona
+``guinvere.memory.consolidation.SAFE_WORD_INDICATORS`` — Guinevere persona
 boundary; do not weaken without safety review."""
 
 

@@ -30,8 +30,8 @@ logger = structlog.get_logger(__name__)
 
 
 # F21: counter for audit write failures. ``prometheus_client`` is already a
-# transitive dep (used by 10+ modules in this repo — see src/core/main.py,
-# src/gmail/metrics.py, etc.) so we use it directly. Counter labels carry
+# transitive dep (used by 10+ modules in this repo — see guinvere/core/main.py,
+# guinvere/gmail/metrics.py, etc.) so we use it directly. Counter labels carry
 # enough context for dashboard drill-down without leaking the event payload.
 _AUDIT_WRITE_FAILURES = Counter(
     "p22_audit_write_failures_total",

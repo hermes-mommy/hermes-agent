@@ -1,6 +1,6 @@
 """Iteration Budget — thread-safe turn / token / cost limiting for loops.
 
-Ported from ``src/loops/budget.py`` — API preserved for M10 (W14).
+Ported from ``guinvere/loops/budget.py`` — API preserved for M10 (W14).
 In-memory budget tracker for LLM-driven autonomous loops.
 """
 

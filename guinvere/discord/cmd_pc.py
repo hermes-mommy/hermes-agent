@@ -88,7 +88,7 @@ async def _gather_connection_state(**kwargs: Any) -> str:
     """Return Windows daemon connection state string.
 
     Reads the in-memory ``ConnectionManager.active_connections`` map from
-    ``src.surveillance.windows_ws``. If the device_id is currently
+    ``guinvere.surveillance.windows_ws``. If the device_id is currently
     connected the response is formatted as
     ``"\u2705 Connected (device_id: <id>)"``; otherwise it reports
     ``"\u274c Disconnected"``.
@@ -119,7 +119,7 @@ async def _gather_active_window(**kwargs: Any) -> str:
     """Return the active window / app name if available.
 
     Pulls the most recent Windows event via
-    :func:`src.surveillance.windows_status.get_latest_windows_status` and
+    :func:`guinvere.surveillance.windows_status.get_latest_windows_status` and
     returns the ``title`` field. Falls back to a degraded placeholder
     when no event is available or the DB lookup fails.
 

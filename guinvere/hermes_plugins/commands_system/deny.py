@@ -1,7 +1,7 @@
 """Hermes command plugin — /deny. Deny a pending MCP tool request.
 
 Integrates with the MCP auth module's DESTRUCTIVE_APPROVAL workflow.
-Calls ``src.mcp.auth.deny(tool_name)`` to signal denial of a pending
+Calls ``guinvere.mcp.auth.deny(tool_name)`` to signal denial of a pending
 tool invocation.
 
 Usage:

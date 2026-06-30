@@ -296,8 +296,8 @@ class SSHDeployBackend(DeployBackend):
         scp_cmd = (
             "scp",
             "-r",
-            "src/life_kernel/",
-            f"{self.ssh_alias}:/opt/guinevere/src/life_kernel/",
+            "guinvere/life_kernel/",
+            f"{self.ssh_alias}:/opt/guinevere/guinvere/life_kernel/",
         )
         scp_result = await self._run(*scp_cmd, label="deploy:scp")
         ssh_cmd = ("ssh", self.ssh_alias, "systemctl restart guinevere-core")

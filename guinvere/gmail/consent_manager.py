@@ -2,7 +2,7 @@
 
 Every email processing pipeline MUST call ``check_email_consent()``
 before proceeding.  This module delegates the primary consent check
-to the injected ``ConsentChecker`` (from ``src.surveillance.consent_gate``)
+to the injected ``ConsentChecker`` (from ``guinvere.surveillance.consent_gate``)
 and maintains a secondary Redis metadata store for fast-path status
 lookups and command audit trail.
 

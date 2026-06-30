@@ -5,7 +5,7 @@ drive, notion, and finance operations.  These are the low-impact
 P22 adapters that overlap with M8 — they delegate to M8 backends
 when available, and return CONFIG_MISSING stubs otherwise.
 
-Ported from src/life_integrations/adapters/ (P22 low-impact adapters).
+Ported from guinvere/life_integrations/adapters/ (P22 low-impact adapters).
 These do NOT duplicate M8 logic; they are thin delegation layers
 that the heartbeat/observer loop can call.
 

@@ -1,6 +1,6 @@
 """Promotion logic for self-modification candidates.
 
-Absorbs and replaces src/self_improve/promotion.py keyword-drift approach
+Absorbs and replaces guinvere/self_improve/promotion.py keyword-drift approach
 with compositional drift (embedding-based cos_sim at 0.68 threshold).
 
 ADR-061: cos_sim(new, baseline) with hysteresis at 0.68.
@@ -83,7 +83,7 @@ class PromotionPolicy:
 class PromotionEngine:
     """Compositional-drift-aware promotion engine.
 
-    Replaces the keyword-based PromotionEngine from src/self_improve/promotion.py.
+    Replaces the keyword-based PromotionEngine from guinvere/self_improve/promotion.py.
     Uses cos_sim at 0.68 threshold (ADR-061) instead of keyword matching.
 
     Integration points:

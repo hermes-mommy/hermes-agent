@@ -1,6 +1,6 @@
 """Hermes command plugin — /surveillance-status.
 
-Migrated from src/discord/cmd_surveillance_status.py for Phase 2 Discord migration.
+Migrated from guinvere/discord/cmd_surveillance_status.py for Phase 2 Discord migration.
 Shows consent-bound surveillance metadata: consent status per scope,
 active device count, last event timestamp, buffer size, consumer health.
 

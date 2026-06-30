@@ -1,6 +1,6 @@
 """Hermes command plugin — /loop-stop.
 
-Migrated from src/discord/cmd_loop_stop.py for Phase 2 Discord migration.
+Migrated from guinvere/discord/cmd_loop_stop.py for Phase 2 Discord migration.
 Stops one or all active Guinevere work loops via the internal API
 (localhost:8000) and returns a markdown confirmation.
 

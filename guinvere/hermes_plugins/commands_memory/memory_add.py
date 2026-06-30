@@ -1,6 +1,6 @@
 """Hermes command plugin — /memory-add.
 
-Migrated from src/discord/cmd_memory_add.py for Phase 2 Discord migration.
+Migrated from guinvere/discord/cmd_memory_add.py for Phase 2 Discord migration.
 Stores a manual memory note via the write pipeline (store_episode) and
 confirms with a markdown response.
 

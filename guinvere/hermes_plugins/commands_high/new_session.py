@@ -1,6 +1,6 @@
 """Hermes command plugin — /new.
 
-Migrated from src/discord/cmd_new_session.py for Phase 2 Discord migration.
+Migrated from guinvere/discord/cmd_new_session.py for Phase 2 Discord migration.
 Clears Hermes conversation session for the caller via Redis DB4.
 """
 from __future__ import annotations

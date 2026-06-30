@@ -1,6 +1,6 @@
 """Hermes command plugin — /loop-start.
 
-Migrated from src/discord/cmd_loop_start.py for Phase 2 Discord migration.
+Migrated from guinvere/discord/cmd_loop_start.py for Phase 2 Discord migration.
 Starts a supervised Guinevere work loop via the internal API (localhost:8000)
 and returns a markdown confirmation.
 

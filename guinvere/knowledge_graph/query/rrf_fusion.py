@@ -1,9 +1,9 @@
 """KG-aware Reciprocal Rank Fusion (RRF) — P16-003 4th RRF signal.
 
 This module plugs the Knowledge Graph into the existing
-``src.memory.read_pipeline`` recall fusion as a **4th signal**.
+``guinvere.memory.read_pipeline`` recall fusion as a **4th signal**.
 The existing pipeline fuses three signals per
-:func:`src.memory.read_pipeline.compute_rrf_score`:
+:func:`guinvere.memory.read_pipeline.compute_rrf_score`:
 
 * vector cosine similarity (weight 0.50)
 * full-text search relevance (weight 0.50)
@@ -34,7 +34,7 @@ kg            0.20
 
 All four weights use the standard RRF formula
 ``weight / (K + rank)`` with ``K = 60`` (the
-:data:`src.knowledge_graph.constants.RRF_K` value).
+:data:`guinvere.knowledge_graph.constants.RRF_K` value).
 
 Algorithm
 ---------
@@ -63,7 +63,7 @@ Lazy integration
 
 The actual call site that wires this module into the recall loop
 will land in Wave 3+ and will live inside
-``src.memory.read_pipeline``.  Per the task contract we do NOT
+``guinvere.memory.read_pipeline``.  Per the task contract we do NOT
 modify that file in this task — only the additive signal lives
 here, ready to be consumed.
 """
@@ -156,7 +156,7 @@ class KGRRFFusion:
     """Integrates KG signals into the existing recall RRF fusion.
 
     The fusion is **strictly additive** — the existing recall scores
-    produced by ``src.memory.read_pipeline.compute_rrf_score`` are
+    produced by ``guinvere.memory.read_pipeline.compute_rrf_score`` are
     preserved verbatim; this module only computes the *additional*
     KG contribution per result.
 
@@ -392,7 +392,7 @@ class KGRRFFusion:
         """Add KG as the 4th RRF signal to existing recall results.
 
         Each result in ``existing_results`` is a dict matching the
-        shape produced by :func:`src.memory.read_pipeline.recall_memories`
+        shape produced by :func:`guinvere.memory.read_pipeline.recall_memories`
         (keys: ``id``, ``safe_content``, ``classification``,
         ``importance``, ``created_at``, ``combined_score``,
         ``is_summarized``).  The ``id`` is the string form of a UUID.

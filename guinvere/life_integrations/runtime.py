@@ -1,6 +1,6 @@
 """P22 production runtime factory — wires real clients into build_default_registry().
 
-Called from src/core/main.py lifespan to construct the live IntegrationRegistry
+Called from guinvere/core/main.py lifespan to construct the live IntegrationRegistry
 with real clients where credentials+clients are available, and CONFIG_MISSING
 (None) where they are not.
 
@@ -64,7 +64,7 @@ _ADAPTER_MISSING_HINTS: dict[str, tuple[str, str]] = {
 
 
 class DockerClientShim:
-    """Bridge src.mcp.tools.docker_tool module functions to instance protocol.
+    """Bridge guinvere.mcp.tools.docker_tool module functions to instance protocol.
 
     The vps_adapter calls ``self._docker.<method>()``. The in-tree
     docker_tool exposes module-level functions. This shim forwards.
@@ -162,7 +162,7 @@ class DockerClientShim:
 
 
 class ShellClientShim:
-    """Bridge src.mcp.tools.shell_tool.shell_exec to instance protocol.
+    """Bridge guinvere.mcp.tools.shell_tool.shell_exec to instance protocol.
 
     The vps_adapter calls ``self._shell.run(command)``. The in-tree shell_tool
     exposes ``shell_exec(command, ...)``.

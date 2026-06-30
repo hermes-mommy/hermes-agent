@@ -37,7 +37,7 @@ logger = structlog.get_logger(__name__)
 # Cap replay rows so a misconfigured caller cannot OOM the process.
 REPLAY_LIMIT: int = 200
 
-# WIB timezone (UTC+7) for date arithmetic consistency with ``src.finance.db``.
+# WIB timezone (UTC+7) for date arithmetic consistency with ``guinvere.finance.db``.
 WIB = timezone(timedelta(hours=7))
 
 

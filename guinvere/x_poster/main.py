@@ -3,8 +3,8 @@ from __future__ import annotations
 """X Poster service entry point — asyncio run for systemd ExecStart.
 
 Usage:
-    python -m src.x_poster.main
-    python src/x_poster/main.py
+    python -m guinvere.x_poster.main
+    python guinvere/x_poster/main.py
 
 Lifecycle:
     1. Load settings (XPosterSettings via pydantic-settings)

@@ -1,6 +1,6 @@
 """Gmail integration adapter — full-capability actuator.
 
-Wraps existing src/gmail/ module (sync, classify, draft, send, search).
+Wraps existing guinvere/gmail/ module (sync, classify, draft, send, search).
 Supports list/get/send/draft/label/trash/delete with L1-L4 tiers.
 
 Secrets: sec-gmail-oauth (SOPS, OAuth2)
@@ -32,7 +32,7 @@ logger = structlog.get_logger(__name__)
 class GmailIntegrationAdapter(BaseIntegrationAdapter):
     """Full-capability Gmail integration adapter.
 
-    Wraps the existing src/gmail/ module. Does NOT recreate the Gmail service.
+    Wraps the existing guinvere/gmail/ module. Does NOT recreate the Gmail service.
 
     Actions:
         list_messages (L1): List inbox messages with filters

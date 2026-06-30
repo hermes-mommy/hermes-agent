@@ -3,7 +3,7 @@
 This adapter lets the life-mind kernel ask the Knowledge Graph (P16) for
 relevant concepts given a contextual observation. When a real ``kg_client``
 callable is injected (wrapping ``KGQueryEngine.search_entities`` with a
-pre-bound session, as wired in ``src/core/main.py``), the adapter calls it
+pre-bound session, as wired in ``guinvere/core/main.py``), the adapter calls it
 and normalises the results. When no client is injected, or recall fails,
 the adapter returns ``_degraded: True`` with empty results so the kernel
 runs headless without crashing (graceful offline fallback).

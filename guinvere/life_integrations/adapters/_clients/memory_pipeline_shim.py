@@ -5,9 +5,9 @@ The P22 ``MemoryIntegrationAdapter`` calls instance methods:
 - ``await self._read.recall_memories(query=..., limit=..., project_id=...)``
 
 The real Guinevere memory pipelines are module-level functions in
-``src.memory.write_pipeline`` / ``src.memory.read_pipeline`` that require a
+``guinvere.memory.write_pipeline`` / ``guinvere.memory.read_pipeline`` that require a
 SQLAlchemy ``AsyncSession`` as the first positional argument. Guinevere's
-canonical session provider is ``src.memory.db.get_async_session`` (an
+canonical session provider is ``guinvere.memory.db.get_async_session`` (an
 ``@asynccontextmanager`` yielding a session, commit-on-success/rollback-on-error).
 
 These shims hold a reference to a session provider (defaulting to
@@ -38,14 +38,14 @@ SessionProvider = Callable[[], Any]
 
 
 class MemoryWritePipelineShim:
-    """Instance wrapper around ``src.memory.write_pipeline.store_episode``."""
+    """Instance wrapper around ``guinvere.memory.write_pipeline.store_episode``."""
 
     def __init__(self, session_provider: SessionProvider | None = None) -> None:
         """Initialize with a session provider (or None => CONFIG_MISSING).
 
         Args:
             session_provider: async-context-manager callable yielding an
-                ``AsyncSession`` (e.g. ``src.memory.db.get_async_session``).
+                ``AsyncSession`` (e.g. ``guinvere.memory.db.get_async_session``).
         """
         self._session_provider = session_provider
 
@@ -128,7 +128,7 @@ class MemoryWritePipelineShim:
         principal: str = "guinevere_core",
         **kwargs: Any,
     ) -> uuid.UUID | None:
-        """Forward to ``src.memory.dnr.mark_memory_dnr`` (A2).
+        """Forward to ``guinvere.memory.dnr.mark_memory_dnr`` (A2).
 
         The real ``mark_memory_dnr`` accepts ``memory_id``; the adapter passes
         ``episode_id`` which we map to ``memory_id``. ``mark_memory_dnr``
@@ -156,7 +156,7 @@ class MemoryWritePipelineShim:
 
 
 class MemoryReadPipelineShim:
-    """Instance wrapper around ``src.memory.read_pipeline.recall_memories``."""
+    """Instance wrapper around ``guinvere.memory.read_pipeline.recall_memories``."""
 
     def __init__(self, session_provider: SessionProvider | None = None) -> None:
         self._session_provider = session_provider

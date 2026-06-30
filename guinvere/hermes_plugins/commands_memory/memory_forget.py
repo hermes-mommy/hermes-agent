@@ -1,6 +1,6 @@
 """Hermes command plugin — /memory-forget.
 
-Migrated from src/discord/cmd_memory_forget.py for Phase 2 Discord migration.
+Migrated from guinvere/discord/cmd_memory_forget.py for Phase 2 Discord migration.
 Marks a memory as DNR (Do Not Recall) by UUID. Uses the async session
 factory to update the ``memories`` table directly (this is the ONLY memory
 command that touches PostgreSQL directly — only for DNR flagging).

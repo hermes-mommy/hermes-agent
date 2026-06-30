@@ -1,7 +1,7 @@
 """Hermes command plugin — /approve. Approve a pending MCP tool request.
 
 Integrates with the MCP auth module's DESTRUCTIVE_APPROVAL workflow.
-Calls ``src.mcp.auth.approve(tool_name)`` to signal approval of a
+Calls ``guinvere.mcp.auth.approve(tool_name)`` to signal approval of a
 pending tool invocation.
 
 Usage:

@@ -17,17 +17,17 @@ Public surface
   from a timestamp).  Both support ``dry_run``.
 * :func:`register_kg_ingestion_job` — APScheduler v3 cron registration at
   03:30 ``Asia/Bangkok``, 30 minutes after the daily consolidation
-  job completes (see ``src.memory.consolidation.register_consolidation_job``).
+  job completes (see ``guinvere.memory.consolidation.register_consolidation_job``).
 
 * :class:`KGBackfillEngine` (P16-004) — historical backfill of
   ``memory.semantic_facts`` into the KG.  Idempotent, checkpointable,
   soft-delete-only rollback.  See
-  :mod:`src.knowledge_graph.ingestion.backfill`.
+  :mod:`guinvere.knowledge_graph.ingestion.backfill`.
 * :class:`KGBackfillValidator` (P16-010) — read-only validation
   suite for the backfill output.  Entity coverage, edge integrity,
   orphan detection, duplicate triage, consent compliance, and
   tombstone consistency.  See
-  :mod:`src.knowledge_graph.ingestion.backfill_validator`.
+  :mod:`guinvere.knowledge_graph.ingestion.backfill_validator`.
 
 Result types
 ------------
@@ -41,8 +41,8 @@ Result types
 * :class:`ValidationReport` / :class:`CheckResult` / :class:`CoverageMetrics`
   — validator outcomes.
 
-Sister modules: :mod:`src.knowledge_graph.resolution`,
-:mod:`src.knowledge_graph.consent`, :mod:`src.knowledge_graph.extraction`.
+Sister modules: :mod:`guinvere.knowledge_graph.resolution`,
+:mod:`guinvere.knowledge_graph.consent`, :mod:`guinvere.knowledge_graph.extraction`.
 
 Safety / consent notes (per AGENTS.md BLOCKING rules and
 PersonaSafetyPolicy):

@@ -1,6 +1,6 @@
 """Discord command registry — canonical slash-command spec and payload builders.
 
-Extracted from ``src.discord.commands`` (deprecated) into an independent
+Extracted from ``guinvere.discord.commands`` (deprecated) into an independent
 non-deprecated module so that ``bot.py`` and test files can import registry
 members without referencing the deprecated ``commands.py`` module.
 

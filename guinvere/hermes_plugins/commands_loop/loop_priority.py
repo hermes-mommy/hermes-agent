@@ -1,6 +1,6 @@
 """Hermes command plugin — /loop-priority.
 
-Migrated from src/discord/cmd_loop_priority.py for Phase 2 Discord migration.
+Migrated from guinvere/discord/cmd_loop_priority.py for Phase 2 Discord migration.
 Sets the priority for a Guinevere work loop via LoopManager. Preserves
 priority validation (low/normal/high/critical) with emoji display.
 

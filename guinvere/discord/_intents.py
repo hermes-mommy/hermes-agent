@@ -1,6 +1,6 @@
 """Discord gateway intent configuration for Guinevere (non-deprecated home).
 
-This module is the active replacement for ``src/discord/intents.py``.
+This module is the active replacement for ``guinvere/discord/intents.py``.
 All production code should import from ``._intents``, not ``.intents``.
 
 P2-003 requires the three privileged Developer Portal intents to be mirrored

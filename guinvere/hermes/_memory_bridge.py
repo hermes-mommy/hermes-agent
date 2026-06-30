@@ -4,7 +4,7 @@ Bridges Hermes conversational agent with Guinevere's episodic memory system.
 Provides READ path (recall_for_context) and WRITE path (store_conversation)
 with graceful degradation when embeddings are unavailable.
 
-This is the non-deprecated extraction from ``src/hermes/memory_bridge.py``.
+This is the non-deprecated extraction from ``guinvere/hermes/memory_bridge.py``.
 The original file remains untouched at its original location for later archive.
 
 Safety: DNR exclusion, classification ceiling, safe-mode, token budget —
@@ -104,7 +104,7 @@ class HermesMemoryBridge:
     ) -> list[dict[str, object]]:
         """Recall relevant episodic memories for conversational context.
 
-        Wraps ``recall_memories()`` from ``src.memory.read_pipeline`` with
+        Wraps ``recall_memories()`` from ``guinvere.memory.read_pipeline`` with
         automatic session management and exception safety.
 
         Parameters
@@ -124,7 +124,7 @@ class HermesMemoryBridge:
             Default ``800``.
         kg_enabled:
             If ``True``, additionally query the Knowledge Graph
-            (``src.knowledge_graph.query.engine.KGQueryEngine``) and
+            (``guinvere.knowledge_graph.query.engine.KGQueryEngine``) and
             append matching entities to the result list.  When
             ``False`` (default), behavior is identical to the legacy
             bridge.  KG enrichment failures are logged and swallowed
@@ -233,7 +233,7 @@ class HermesMemoryBridge:
     ) -> str | None:
         """Store a completed conversation turn as an episodic memory.
 
-        Wraps ``store_episode()`` from ``src.memory.write_pipeline`` with
+        Wraps ``store_episode()`` from ``guinvere.memory.write_pipeline`` with
         automatic session management and exception safety.
 
         Parameters

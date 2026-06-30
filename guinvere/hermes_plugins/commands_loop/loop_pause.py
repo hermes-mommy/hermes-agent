@@ -1,6 +1,6 @@
 """Hermes command plugin — /loop-pause.
 
-Migrated from src/discord/cmd_loop_pause.py for Phase 2 Discord migration.
+Migrated from guinvere/discord/cmd_loop_pause.py for Phase 2 Discord migration.
 Pauses an active loop via LoopManager state machine.
 
 Original: 103 lines | Migrated: preserves LoopManager.pause() logic.

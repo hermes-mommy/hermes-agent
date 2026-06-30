@@ -112,7 +112,7 @@ class GmailHermesBridge:
 
     When *hermes* is ``None`` (the default), the bridge obtains the
     shared ``HermesSessionAdapter`` via ``get_adapter()`` from
-    ``src.hermes.adapter`` — the same pattern used by
+    ``guinvere.hermes.adapter`` — the same pattern used by
     ``WhatsAppHermesBridge``.
 
     Parameters

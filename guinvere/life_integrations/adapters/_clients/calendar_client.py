@@ -140,7 +140,7 @@ def _handle_http_error(exc: Any, method_name: str) -> None:
 class CalendarClient:
     """Synchronous Google Calendar API client.
 
-    Mirrors ``src.gmail.client.GmailClient``: constructor validates
+    Mirrors ``guinvere.gmail.client.GmailClient``: constructor validates
     credentials, ``build``s the API service, every method delegates to
     the service object, and the async wrapper below offloads to a
     thread pool so the event loop stays unblocked.
@@ -322,7 +322,7 @@ class CalendarClient:
 
         Returns ``True`` if a refresh was performed, ``False`` otherwise.
 
-        Mirrors ``src.gmail.token_manager.TokenManager.refresh_if_needed``
+        Mirrors ``guinvere.gmail.token_manager.TokenManager.refresh_if_needed``
         so callers (and the async wrapper) get consistent semantics.
 
         Raises ``ConfigurationMissingError`` for expired-but-unrefreshable

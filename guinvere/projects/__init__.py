@@ -1,4 +1,4 @@
-# src/projects module
+# guinvere/projects module
 """Project registry — domain models, registry service, and typed identifiers.
 
 This package implements P19-002: the central project registry that owns

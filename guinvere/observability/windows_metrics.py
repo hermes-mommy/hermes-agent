@@ -26,7 +26,7 @@ Example startup sequence::
 
 Naming convention
 -----------------
-Follows the ``guinevere_`` prefix established by ``src/core/main.py``
+Follows the ``guinevere_`` prefix established by ``guinvere/core/main.py``
 (``guinevere_requests_total``, ``guinevere_request_duration_seconds``).
 The ``windows_`` sub-prefix isolates daemon metrics from core API metrics.
 """
@@ -161,7 +161,7 @@ def wire_consent_hook() -> bool:
     """Wire the dropped-event Prometheus counter to the consent gate hook.
 
     Registers :func:`_consent_drop_hook` as the dropped-event callback
-    on ``src.surveillance.windows_consent``.  After calling this, every
+    on ``guinvere.surveillance.windows_consent``.  After calling this, every
     consent-gated drop automatically increments
     ``guinevere_windows_events_dropped_total``.
 

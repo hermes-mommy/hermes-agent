@@ -48,7 +48,7 @@ Naming
 
 The dataclass defined here is named :class:`RecallContext`.  It is
 the *query-package* :class:`RecallContext` — distinct from
-:class:`src.knowledge_graph.types.RecallContext` (the
+:class:`guinvere.knowledge_graph.types.RecallContext` (the
 ``types.RecallContext`` is a leaner bundle of entities / edges /
 triples that ingestion uses).  Both can coexist; callers should
 import from the most specific module (``query.context`` vs.
@@ -222,12 +222,12 @@ class RecallContextAssembler:
                 ``None``, the assembler derives seeds from
                 :meth:`KGQueryEngine.search_entities`.
             token_budget: Per-call KG budget.  Defaults to
-                :data:`src.knowledge_graph.constants.KG_TOKEN_BUDGET_MAX`
+                :data:`guinvere.knowledge_graph.constants.KG_TOKEN_BUDGET_MAX`
                 (1000).  The :class:`KGTokenBudgetManager` enforces
                 the ceiling.
             traversal_max_hops: BFS depth for the
                 :meth:`KGQueryEngine.traverse` call.  Defaults to
-                :data:`src.knowledge_graph.constants.MAX_TRAVERSAL_HOPS`
+                :data:`guinvere.knowledge_graph.constants.MAX_TRAVERSAL_HOPS`
                 (3).
             project_id: When set, scope all KG operations to the
                 given project namespace.  ``None`` (default) = no

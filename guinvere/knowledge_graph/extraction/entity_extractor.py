@@ -1,10 +1,10 @@
 """P16-007: rule-based entity extractor (NER, L1 + L2 only).
 
 This module implements the **first** stage of the Wave 2 extraction
-pipeline: given a :class:`~src.knowledge_graph.types.SemanticFact` (a
+pipeline: given a :class:`~guinvere.knowledge_graph.types.SemanticFact` (a
 consolidated ``(subject, predicate, object_val)`` triple), it
 classifies the subject and object surface forms into one of the
-closed :class:`~src.knowledge_graph.types.EntityCategory` values and
+closed :class:`~guinvere.knowledge_graph.types.EntityCategory` values and
 returns a list of :class:`ExtractedEntity` instances ready to be
 resolved by the P16-002 layer.
 
@@ -12,16 +12,16 @@ The extractor is deliberately **rule-based** for P16:
 
 * L1 = hand-curated gazetteer / pattern match (this module).
 * L2 = exact + fuzzy alias / canonical-key match (delegated to
-  :class:`~src.knowledge_graph.resolution.resolver.EntityResolver`,
+  :class:`~guinvere.knowledge_graph.resolution.resolver.EntityResolver`,
   which is injected but not invoked at extraction time — the
   resolver is async / DB-bound and the L1 path is fully synchronous).
 * L3 (embedding similarity) is **deferred to P17+** — see
-  :mod:`src.knowledge_graph.extraction` module docstring and the
+  :mod:`guinvere.knowledge_graph.extraction` module docstring and the
   no-embeddings research in ``evidence/p16-kg/``.
 
 The extractor is a *pure* function of its inputs: it never reads from
 the database, never calls the network, and never imports
-``src.memory.models``.  This keeps the unit-test surface small and
+``guinvere.memory.models``.  This keeps the unit-test surface small and
 the call graph obvious.
 
 Safety / consent notes (per AGENTS.md BLOCKING rules and
@@ -56,7 +56,7 @@ from guinvere.knowledge_graph.types import (
 )
 
 # Type alias for the closed taxonomy.  Resolves to ``EntityCategory`` via
-# the alias added in :mod:`src.knowledge_graph.types` — see that module
+# the alias added in :mod:`guinvere.knowledge_graph.types` — see that module
 # for the rationale.
 EntityType = EntityCategory
 

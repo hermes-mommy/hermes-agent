@@ -1,4 +1,4 @@
-"""WhatsApp channel adapter — ported from src/channels/whatsapp/.
+"""WhatsApp channel adapter — ported from guinvere/channels/whatsapp/.
 
 Condenses 22 source files (~3368 lines) into a single adapter that
 preserves: Neonize client lifecycle, envelope DTOs, formatter/chunking,

@@ -28,7 +28,7 @@ Design decisions:
 - **Consent scopes**: ``surveillance.app_usage``, ``surveillance.location``,
   ``surveillance.notifications``, ``surveillance.clipboard``, ``surveillance.email``
   (5 scopes; ``surveillance.email`` is used by the Gmail consent manager
-  ``src/gmail/consent_manager.py``).
+  ``guinvere/gmail/consent_manager.py``).
 - **P19-009 project scoping**: project-scoped consent rows (with non-NULL
   ``project_id``) take precedence over global rows.  Global-only scopes
   ignore ``project_id``.  Project-only scopes have no global fallback.

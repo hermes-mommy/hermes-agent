@@ -1,6 +1,6 @@
 """Discord slash command registry and callbacks — 41 canonical commands.
 
-Ports the COMMAND_SPECS from src/discord/_command_registry.py with all
+Ports the COMMAND_SPECS from guinvere/discord/_command_registry.py with all
 stale imports cleaned. Former surveillance gating replaced with direct
 responses. Former persona.mood_engine replaced with guinevere.emotions.
 Former loops.manager replaced with guinevere.consciousness.infra.

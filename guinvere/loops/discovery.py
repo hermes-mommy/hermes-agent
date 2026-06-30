@@ -330,7 +330,7 @@ class GitHubCollector(SignalCollector):
 
 
 class TodoScanner(SignalCollector):
-    """Scans ``src/`` for TODO and FIXME markers."""
+    """Scans ``guinvere/`` for TODO and FIXME markers."""
 
     _PATTERN = re.compile(r"#\s*(TODO|FIXME)\b(?::\s*|\s+)(.+)", re.IGNORECASE)
 

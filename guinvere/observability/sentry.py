@@ -1,6 +1,6 @@
 """Sentry SDK integration with PII scrubber.
 
-Ports: src/observability/sentry_integration.py.
+Ports: guinvere/observability/sentry_integration.py.
 
 Provides error tracking with mandatory PII protection.
 send_default_pii MUST be False (BLOCKING requirement).

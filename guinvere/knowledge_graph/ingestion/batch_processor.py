@@ -1,6 +1,6 @@
 """P16-002: Batch processor for unprocessed semantic facts.
 
-Sister module to :mod:`src.knowledge_graph.ingestion.pipeline`.  The
+Sister module to :mod:`guinvere.knowledge_graph.ingestion.pipeline`.  The
 :class:`BatchProcessor` wraps a :class:`KGIngestionPipeline` and adds two
 operational primitives the cron job needs:
 
@@ -134,7 +134,7 @@ _COUNT_SINCE_SQL: str = (
 def _bind_params(statement: object, params: dict[str, object]) -> object:
     """Bind named parameters to a SQL string.
 
-    Same idiom as :func:`src.knowledge_graph.ingestion.pipeline._bind_params`
+    Same idiom as :func:`guinvere.knowledge_graph.ingestion.pipeline._bind_params`
     — kept local to avoid coupling the two modules at the import level.
     """
     bind = getattr(statement, "bindparams", None)

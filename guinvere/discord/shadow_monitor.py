@@ -2,8 +2,8 @@
 """Shadow Monitor — reads shadow_comparisons.jsonl, calculates parity metrics,
 enforces cost caps, and alerts via Discord webhook on threshold violations.
 
-Run standalone:  python3 -m src.discord.shadow_monitor --check
-Run parity test: python3 -m src.discord.shadow_monitor --parity-check --min-queries 100 --report
+Run standalone:  python3 -m guinvere.discord.shadow_monitor --check
+Run parity test: python3 -m guinvere.discord.shadow_monitor --parity-check --min-queries 100 --report
 """
 
 from __future__ import annotations

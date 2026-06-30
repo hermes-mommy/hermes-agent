@@ -1,4 +1,4 @@
-"""X/Twitter channel adapter — ported from src/x_poster/.
+"""X/Twitter channel adapter — ported from guinvere/x_poster/.
 
 Condenses 26 source files (~5201 lines) into a single adapter that
 preserves: X API v2 client (OAuth 2.0 Bearer + auto-refresh), poster

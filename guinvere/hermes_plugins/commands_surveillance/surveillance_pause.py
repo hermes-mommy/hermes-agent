@@ -1,6 +1,6 @@
 """Hermes command plugin — /surveillance-pause.
 
-Migrated from src/discord/cmd_surveillance_pause.py for Phase 2 Discord migration.
+Migrated from guinvere/discord/cmd_surveillance_pause.py for Phase 2 Discord migration.
 Pauses surveillance data collection while preserving consent state.
 Creates an audit trail entry.
 

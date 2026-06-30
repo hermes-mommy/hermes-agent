@@ -1,7 +1,7 @@
 """Shared HermesSessionAdapter accessor — moved from ``__init__.py``.
 
 Provides the ``get_adapter()`` singleton factory that was previously
-exported from ``src.hermes``.  Importing this module does **not** pull
+exported from ``guinvere.hermes``.  Importing this module does **not** pull
 in deprecated ``session_adapter`` or ``memory_bridge`` at package-init
 time; the ``HermesSessionAdapter`` import is deferred to the first
 ``get_adapter()`` call, preserving the same lazy-init semantics.

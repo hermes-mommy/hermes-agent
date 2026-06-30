@@ -3,7 +3,7 @@
 This package implements the Knowledge Graph recall evaluation
 framework: a curated golden test set, the metric primitives
 (precision, recall, F1, MRR, nDCG), an async runner that drives the
-production :func:`src.memory.read_pipeline.recall_memories` with and
+production :func:`guinvere.memory.read_pipeline.recall_memories` with and
 without the KG signal, and a markdown report generator.
 
 Public surface
@@ -29,8 +29,8 @@ CLI usage
 
 ::
 
-    python -m src.knowledge_graph.eval \
-        --golden src/knowledge_graph/eval/golden_set_sample.json \
+    python -m guinvere.knowledge_graph.eval \
+        --golden guinvere/knowledge_graph/eval/golden_set_sample.json \
         --out reports/p16-005.md
 """
 from __future__ import annotations

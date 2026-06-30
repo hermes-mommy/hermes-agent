@@ -22,14 +22,14 @@ Usage::
 
 Submodule layout (each has its own ``__init__``):
 
-- :mod:`src.knowledge_graph.extraction`  — NER / RE pipeline
-- :mod:`src.knowledge_graph.resolution`  — entity resolution / dedup
-- :mod:`src.knowledge_graph.query`       — subgraph traversal
-- :mod:`src.knowledge_graph.ingestion`   — batch write pipeline
-- :mod:`src.knowledge_graph.consent`     — consent token + safe-word gates
-- :mod:`src.knowledge_graph.eval`        — evaluation harness
-- :mod:`src.knowledge_graph.observability` — metrics, tracing
-- :mod:`src.knowledge_graph.tests`       — internal test utilities
+- :mod:`guinvere.knowledge_graph.extraction`  — NER / RE pipeline
+- :mod:`guinvere.knowledge_graph.resolution`  — entity resolution / dedup
+- :mod:`guinvere.knowledge_graph.query`       — subgraph traversal
+- :mod:`guinvere.knowledge_graph.ingestion`   — batch write pipeline
+- :mod:`guinvere.knowledge_graph.consent`     — consent token + safe-word gates
+- :mod:`guinvere.knowledge_graph.eval`        — evaluation harness
+- :mod:`guinvere.knowledge_graph.observability` — metrics, tracing
+- :mod:`guinvere.knowledge_graph.tests`       — internal test utilities
 """
 from __future__ import annotations
 

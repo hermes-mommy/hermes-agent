@@ -35,7 +35,7 @@ VALID_PRIORITIES: frozenset[str] = frozenset({"low", "normal", "high", "critical
 
 # Trigger sources accepted by LoopContext. Mirrors the values in the
 # merged P5+P20 plan and matches the dispatcher routes in
-# ``src/loops/scheduler.py``.
+# ``guinvere/loops/scheduler.py``.
 VALID_TRIGGER_SOURCES: frozenset[str] = frozenset(
     {
         "manual",

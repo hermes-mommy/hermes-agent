@@ -405,7 +405,7 @@ class SurveillanceConsumer:
 
 
 async def main() -> None:
-    """Entry point for ``python -m src.surveillance.consumer``.
+    """Entry point for ``python -m guinvere.surveillance.consumer``.
 
     Creates a ``RedisSurveillanceBuffer`` and an async session factory,
     then runs the consumer with graceful shutdown on SIGTERM/SIGINT.

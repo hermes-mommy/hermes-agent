@@ -1,6 +1,6 @@
 """Async Redis buffer + background consumer for surveillance events.
 
-Ports: src/surveillance/redis_buffer.py, consumer.py.
+Ports: guinvere/surveillance/redis_buffer.py, consumer.py.
 
 The buffer provides RPUSH/LRANGE+LTRIM on Redis DB2 with 300s TTL.
 The consumer drains the buffer and processes events through a pipeline:

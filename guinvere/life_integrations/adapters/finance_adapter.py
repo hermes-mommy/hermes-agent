@@ -1,6 +1,6 @@
 """Finance tracker integration adapter — wraps existing FinanceMind.
 
-Wraps src/life_kernel/domain_minds/finance_mind.py (record/classify/summarize/
+Wraps guinvere/life_kernel/domain_minds/finance_mind.py (record/classify/summarize/
 anomaly). Adds correction/export. NO payment/transfer (L4 blocked).
 
 Consent: consent.finance.{read,write,delete}

@@ -91,7 +91,7 @@ class RecoveryResult:
 class RecoveryManager:
     """Manages loop checkpoints for restart recovery.
 
-    Uses PostgreSQL via :class:`~src.loops.state_store.LoopStateStore` to
+    Uses PostgreSQL via :class:`~guinvere.loops.state_store.LoopStateStore` to
     persist checkpoints. On restart, reads the last checkpoint and determines
     which phases to skip.
     """

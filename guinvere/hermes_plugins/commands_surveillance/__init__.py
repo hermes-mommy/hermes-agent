@@ -3,7 +3,7 @@
 Commands: /surveillance-status, /surveillance-pause, /surveillance-resume,
          /clear-cache.
 
-Migrated from src/discord/cmd_surveillance_*.py for Phase 2 Discord migration.
+Migrated from guinvere/discord/cmd_surveillance_*.py for Phase 2 Discord migration.
 Preserves consent-bound surveillance operations: consent check before any
 data access, no raw surveillance data in logs, audit trail for state changes.
 """

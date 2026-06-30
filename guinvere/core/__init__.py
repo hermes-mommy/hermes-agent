@@ -1,1 +1,1 @@
-# src/core module
+# guinvere/core module

@@ -326,7 +326,7 @@ class ToolRegistry:
 def create_tool_registry_from_mcp(tool_selector: Any | None = None) -> ToolRegistry:
     """Build a ``ToolRegistry`` populated with the 16 existing MCP tools.
 
-    Discovers decorated tool functions in ``src.mcp.tools`` using the
+    Discovers decorated tool functions in ``guinvere.mcp.tools`` using the
     same module list used by the MCP server, derives each tool's auth
     level from the ``@require_approval`` wrapper, and registers a JSON
     schema generated from its signature.

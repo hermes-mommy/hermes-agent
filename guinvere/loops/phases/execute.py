@@ -311,7 +311,7 @@ async def run(loop_id: str, task: str, goal: str = "") -> str:
     """Execute the Execute phase and return markdown artifact content.
 
     The caller is responsible for persisting the returned string via
-    :func:`src.loops.artifacts.write_artifact`.
+    :func:`guinvere.loops.artifacts.write_artifact`.
 
     This function constructs an :class:`ExecuteHandler` **without** an
     LLM router, which means it uses the static fallback template. When

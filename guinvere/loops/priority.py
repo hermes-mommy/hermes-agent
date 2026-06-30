@@ -140,10 +140,10 @@ class PriorityScorer:
         cost lookup. Reserved for future use; currently stored but not invoked
         unless it exposes a compatible cost-history API.
     tool_registry:
-        Optional :class:`src.loops.tool_registry.ToolRegistry` used to check
+        Optional :class:`guinvere.loops.tool_registry.ToolRegistry` used to check
         whether the tools required by a task are available.
     skill_library:
-        Optional :class:`src.loops.skill_library.SkillLibrary` used to check
+        Optional :class:`guinvere.loops.skill_library.SkillLibrary` used to check
         whether relevant procedural skills exist for a task.
     """
 

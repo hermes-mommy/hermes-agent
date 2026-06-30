@@ -20,7 +20,7 @@ Metric families
 
 Naming convention
 -----------------
-Follows the ``guinevere_`` prefix established by ``src/core/main.py``.
+Follows the ``guinevere_`` prefix established by ``guinvere/core/main.py``.
 The ``wearable_`` sub-prefix isolates health pipeline metrics.
 """
 

@@ -16,7 +16,7 @@ Bridges:
 
 ProjectRegistry needs NO shim — P19's real ``ProjectRegistry`` already
 implements ``get``/``resolve``/``list_active`` matching P22's
-``ProjectRegistryProtocol`` (verified src/projects/registry.py:277,291,313).
+``ProjectRegistryProtocol`` (verified guinvere/projects/registry.py:277,291,313).
 """
 
 from __future__ import annotations

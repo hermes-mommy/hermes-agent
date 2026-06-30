@@ -267,7 +267,7 @@ def build_help_embed_data(
     """Build a deterministic ``HelpEmbedData`` with all 7 category fields.
 
     Command names are read from ``command_categories()`` in
-    ``src.discord.commands`` when ``categories`` is ``None``.
+    ``guinvere.discord.commands`` when ``categories`` is ``None``.
 
     Args:
         categories: Override category dict for determinism (e.g. in tests).

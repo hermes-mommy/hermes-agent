@@ -15,7 +15,7 @@ Structure
 
 The golden set is intentionally **not** the recall source itself — it
 is the ground-truth labels (oracle).  The harness calls
-:func:`src.memory.read_pipeline.recall_memories` twice (once with
+:func:`guinvere.memory.read_pipeline.recall_memories` twice (once with
 ``kg_enabled=False`` and once with ``kg_enabled=True``), computes the
 metric deltas, and writes a comparison report.
 

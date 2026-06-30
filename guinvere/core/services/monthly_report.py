@@ -4,7 +4,7 @@ Generates and posts a monthly cost report to the #cost-tracker Discord
 channel on the 1st of each month.  Reads cost data from Redis DB5
 and posts via a Discord webhook.
 
-The scheduler is registered in the FastAPI lifespan (``src/core/main.py``)
+The scheduler is registered in the FastAPI lifespan (``guinvere/core/main.py``)
 using APScheduler with a daily cron trigger.  The job checks whether
 today is the 1st of the month before generating the report.
 

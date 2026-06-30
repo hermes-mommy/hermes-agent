@@ -1,6 +1,6 @@
 """Hermes command plugin — /memory-export.
 
-Migrated from src/discord/cmd_memory_export.py for Phase 2 Discord migration.
+Migrated from guinvere/discord/cmd_memory_export.py for Phase 2 Discord migration.
 Exports non-DNR memory metadata as structured JSON. NOTE: In Discord, this
 sent a DM file; in Hermes, it returns a markdown summary with metadata only
 (NO raw content exposure).

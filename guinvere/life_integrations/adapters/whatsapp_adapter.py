@@ -1,4 +1,4 @@
-"""WhatsApp integration adapter — wraps existing src/channels/whatsapp/.
+"""WhatsApp integration adapter — wraps existing guinvere/channels/whatsapp/.
 
 Wraps the existing Neonize-based WhatsApp module (21 files). Adds full-
 capability actuator methods. Reports CONFIG_MISSING when session not linked.

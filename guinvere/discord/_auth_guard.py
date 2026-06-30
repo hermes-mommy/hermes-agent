@@ -1,6 +1,6 @@
 """Auth guard for Discord interactions — Faiz-only gate.
 
-Extracted from ``src.discord.commands`` (deprecated) into an independent
+Extracted from ``guinvere.discord.commands`` (deprecated) into an independent
 non-deprecated module so that the 32 command callback modules can import
 it without referencing the deprecated ``commands.py`` module.
 """

@@ -1,4 +1,4 @@
-# src/core/services module
+# guinvere/core/services module
 from guinvere.core.services.prompt_loader import (
     assemble_system_prompt_with_memory,
     get_system_prompt_with_context,

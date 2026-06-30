@@ -2,7 +2,7 @@
 
 The P22 ``GitHubIntegrationAdapter`` calls instance methods on its
 ``github_client`` collaborator. The real GitHub operations live as
-module-level functions in ``src.mcp.tools.github`` (decorated with
+module-level functions in ``guinvere.mcp.tools.github`` (decorated with
 ``@require_approval`` + tenacity retry/backoff):
 
     ``github_list_repos(owner)``
@@ -149,7 +149,7 @@ def _handle_github_http_error(response: Any, url: str) -> None:
 
 
 class GitHubClientShim:
-    """Instance wrapper around ``src.mcp.tools.github`` module functions.
+    """Instance wrapper around ``guinvere.mcp.tools.github`` module functions.
 
     Constructor reads ``GITHUB_PAT`` from the environment once and caches
     the boolean. All public methods fail-closed when the PAT is missing.

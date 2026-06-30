@@ -1,13 +1,13 @@
 """Knowledge Graph backfill validation suite (P16-010).
 
 Validates the integrity and coverage of the historical backfill
-(:class:`src.knowledge_graph.ingestion.backfill.KGBackfillEngine`)
+(:class:`guinvere.knowledge_graph.ingestion.backfill.KGBackfillEngine`)
 output.  Read-only — never mutates the database.
 
 Why this lives in the ingestion package
 ---------------------------------------
 The validator is the post-migration gate for the backfill engine in
-:mod:`src.knowledge_graph.ingestion.backfill`.  Operators run the
+:mod:`guinvere.knowledge_graph.ingestion.backfill`.  Operators run the
 six checks (entity coverage, edge integrity, orphans, duplicates,
 consent compliance, tombstone consistency) before signing off the
 migration as complete.
@@ -81,7 +81,7 @@ MAX_ISSUES_PER_CHECK: Final[int] = 100
 MAX_DUPLICATE_SAMPLES: Final[int] = 50
 
 # Token format used by the backfill engine.  Mirrors
-# :class:`src.knowledge_graph.consent.manager` so the validator can
+# :class:`guinvere.knowledge_graph.consent.manager` so the validator can
 # verify the token shape without an import.
 _CONSENT_TOKEN_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^kg_[a-z0-9_]{1,32}_[a-z0-9_]{1,32}_[a-f0-9]{8}$"
@@ -266,7 +266,7 @@ class KGBackfillValidator:
 
     Args:
         session_factory: Callable that returns a fresh async session
-            (typically :func:`src.memory.db.get_async_session`).
+            (typically :func:`guinvere.memory.db.get_async_session`).
         source_tag: Source tag the validator scopes its checks to.
             Defaults to :data:`BACKFILL_SOURCE_TAG`.  Pass an
             alternative tag when validating rows from a different
@@ -656,7 +656,7 @@ class KGBackfillValidator:
         """Verify backfill edges carry a valid ``consent_token``.
 
         The expected token shape is the regex used by
-        :class:`src.knowledge_graph.consent.manager.ConsentManager`.
+        :class:`guinvere.knowledge_graph.consent.manager.ConsentManager`.
         Edges without a matching token are an audit failure —
         either the engine was mis-configured or a row was written
         outside the engine (manual data fix).
@@ -750,11 +750,11 @@ class KGBackfillValidator:
             f"SELECT ed.id AS edge_id, ed.src_entity_id, ed.dst_entity_id "
             f"FROM {KG_EDGES_TABLE} ed "
             f"JOIN {KG_ENTITIES_TABLE} e_src "
-            "  ON ed.src_entity_id = e_src.id "
+            "  ON ed.src_entity_id = e_guinvere.id "
             f"JOIN {KG_ENTITIES_TABLE} e_dst "
             "  ON ed.dst_entity_id = e_dst.id "
             "WHERE ed.is_tombstoned = FALSE "
-            "  AND (e_src.is_tombstoned = TRUE OR e_dst.is_tombstoned = TRUE)"
+            "  AND (e_guinvere.is_tombstoned = TRUE OR e_dst.is_tombstoned = TRUE)"
         )
         try:
             async with self._repo.get_session() as session:

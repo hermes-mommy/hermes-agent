@@ -1,6 +1,6 @@
 """GitHub integration adapter — full-capability actuator.
 
-Wraps existing src/mcp/tools/github.py (5 ops) and extends with full
+Wraps existing guinvere/mcp/tools/github.py (5 ops) and extends with full
 repo/issue/PR/Actions/releases/webhooks/secrets/branch protection support.
 
 Secrets: sec-github-pat (SOPS, fine-grained PAT)

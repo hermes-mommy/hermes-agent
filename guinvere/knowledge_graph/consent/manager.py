@@ -13,14 +13,14 @@ Design notes:
 * **Write-ahead audit.** Every mutation writes a row to
   ``memory.kg_consent_audit`` in its OWN transaction BEFORE the
   business mutation lands. The audit module raises
-  :class:`~src.knowledge_graph.errors.KGConsentError` if the audit
+  :class:`~guinvere.knowledge_graph.errors.KGConsentError` if the audit
   write fails, which is intentionally propagated to the caller --
   silent consent failures are forbidden.
 * **Exception safety.** Non-:class:`KGConsentError` exceptions raised
   by storage or audit are caught, logged with full context, and
   converted to a safe default (typically ``False`` / ``None`` / empty
   counts). ``KGConsentError`` always propagates.
-* **No module-level imports from ``src.memory``.** Safe-word
+* **No module-level imports from ``guinvere.memory``.** Safe-word
   indicators and DNR semantics are resolved via lazy import inside
   the calling method, keeping the consent package decoupled from the
   memory package's import-time side effects.
@@ -376,7 +376,7 @@ class ConsentManager:
         audit_id = uuid.uuid4()
         timestamp = datetime.now(timezone.utc)
 
-        # Lazy import to avoid module-level coupling with src.memory.
+        # Lazy import to avoid module-level coupling with guinvere.memory.
         from guinvere.knowledge_graph.consent.audit import ConsentAuditor
 
         auditor = ConsentAuditor(self._session_factory)

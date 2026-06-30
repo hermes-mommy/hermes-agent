@@ -15,8 +15,8 @@ pattern table they share:
   a :class:`SemanticFact` plus an :class:`EntityExtractor` and
   returns a list of :class:`ExtractedRelation` instances.
 
-* :data:`~src.knowledge_graph.extraction.patterns.ENTITY_PATTERNS`
-  and :data:`~src.knowledge_graph.extraction.patterns.PREDICATE_MAP`
+* :data:`~guinvere.knowledge_graph.extraction.patterns.ENTITY_PATTERNS`
+  and :data:`~guinvere.knowledge_graph.extraction.patterns.PREDICATE_MAP`
   are re-exported for ergonomic access at the package level.
 
 Layering / future work
@@ -24,14 +24,14 @@ Layering / future work
 
 * L1 = hand-curated regex / gazetteer (this module).
 * L2 = exact + fuzzy alias / canonical-key match (delegated to
-  :class:`src.knowledge_graph.resolution.resolver.EntityResolver`,
+  :class:`guinvere.knowledge_graph.resolution.resolver.EntityResolver`,
   which is injected but not invoked at extraction time).
 * L3 (embedding similarity) is **deferred to P17+** — see the
   no-embeddings research at
   ``evidence/p16-kg/research-entity-resolution-no-embeddings.md``.
 
-Sister modules: :mod:`src.knowledge_graph.resolution`,
-:mod:`src.knowledge_graph.ingestion`.
+Sister modules: :mod:`guinvere.knowledge_graph.resolution`,
+:mod:`guinvere.knowledge_graph.ingestion`.
 """
 from __future__ import annotations
 

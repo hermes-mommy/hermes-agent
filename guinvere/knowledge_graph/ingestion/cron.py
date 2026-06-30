@@ -3,13 +3,13 @@
 Schedules the daily :class:`BatchProcessor` run at 03:30
 ``Asia/Bangkok`` (ICT, no DST) — exactly 30 minutes after the daily
 episodic-to-semantic consolidation job (which fires at 03:00 ICT in
-``src.memory.consolidation``).  The 30-minute buffer ensures all new
+``guinvere.memory.consolidation``).  The 30-minute buffer ensures all new
 ``semantic_facts`` rows produced by overnight consolidation are
 committed and visible to the ingestion query.
 
 Design notes:
 
-* Mirrors ``src.memory.consolidation.register_consolidation_job`` so the
+* Mirrors ``guinvere.memory.consolidation.register_consolidation_job`` so the
   two jobs are configured with the same knobs (``misfire_grace_time``,
   ``replace_existing``).
 * The scheduler is duck-typed via :class:`SchedulerProtocol` — keeps this
@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Constants — mirror of src.memory.consolidation
+# Constants — mirror of guinvere.memory.consolidation
 # ---------------------------------------------------------------------------
 
 KG_INGESTION_JOB_ID: str = "daily_kg_ingestion"
@@ -57,7 +57,7 @@ KG_INGESTION_DEFAULT_MINUTE: int = 30
 KG_INGESTION_DEFAULT_TIMEZONE: str = "Asia/Bangkok"
 """Timezone string for the cron trigger.
 
-Matches ``src.memory.consolidation.TZ_BANGKOK`` — ICT has no DST."""
+Matches ``guinvere.memory.consolidation.TZ_BANGKOK`` — ICT has no DST."""
 
 KG_INGESTION_DEFAULT_BACKLOG_LIMIT: int = 10_000
 """Per-run cap on the number of facts the cron job will process.
@@ -72,14 +72,14 @@ Mirrors :data:`KGConfig.kg_batch_size` (Pydantic default)."""
 
 
 # ---------------------------------------------------------------------------
-# Protocol — matches src.memory.consolidation.SchedulerProtocol
+# Protocol — matches guinvere.memory.consolidation.SchedulerProtocol
 # ---------------------------------------------------------------------------
 
 
 class SchedulerProtocol(Protocol):
     """Minimal scheduler interface used by APScheduler registration.
 
-    Mirrors :class:`src.memory.consolidation.SchedulerProtocol` so the
+    Mirrors :class:`guinvere.memory.consolidation.SchedulerProtocol` so the
     same fake / mock scheduler implementation works for both the
     consolidation and the KG-ingestion registration helpers.
     """
@@ -110,7 +110,7 @@ class _SessionFactory(Protocol):
 
 # ---------------------------------------------------------------------------
 # Session-factory adapter — the APScheduler signature requires a callable
-# whose first parameter is ``session_factory``.  ``src.knowledge_graph``
+# whose first parameter is ``session_factory``.  ``guinvere.knowledge_graph``
 # uses a session-factory protocol, so we type-narrow at the boundary.
 # ---------------------------------------------------------------------------
 
@@ -147,7 +147,7 @@ def register_kg_ingestion_job(
 ) -> object:
     """Register the daily KG ingestion job on an APScheduler v3 scheduler.
 
-    Mirrors :func:`src.memory.consolidation.register_consolidation_job` so
+    Mirrors :func:`guinvere.memory.consolidation.register_consolidation_job` so
     the two cron jobs are configured identically (``misfire_grace_time``,
     ``replace_existing``).  The job fires at ``hour:minute`` in the
     supplied timezone — defaults to ``03:30 Asia/Bangkok`` so it runs 30

@@ -2,8 +2,8 @@
 
 Commands: /memory-search, /memory-add, /memory-forget, /memory-export.
 
-Migrated from src/discord/cmd_memory_*.py for Phase 2 Discord migration.
-Uses HermesMemoryBridge (src/hermes/memory_bridge.py) for all memory operations.
+Migrated from guinvere/discord/cmd_memory_*.py for Phase 2 Discord migration.
+Uses HermesMemoryBridge (guinvere/hermes/memory_bridge.py) for all memory operations.
 """
 
 from __future__ import annotations

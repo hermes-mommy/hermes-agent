@@ -1,7 +1,7 @@
 """Hermes-native command catalog — command metadata without Discord dependencies.
 
 Provides the canonical command listing for help generation and introspection
-within the Hermes plugin system. Mirrors the data from ``src.discord.commands``
+within the Hermes plugin system. Mirrors the data from ``guinvere.discord.commands``
 without importing any Discord-specific types.
 """
 

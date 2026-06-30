@@ -1,6 +1,6 @@
 """Hermes command plugin — /help.
 
-Migrated from src/discord/cmd_help.py for Phase 2 Discord migration.
+Migrated from guinvere/discord/cmd_help.py for Phase 2 Discord migration.
 Lists all slash commands grouped by their 7 categories.
 """
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""Gmail channel adapter — ported from src/gmail/.
+"""Gmail channel adapter — ported from guinvere/gmail/.
 
 Condenses 36 source files (~12723 lines) into a single adapter that
 preserves: OAuth2 token lifecycle, Gmail API client with QuotaTracker,

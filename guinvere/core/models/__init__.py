@@ -1,1 +1,1 @@
-# src/core/models module
+# guinvere/core/models module

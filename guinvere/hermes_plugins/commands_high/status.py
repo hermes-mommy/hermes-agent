@@ -1,6 +1,6 @@
 """Hermes command plugin — /status.
 
-Migrated from src/discord/cmd_status.py for Phase 2 Discord migration.
+Migrated from guinvere/discord/cmd_status.py for Phase 2 Discord migration.
 Preserves all 11 embed fields: Mood, Active Loops, Tasks Today, Uptime,
 Cost Today, Yandere Level, Next Scheduled, Current Project, Streak,
 Memory Health, Surveillance.

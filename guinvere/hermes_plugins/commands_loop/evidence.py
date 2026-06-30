@@ -1,6 +1,6 @@
 """Hermes command plugin — /evidence.
 
-Migrated from src/discord/cmd_evidence.py for Phase 2 Discord migration.
+Migrated from guinvere/discord/cmd_evidence.py for Phase 2 Discord migration.
 Lists evidence artifacts for a loop from LoopManager. Preserves the safety
 requirement: metadata and artifact identifiers only — NO raw surveillance data.
 

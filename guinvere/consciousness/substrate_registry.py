@@ -1,6 +1,6 @@
 """Substrate Registry — maps substrate names to their coroutines.
 
-Replaces ``src/loops/phases/__init__.py`` PHASE_REGISTRY.
+Replaces ``guinvere/loops/phases/__init__.py`` PHASE_REGISTRY.
 The consciousness loop iterates this registry at startup to
 spawn one asyncio.Task per substrate.
 

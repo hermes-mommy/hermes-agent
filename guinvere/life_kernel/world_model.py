@@ -5,7 +5,7 @@ operations.  Entities are typed dictionaries with a required ``kind``
 and ``id`` field.  Relations are directed edges with a ``relation``
 label.
 
-Ported from src/life_kernel/graph.py (42KB) — graph query logic only.
+Ported from guinvere/life_kernel/graph.py (42KB) — graph query logic only.
 LangGraph-specific scaffolding (nodes, edges, StateGraph) is replaced
 by plain Python data structures suitable for local-only runtime (D2).
 

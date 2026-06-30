@@ -3,7 +3,7 @@
 This module wires P22's own IntegrationRegistry (NOT life_kernel's
 SensorRegistry) and provides an ActionRouter for domain minds to call.
 It does NOT import or modify any P20 closed file — `grep -rn
-"from guinvere.life_kernel" src/life_integrations/` returns 0 hits. The registry
+"from guinvere.life_kernel" guinvere/life_integrations/` returns 0 hits. The registry
 is purely additive; P20 may optionally consume it via app.state.p22_registry.
 
 V-002 (sensors-not-triggers) preserved: P22 adapters are queried on demand

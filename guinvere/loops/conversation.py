@@ -13,7 +13,7 @@ alternates between:
 
 The loop is **tool-executor-agnostic**: it accepts tool execution as a
 ``Callable[[str, str], Awaitable[str]]`` and never imports from
-``src.mcp`` or ``src.core`` directly. This keeps the module testable in
+``guinvere.mcp`` or ``guinvere.core`` directly. This keeps the module testable in
 isolation with a mock executor.
 
 Construction injection:

@@ -125,7 +125,7 @@ This is the 4th RRF signal, added on top of the existing 3-signal fusion
 in :func:`recall_memories`, the KG contribution ``KG_WEIGHT / (RRF_K + kg_rank)``
 is added to ``combined_score`` for episodes ranked by the KG graph traversal.
 
-Mirrors :data:`src.knowledge_graph.query.rrf_fusion.KG_WEIGHT`.  Kept in sync
+Mirrors :data:`guinvere.knowledge_graph.query.rrf_fusion.KG_WEIGHT`.  Kept in sync
 deliberately so callers do not have to import from the KG module.
 """
 

@@ -8,7 +8,7 @@ exhausting the parent propagates to every child.
 
 Pattern reference: Hermes Agent ``IterationBudget`` (parent 90 / subagent
 50 defaults). State is kept in memory only; no Redis or PostgreSQL
-coupling — see :mod:`src.loops.cost` for the persistent per-loop cost
+coupling — see :mod:`guinvere.loops.cost` for the persistent per-loop cost
 record on Redis DB5.
 
 All mutating operations acquire an :class:`asyncio.Lock`; inspection

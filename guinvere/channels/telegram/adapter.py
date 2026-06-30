@@ -1,9 +1,9 @@
 """Telegram channel adapter — synthesized rewrite.
 
 Combines:
-- src/life_integrations/adapters/telegram_adapter.py (integration adapter
+- guinvere/life_integrations/adapters/telegram_adapter.py (integration adapter
   pattern, action dispatch, CONFIG_MISSING, pre-delete snapshot)
-- src/life_integrations/adapters/_clients/telegram_client.py (httpx Bot API
+- guinvere/life_integrations/adapters/_clients/telegram_client.py (httpx Bot API
   client, per-chat throttle, 429 retry_after, token-in-URL auth model)
 - Hermes gateway/platforms/telegram.py (send_message cross-channel tool
   pattern, topic/thread references)

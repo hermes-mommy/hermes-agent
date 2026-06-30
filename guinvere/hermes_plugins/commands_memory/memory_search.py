@@ -1,6 +1,6 @@
 """Hermes command plugin — /memory-search.
 
-Migrated from src/discord/cmd_memory_search.py for Phase 2 Discord migration.
+Migrated from guinvere/discord/cmd_memory_search.py for Phase 2 Discord migration.
 Uses HermesMemoryBridge.recall_for_context() for memory recall with
 DNR exclusion, classification ceiling, and safe-mode support.
 

@@ -9,7 +9,7 @@ Why a hard 1000-token ceiling
 ------------------------------
 
 * The recall pipeline has its own overall budget (4 000 tokens per
-  cycle, see :data:`src.memory.read_pipeline.DEFAULT_TOKEN_BUDGET`).
+  cycle, see :data:`guinvere.memory.read_pipeline.DEFAULT_TOKEN_BUDGET`).
   KG cannot eat more than a quarter of that without starving the
   vector / FTS / recency signals — every other channel needs room.
 * Linearized triples are noisier than curated memory; without a
@@ -20,10 +20,10 @@ Token estimation
 ----------------
 
 :func:`KGTokenBudgetManager.estimate_tokens` is intentionally
-identical to :func:`src.memory.read_pipeline.estimate_tokens`
+identical to :func:`guinvere.memory.read_pipeline.estimate_tokens`
 (``len(text) // CHARS_PER_TOKEN`` with ``CHARS_PER_TOKEN = 4``).
 We re-declare the constant here so this module does not import
-from ``src.memory.read_pipeline`` — keeping the KG package free of
+from ``guinvere.memory.read_pipeline`` — keeping the KG package free of
 upstream coupling.
 
 Linearization format
@@ -77,12 +77,12 @@ logger = get_kg_logger("query.token_budget")
 # ---------------------------------------------------------------------------
 
 #: Hard ceiling on tokens consumed by the KG context in a single
-#: recall response.  Mirrors :data:`src.knowledge_graph.constants.KG_TOKEN_BUDGET_MAX`
+#: recall response.  Mirrors :data:`guinvere.knowledge_graph.constants.KG_TOKEN_BUDGET_MAX`
 #: (Faiz-locked per PRD v2.2 P16).
 MAX_KG_TOKENS: int = KG_TOKEN_BUDGET_MAX
 
 #: Characters-per-token used by :meth:`estimate_tokens`.  Matches
-#: :data:`src.memory.read_pipeline.CHARS_PER_TOKEN` so estimates are
+#: :data:`guinvere.memory.read_pipeline.CHARS_PER_TOKEN` so estimates are
 #: comparable across the recall pipeline.
 CHARS_PER_TOKEN: int = 4
 
@@ -185,7 +185,7 @@ class KGTokenBudgetManager:
     def estimate_tokens(text: str) -> int:
         """Approximate token count of ``text``.
 
-        Mirrors :func:`src.memory.read_pipeline.estimate_tokens`
+        Mirrors :func:`guinvere.memory.read_pipeline.estimate_tokens`
         (``len(text) // CHARS_PER_TOKEN``) so KG and recall budgets
         use the same estimator and stay comparable.
 

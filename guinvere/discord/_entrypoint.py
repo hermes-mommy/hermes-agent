@@ -4,7 +4,7 @@ Provides the overarching GuinevereBot class wrapping ``commands.Bot``,
 HARD STOP guard via ``on_message`` listener, slash command registration,
 and the ``main()`` entrypoint for VPS deployment with systemd.
 
-This module replaces ``src/discord/bot.py`` as the active runtime entrypoint.
+This module replaces ``guinvere/discord/bot.py`` as the active runtime entrypoint.
 All non-deprecated imports use the ``_``-prefixed or fully migrated modules:
 
 - ``_intents`` instead of ``intents``
@@ -33,7 +33,7 @@ from guinvere.discord.shadow_pipeline import ShadowPipeline
 
 
 # Dynamically import discord.ext.commands to avoid shadowing by the
-# project-local ``src/discord/`` package.  The conftest pre-caches
+# project-local ``guinvere/discord/`` package.  The conftest pre-caches
 # the real discord module so this importlib call resolves correctly.
 _commands_module: Any = importlib.import_module("discord.ext.commands")
 commands = _commands_module  # alias for class-definition access

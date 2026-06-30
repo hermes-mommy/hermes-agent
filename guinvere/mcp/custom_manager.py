@@ -3,7 +3,7 @@
 Provides a FastMCP server that registers exactly the KEEP-7 custom tool
 families through a documented stdio MCP server path. Unlike the full
 ``manager.py`` (which registers all 16 tool modules via
-``src.mcp.tools.register_all_tools``), this manager only imports and
+``guinvere.mcp.tools.register_all_tools``), this manager only imports and
 registers the seven custom tool modules:
 
   - postgres_tool   (postgres_query, postgres_tables, postgres_describe)
@@ -36,7 +36,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Protocol, cast
 
-# ---- Resolve the real mcp package (not our local src/mcp) ----------
+# ---- Resolve the real mcp package (not our local guinvere/mcp) ----------
 _SRC_DIR = str(Path(__file__).resolve().parent.parent)
 _SRC_ABS = Path(_SRC_DIR).resolve()
 _SAVED_PATH: list[str] = list(sys.path)

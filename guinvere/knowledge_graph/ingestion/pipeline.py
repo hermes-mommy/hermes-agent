@@ -2,21 +2,21 @@
 
 This module implements the **post-consolidation ingestion hook** that
 converts ``memory.semantic_facts`` rows produced by
-:func:`src.memory.consolidation.consolidate_episodes_to_facts` into
+:func:`guinvere.memory.consolidation.consolidate_episodes_to_facts` into
 ``memory.kg_entities`` and ``memory.kg_edges`` rows.
 
 The pipeline orchestrates five collaborators that are injected at
 construction time:
 
-* :class:`src.knowledge_graph.extraction.entity_extractor.EntityExtractor`
+* :class:`guinvere.knowledge_graph.extraction.entity_extractor.EntityExtractor`
   — L1+L2 NER over the subject / object slots of a fact.
-* :class:`src.knowledge_graph.resolution.resolver.EntityResolver`
+* :class:`guinvere.knowledge_graph.resolution.resolver.EntityResolver`
   — L1 → L1b → L2 deduplication of extracted entities against the live KG.
-* :class:`src.knowledge_graph.extraction.relation_extractor.RelationExtractor`
+* :class:`guinvere.knowledge_graph.extraction.relation_extractor.RelationExtractor`
   — L1+L2 predicate → :class:`RelationType` mapping.
-* :class:`src.knowledge_graph.consent.manager.ConsentManager`
+* :class:`guinvere.knowledge_graph.consent.manager.ConsentManager`
   — issuance of consent tokens attached to every new edge.
-* :class:`src.knowledge_graph.observability.metrics.KGMetrics`
+* :class:`guinvere.knowledge_graph.observability.metrics.KGMetrics`
   — Prometheus counters / histograms for observability.
 
 Flow per fact (see :meth:`KGIngestionPipeline._ingest_fact_in_session`):
@@ -100,7 +100,7 @@ DEFAULT_CLASSIFICATION: str = "Restricted"
 """Classification applied to entities / edges created by the pipeline.
 
 Mirrors the ``ClassificationMetaMixin`` server default and the consolidation
-contract — see ``src.memory.models``."""
+contract — see ``guinvere.memory.models``."""
 
 SOURCE_LABEL: str = "kg_ingestion"
 """Value stored in ``kg_entities.first_seen_source`` for new entities.
@@ -220,7 +220,7 @@ _EDGE_INSERT_SQL: str = (
 class _SessionFactory(Protocol):
     """Minimal async session-factory protocol used by the pipeline.
 
-    Mirrors :class:`src.knowledge_graph.consent.manager._SessionFactory` so
+    Mirrors :class:`guinvere.knowledge_graph.consent.manager._SessionFactory` so
     the same factory implementation can be shared across the KG module.
     The factory must return an :class:`AsyncSessionProtocol`-compatible
     object usable as ``async with factory() as session: ...``.
@@ -239,7 +239,7 @@ def _bind_params(statement: object, params: dict[str, object]) -> object:
     """Bind named parameters to a SQL string.
 
     Same idiom as
-    :func:`src.knowledge_graph.resolution.canonical._bind_params` — kept
+    :func:`guinvere.knowledge_graph.resolution.canonical._bind_params` — kept
     local so this module does not need to import a private helper from a
     sibling module (which would couple them at the import level).
     """
@@ -431,7 +431,7 @@ class KGIngestionPipeline:
         ``batch_size`` chunk.  A failure on one fact is logged and captured
         in the per-fact :class:`IngestionResult.errors` list — the rest of
         the batch continues.  This mirrors the resilience policy in
-        ``src.memory.consolidation.consolidate_episodes_to_facts`` (DNR /
+        ``guinvere.memory.consolidation.consolidate_episodes_to_facts`` (DNR /
         safe-word skips are isolated; the job never short-circuits on a
         single bad row).
 
@@ -555,7 +555,7 @@ class KGIngestionPipeline:
         Parameters
         ----------
         consolidation_result:
-            The :class:`src.memory.consolidation.ConsolidationResult`
+            The :class:`guinvere.memory.consolidation.ConsolidationResult`
             returned by ``consolidate_episodes_to_facts``.  Treated as an
             opaque object that exposes a ``facts_created`` list of dicts
             with keys ``subject``, ``predicate``, ``object_val``, and

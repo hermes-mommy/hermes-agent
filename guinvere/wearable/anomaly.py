@@ -21,7 +21,7 @@ logger = structlog.get_logger(__name__)
 
 @runtime_checkable
 class BaselineResultProtocol(Protocol):
-    """Structural baseline contract used when src.wearable.baseline is unavailable."""
+    """Structural baseline contract used when guinvere.wearable.baseline is unavailable."""
 
     metric: HealthMetricType | str
     stage: object

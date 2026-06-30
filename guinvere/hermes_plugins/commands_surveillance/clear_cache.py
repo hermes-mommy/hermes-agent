@@ -1,6 +1,6 @@
 """Hermes command plugin — /clear-cache.
 
-Migrated from src/discord/cmd_clear_cache.py for Phase 2 Discord migration.
+Migrated from guinvere/discord/cmd_clear_cache.py for Phase 2 Discord migration.
 Flushes Redis DB0 (rate limits + persona state cache).
 
 SAFETY: Requires confirm=True — no execution without explicit

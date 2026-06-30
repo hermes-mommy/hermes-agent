@@ -35,7 +35,7 @@ documents, etc.) are bundled into :data:`ENTITY_PATTERNS` so the
 extractor can iterate over a single ``dict[EntityCategory, ...]``.
 
 The :data:`PREDICATE_MAP` maps normalised predicate strings to the
-closed :class:`~src.knowledge_graph.types.RelationType` taxonomy.  The
+closed :class:`~guinvere.knowledge_graph.types.RelationType` taxonomy.  The
 keys are intentionally simple substrings (e.g. ``"works_at"``) so the
 relation extractor can do fast ``in`` checks without spinning up a
 full-text index.  30+ entries cover the common English verbs seen in
@@ -970,7 +970,7 @@ heuristic path in :class:`EntityExtractor`.
 # Substring match keys — every key is checked against the lower-cased
 # predicate via ``in``.  The longest matching key wins (so
 # ``"works_at"`` beats ``"works"``).  This is implemented in
-# :func:`src.knowledge_graph.extraction.relation_extractor._match_predicate`.
+# :func:`guinvere.knowledge_graph.extraction.relation_extractor._match_predicate`.
 
 PREDICATE_MAP: Final[dict[str, RelationType]] = {
     # --- employment / organisational affiliation ---------------------

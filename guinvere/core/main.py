@@ -442,7 +442,7 @@ async def lifespan(app: FastAPI):
 
                 # SAF-02 (revised after deploy runtime check): the brain path
                 # uses principal=guinevere_core which has CRITICAL clearance
-                # (src/memory/read_pipeline._PRINCIPAL_CEILINGS). safe_mode=True
+                # (guinvere/memory/read_pipeline._PRINCIPAL_CEILINGS). safe_mode=True
                 # downgrades the ceiling to Internal and filters out ALL
                 # Restricted+ memories — which starves the brain of context
                 # (deploy showed "All 3 candidates filtered by classification
@@ -898,7 +898,7 @@ app.add_middleware(_PrometheusMiddleware)
 
 
 # ---------------------------------------------------------------------------
-# F07: Rate-limit middleware — lives in src/core/api/rate_limit.py to be
+# F07: Rate-limit middleware — lives in guinvere/core/api/rate_limit.py to be
 # independently testable without importing the full main.py (which triggers
 # prometheus counter re-registration on reload).
 # ---------------------------------------------------------------------------

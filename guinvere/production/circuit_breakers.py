@@ -9,10 +9,10 @@
   B6: SubAgentExplosionBreaker — global asyncio semaphore 10
 
 Patterns ported from:
-  - src/loops/circuit_breaker.py (CircuitState enum, state machine)
-  - src/x_poster/circuit_breaker.py (allow/record_success/record_failure)
-  - src/loops/budget.py (cost tracking)
-  - src/loops/concurrency.py (semaphore pattern)
+  - guinvere/loops/circuit_breaker.py (CircuitState enum, state machine)
+  - guinvere/x_poster/circuit_breaker.py (allow/record_success/record_failure)
+  - guinvere/loops/budget.py (cost tracking)
+  - guinvere/loops/concurrency.py (semaphore pattern)
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# BreakerState enum — ported from src/loops/circuit_breaker.py:37-43
+# BreakerState enum — ported from guinvere/loops/circuit_breaker.py:37-43
 # ---------------------------------------------------------------------------
 
 
@@ -60,7 +60,7 @@ class CircuitBreakerOpenError(Exception):
 class CircuitBreaker:
     """Base circuit breaker with 3-state machine.
 
-    Ported from src/loops/circuit_breaker.py:83-207
+    Ported from guinvere/loops/circuit_breaker.py:83-207
     (DependencyCircuitBreaker state machine + asyncio.Lock).
     """
 
@@ -232,7 +232,7 @@ class CostExplosionBreaker(CircuitBreaker):
 class InfiniteLoopBreaker(CircuitBreaker):
     """B2: Blocks when identical tool calls repeat N times.
 
-    SHA-256 fingerprints from src/loops/circuit_breaker.py:245-249.
+    SHA-256 fingerprints from guinvere/loops/circuit_breaker.py:245-249.
     Threshold: 3 consecutive identical fingerprints.
     """
 

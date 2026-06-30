@@ -5,7 +5,7 @@ and an ``on_ready`` handler for P2-017 wiring.  The greeting is sent exactly
 once per session (idempotency guard); presence is set on every ``on_ready``
 per Discord best practice.
 
-This is the non-deprecated home.  ``src/discord/startup.py`` remains for
+This is the non-deprecated home.  ``guinvere/discord/startup.py`` remains for
 archive reference and should not be imported by active code.
 
 Usage:

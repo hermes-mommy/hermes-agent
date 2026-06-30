@@ -3,7 +3,7 @@
 Encapsulates session lifecycle so downstream modules (``extraction``,
 ``resolution``, ``query``, ``ingestion``, ``consent``, ``eval``) never
 own a DB engine or pool.  The repository receives a ``session_factory``
-callable (typically :func:`src.memory.db.get_async_session`) and yields
+callable (typically :func:`guinvere.memory.db.get_async_session`) and yields
 sessions through a context manager.
 
 Critical rules:
@@ -37,7 +37,7 @@ class AsyncSessionProtocol(Protocol):
 
     Covers the subset of ``sqlalchemy.ext.asyncio.AsyncSession`` that the
     base repository needs.  Mirrors the pattern from
-    ``src.memory.consolidation.AsyncSessionProtocol``.
+    ``guinvere.memory.consolidation.AsyncSessionProtocol``.
     """
 
     async def execute(self, statement: object, params: object | None = None) -> object:
@@ -95,7 +95,7 @@ _sa_operational_error: type[Exception] | None = None
 def _load_sqlalchemy_helpers() -> tuple[Callable[[str], object], type[Exception]]:
     """Resolve :func:`sqlalchemy.text` and :class:`OperationalError` lazily.
 
-    Imported here (not at module top) so :mod:`src.knowledge_graph.__init__`
+    Imported here (not at module top) so :mod:`guinvere.knowledge_graph.__init__`
     can be imported in environments that have not installed SQLAlchemy
     yet (e.g. early config-validation runs).
     """
@@ -164,13 +164,13 @@ class KGRepository:
 
     Args:
         session_factory: Callable that returns a fresh async session.
-            Typically ``src.memory.db.get_async_session`` from the
+            Typically ``guinvere.memory.db.get_async_session`` from the
             Guinevere memory module — wired in at app start-up so
             the KG shares the existing connection pool.
 
     Example::
 
-        repo = KGRepository(session_factory=src.memory.db.get_async_session)
+        repo = KGRepository(session_factory=guinvere.memory.db.get_async_session)
         async with repo.get_session() as session:
             result = await session.execute(...)
     """

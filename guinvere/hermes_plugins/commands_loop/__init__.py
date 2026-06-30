@@ -3,7 +3,7 @@
 Commands: /loop-start, /loop-stop, /loop-pause, /loop-resume,
          /loops, /loop-priority, /evidence.
 
-Migrated from src/discord/cmd_loop_*.py for Phase 2 Discord migration.
+Migrated from guinvere/discord/cmd_loop_*.py for Phase 2 Discord migration.
 Preserves loop orchestrator API calls (localhost:8000), state transitions,
 and priority queue operations.
 """

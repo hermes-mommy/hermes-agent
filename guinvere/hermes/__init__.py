@@ -5,7 +5,7 @@ All safety guards remain in conversational_handler.py — NEVER inside Hermes.
 
 .. deprecated::
     The ``get_adapter()`` accessor has been moved to
-    ``src.hermes.adapter``.  Import directly::
+    ``guinvere.hermes.adapter``.  Import directly::
 
         from guinvere.hermes.adapter import get_adapter
 

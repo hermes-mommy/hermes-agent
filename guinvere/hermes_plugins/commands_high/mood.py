@@ -1,6 +1,6 @@
 """Hermes command plugin — /mood.
 
-Migrated from src/discord/cmd_mood.py for Phase 2 Discord migration.
+Migrated from guinvere/discord/cmd_mood.py for Phase 2 Discord migration.
 Preserves all 6 mood fields: Current Mood, Undertone, 24h History,
 Recent Triggers, Streak, Forecast.
 """

@@ -1,6 +1,6 @@
 """HTTP route definitions for Guinevere.
 
-Ported from ``src/core/main.py`` L910-1037 (/metrics, /health, /health/detailed,
+Ported from ``guinvere/core/main.py`` L910-1037 (/metrics, /health, /health/detailed,
 /) and extended with /health/ready (readiness), /health/agent (agent state).
 
 Design:

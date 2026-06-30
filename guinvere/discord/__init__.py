@@ -1,4 +1,4 @@
-"""Guinevere Discord Gateway — Condensed port of src/discord/ (62 files).
+"""Guinevere Discord Gateway — Condensed port of guinvere/discord/ (62 files).
 
 Provides 41 slash commands, 3 bot identities, and all infrastructure
 needed for the Guinevere Discord gateway. Stale imports from deleted

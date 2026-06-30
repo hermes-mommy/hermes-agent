@@ -1,6 +1,6 @@
 """Hermes command plugin — /history.
 
-Migrated from src/discord/cmd_history.py for Phase 2 Discord migration.
+Migrated from guinvere/discord/cmd_history.py for Phase 2 Discord migration.
 Shows recent Hermes conversation turns from Redis DB4.
 """
 from __future__ import annotations

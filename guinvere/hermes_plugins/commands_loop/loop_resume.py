@@ -1,6 +1,6 @@
 """Hermes command plugin — /loop-resume.
 
-Migrated from src/discord/cmd_loop_resume.py for Phase 2 Discord migration.
+Migrated from guinvere/discord/cmd_loop_resume.py for Phase 2 Discord migration.
 Resumes a paused loop via LoopManager state machine with status validation.
 
 Original: 122 lines | Migrated: preserves LoopManager.resume() + PAUSED check.

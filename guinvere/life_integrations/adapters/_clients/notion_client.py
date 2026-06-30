@@ -1,6 +1,6 @@
 """P22 Notion client — direct httpx wrapper for the Notion REST v1 API.
 
-Bridges ``src.life_integrations.adapters.notion_adapter.NotionIntegrationAdapter``
+Bridges ``guinvere.life_integrations.adapters.notion_adapter.NotionIntegrationAdapter``
 to the Notion REST surface at ``https://api.notion.com/v1``.  Auth header is
 ``Authorization: Bearer <token>`` + required ``Notion-Version: 2026-03-11``
 for all calls.

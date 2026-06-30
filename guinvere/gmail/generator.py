@@ -133,7 +133,7 @@ class DraftGenerator:
         """Initialise with optional explicit *settings*.
 
         When *settings* is ``None`` the module-level singleton is
-        loaded via :func:`~src.gmail.config.get_gmail_settings`.
+        loaded via :func:`~guinvere.gmail.config.get_gmail_settings`.
 
         Args:
             bridge: Optional ``GmailHermesBridge`` for LLM draft

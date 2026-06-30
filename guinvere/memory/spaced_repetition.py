@@ -8,7 +8,7 @@ Wraps the ``fsrs`` library (pip install fsrs) to provide:
   reps, lapses, state, last_review).
 - Get next review time.
 
-This module is **lazy-imported** by ``src.memory.consolidation`` so that the
+This module is **lazy-imported** by ``guinvere.memory.consolidation`` so that the
 memory pipeline can still import when the optional ``fsrs`` dependency is not
 installed. When ``fsrs`` is missing, every public method returns a no-op
 result and the caller must treat the call as best-effort.
@@ -184,7 +184,7 @@ class FSRSScheduler:
         """Lazy-import ``fsrs`` and instantiate the scheduler.
 
         Mirrors the ``kg_ingestion_enabled`` pattern in
-        ``src.memory.consolidation``: any import error or constructor error
+        ``guinvere.memory.consolidation``: any import error or constructor error
         logs a warning and degrades gracefully to a no-op scheduler.
         """
         try:

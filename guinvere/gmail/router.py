@@ -8,7 +8,7 @@ Orchestrates the complete email processing pipeline: receive envelope
 extract / draft-approve-send (for CLIENT_WORK).
 
 Follows the ``WhatsAppRouter`` pattern established in
-``src/channels/whatsapp/router.py`` but with a richer pipeline — each
+``guinvere/channels/whatsapp/router.py`` but with a richer pipeline — each
 stage is wrapped in try/except that logs and continues so a single
 stage failure never drops the entire message.
 

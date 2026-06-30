@@ -1,6 +1,6 @@
 """Personality Drift — P24 M12.
 
-Ground-up rewrite.  Zero code ported from src/persona/ (C9).
+Ground-up rewrite.  Zero code ported from guinvere/persona/ (C9).
 
 Re-exports the public API:
   - BehaviorSignature (32-dim, cosine similarity, EWMA)

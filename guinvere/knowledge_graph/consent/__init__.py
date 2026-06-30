@@ -20,7 +20,7 @@ Invariants enforced by this package:
    propagates to the caller so consent failures are never silent.
 4. All read/write goes through the ``session_factory`` (RLS principal
    is the database role; never bypass via superuser).
-5. No module-level imports from ``src.memory`` -- safe-word indicators
+5. No module-level imports from ``guinvere.memory`` -- safe-word indicators
    and DNR are resolved via lazy imports inside functions.
 """
 from __future__ import annotations

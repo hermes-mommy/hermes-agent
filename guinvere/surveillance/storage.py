@@ -1,6 +1,6 @@
 """TimescaleDB storage + 3-tier retention for surveillance events.
 
-Ports: src/surveillance/retention.py, timescale.py.
+Ports: guinvere/surveillance/retention.py, timescale.py.
 
 Provides retention policy constants (7d/90d/365d), TimescaleDB batch/single
 ingestion with IngestionLog audit entries, and uuid5 device resolution.

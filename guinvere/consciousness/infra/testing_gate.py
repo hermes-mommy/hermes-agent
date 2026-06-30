@@ -1,6 +1,6 @@
 """ADR-029 Testing Gate — enforces test pass and coverage before self-modification deployment.
 
-Ported from ``src/loops/testing_gate.py`` — API preserved for M10 (W14).
+Ported from ``guinvere/loops/testing_gate.py`` — API preserved for M10 (W14).
 Runs pytest in an isolated subprocess (never pytest.main in-process).
 """
 

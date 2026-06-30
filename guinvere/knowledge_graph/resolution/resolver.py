@@ -113,7 +113,7 @@ class EntityResolutionResult:
     canonical_entity:
         Dict representation of the matched ``kg_entities`` row, or ``None``
         when no live match was found (i.e. ``method == 'none'``).  The shape
-        matches :func:`src.knowledge_graph.resolution.canonical.find_by_canonical_key`.
+        matches :func:`guinvere.knowledge_graph.resolution.canonical.find_by_canonical_key`.
     matched_aliases:
         List of input aliases that matched an existing entity (populated for
         L1b hits).  Empty for L1 and L2 hits.

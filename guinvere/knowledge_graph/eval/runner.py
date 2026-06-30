@@ -1,26 +1,26 @@
 """A/B evaluation runner for KG recall (P16-005).
 
 This module wires the :class:`GoldenTestSet` together with the
-existing :func:`src.memory.read_pipeline.recall_memories` to
+existing :func:`guinvere.memory.read_pipeline.recall_memories` to
 produce an A/B comparison: **baseline** (KG signal off) vs
 **with-KG** (KG signal on, per the 4th-RRF path).
 
 Design contract
 ---------------
 
-* Lazy import of ``src.memory.read_pipeline`` — the eval module must
+* Lazy import of ``guinvere.memory.read_pipeline`` — the eval module must
   not pull the memory pipeline at import time (the spec forbids
-  module-level imports from ``src.memory``).
+  module-level imports from ``guinvere.memory``).
 * All DB access is funnelled through the injected
-  :data:`src.knowledge_graph.repository.SessionFactory`.
+  :data:`guinvere.knowledge_graph.repository.SessionFactory`.
 * Each golden case is scored independently; the final metric is the
   arithmetic mean across cases (see
-  :func:`src.knowledge_graph.eval.metrics.aggregate_metrics`).
+  :func:`guinvere.knowledge_graph.eval.metrics.aggregate_metrics`).
 
 Why lazy import
 ---------------
 
-``recall_memories`` lives in ``src.memory.read_pipeline``.  Pulling
+``recall_memories`` lives in ``guinvere.memory.read_pipeline``.  Pulling
 it at module-load time would couple the entire KG eval package to
 the memory runtime (a runtime dependency that breaks unit tests and
 documentation builds).  Importing inside the coroutines keeps the
@@ -139,7 +139,7 @@ class ABComparisonResult:
     @property
     def deltas(self) -> dict[str, MetricDelta]:
         """Per-metric :class:`MetricDelta` mapping (mirrors
-        :func:`src.knowledge_graph.eval.metrics.compute_deltas`)."""
+        :func:`guinvere.knowledge_graph.eval.metrics.compute_deltas`)."""
         return compute_deltas(self.baseline_metrics, self.kg_metrics)
 
 
@@ -180,9 +180,9 @@ def derive_verdict(delta_f1: float) -> str:
 
 #: Callable that yields an async session compatible with
 #: :func:`recall_memories`.  Matches
-#: :data:`src.knowledge_graph.repository.SessionFactory` semantically
+#: :data:`guinvere.knowledge_graph.repository.SessionFactory` semantically
 #: but is duplicated here to keep this module free of any
-#: ``src.memory`` import.
+#: ``guinvere.memory`` import.
 SessionFactory = Callable[[], object]
 
 
@@ -191,7 +191,7 @@ class KGRecallEvaluator:
 
     Args:
         session_factory: Callable returning a fresh async session
-            (typically ``src.memory.db.get_async_session``).  The
+            (typically ``guinvere.memory.db.get_async_session``).  The
             runner uses the session for every golden case.
         golden_set: Curated test cases.  Iteration order is preserved
             so per-case reports are deterministic.
@@ -209,7 +209,7 @@ class KGRecallEvaluator:
     Example::
 
         evaluator = KGRecallEvaluator(
-            session_factory=src.memory.db.get_async_session,
+            session_factory=guinvere.memory.db.get_async_session,
             golden_set=create_sample_golden_set(),
         )
         result = await evaluator.run_ab_comparison()
@@ -350,7 +350,7 @@ class KGRecallEvaluator:
         Returns:
             A single :class:`EvaluationMetrics` (``total_cases=1``).
         """
-        # Lazy import — keep src.memory off the module-level surface.
+        # Lazy import — keep guinvere.memory off the module-level surface.
         from guinvere.memory.read_pipeline import recall_memories
 
         try:

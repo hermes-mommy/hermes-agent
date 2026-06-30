@@ -4,9 +4,9 @@ This module is the single entry point for traversing the Guinevere
 Knowledge Graph stored in PostgreSQL.  All traversal uses **plain
 PostgreSQL recursive CTEs** (``WITH RECURSIVE``) — no Neo4j, no
 Apache AGE, no external graph database.  The engine is the substrate
-for the recall RRF fusion (see :mod:`src.knowledge_graph.query.rrf_fusion`)
+for the recall RRF fusion (see :mod:`guinvere.knowledge_graph.query.rrf_fusion`)
 and the prompt-injection token budget (see
-:mod:`src.knowledge_graph.query.token_budget`).
+:mod:`guinvere.knowledge_graph.query.token_budget`).
 
 Design notes
 ------------
@@ -32,17 +32,17 @@ Design notes
   ``name``), and ``relationship_type`` (not ``relation_type``).  This
   module is the source of truth for SQL column names; downstream
   callers should re-export the DDL shapes via the
-  :mod:`src.knowledge_graph.types` dataclasses when convenient.
+  :mod:`guinvere.knowledge_graph.types` dataclasses when convenient.
 
-* **No new dependencies.**  Reuses :mod:`src.knowledge_graph.repository`
-  for session lifecycle, :mod:`src.knowledge_graph.observability` for
+* **No new dependencies.**  Reuses :mod:`guinvere.knowledge_graph.repository`
+  for session lifecycle, :mod:`guinvere.knowledge_graph.observability` for
   metrics & logging, and the standard ``sqlalchemy.text`` binding.
 
 Result types
 ------------
 
 The engine defines four query-specific result dataclasses (frozen,
-audit-friendly) — distinct from :class:`src.knowledge_graph.types.KGEntity`
+audit-friendly) — distinct from :class:`guinvere.knowledge_graph.types.KGEntity`
 because the query result shape is intentionally leaner:
 
 * :class:`GraphTraversalResult` — one row per edge visited.
@@ -129,7 +129,7 @@ class GraphTraversalResult:
     reasoning path.
 
     Attributes:
-        edge_id: UUID of the :class:`src.knowledge_graph.types.KGEdge`.
+        edge_id: UUID of the :class:`guinvere.knowledge_graph.types.KGEdge`.
         src_entity_id: UUID of the subject entity for this hop.
         dst_entity_id: UUID of the object entity for this hop.
         relationship_type: DDL ``relationship_type`` value (e.g.
@@ -236,18 +236,18 @@ class KGQueryEngine:
 
     Args:
         session_factory: Callable that returns a fresh async session
-            (typically ``src.memory.db.get_async_session``).
+            (typically ``guinvere.memory.db.get_async_session``).
         max_hops: Default BFS/DFS depth for :meth:`traverse`.  Per-call
             overrides via ``max_hops=`` are accepted up to
             :data:`MAX_TRAVERSAL_HOPS`.  Defaults to
-            :data:`src.knowledge_graph.constants.MAX_TRAVERSAL_HOPS`.
+            :data:`guinvere.knowledge_graph.constants.MAX_TRAVERSAL_HOPS`.
         max_results: Default result cap for :meth:`traverse`.  Larger
             values are clamped to :data:`DEFAULT_MAX_RESULTS`.
 
     Example::
 
         engine = KGQueryEngine(
-            session_factory=src.memory.db.get_async_session,
+            session_factory=guinvere.memory.db.get_async_session,
             max_hops=3,
             max_results=50,
         )

@@ -35,7 +35,7 @@ if TYPE_CHECKING:  # pragma: no cover -- typing-only
 # ---------------------------------------------------------------------------
 # Local RLS error (subclass of the package's existing ``KGError``).
 #
-# The package-level ``src.knowledge_graph.errors`` module already defines
+# The package-level ``guinvere.knowledge_graph.errors`` module already defines
 # ``KGError`` and the consent-specific ``KGConsentError``; we deliberately
 # add a separate ``KGRowLevelSecurityError`` here (subclassing ``KGError``)
 # so that RLS failures are categorised distinctly from consent failures

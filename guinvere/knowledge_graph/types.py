@@ -313,8 +313,8 @@ class SemanticFact(Protocol):
     ``memory.semantic_facts`` (P3-015 consolidation output) but the KG module
     does not want to import the SQLAlchemy ORM at runtime.  This ``Protocol``
     captures the attribute contract — any object exposing the listed
-    attributes is accepted by :class:`src.knowledge_graph.extraction.
-    EntityExtractor` and :class:`src.knowledge_graph.extraction.
+    attributes is accepted by :class:`guinvere.knowledge_graph.extraction.
+    EntityExtractor` and :class:`guinvere.knowledge_graph.extraction.
     RelationExtractor`.
 
     Attributes are read-only from the extractor's perspective; the extractor
@@ -352,7 +352,7 @@ class SemanticFact(Protocol):
 class ExtractedEntity:
     """A single entity mention extracted from a semantic fact.
 
-    Produced by :class:`src.knowledge_graph.extraction.EntityExtractor`.
+    Produced by :class:`guinvere.knowledge_graph.extraction.EntityExtractor`.
     Frozen so it can safely cross asyncio / queue boundaries during the
     P16 ingestion pipeline (Wave 3) and be hashed for set-membership tests
     inside the resolver without copying.
@@ -403,7 +403,7 @@ class ExtractedEntity:
 class ExtractedRelation:
     """A typed relation extracted from a semantic fact.
 
-    Produced by :class:`src.knowledge_graph.extraction.RelationExtractor`.
+    Produced by :class:`guinvere.knowledge_graph.extraction.RelationExtractor`.
     Wraps a subject and object :class:`ExtractedEntity` together with the
     classified :class:`RelationType` and a confidence score.
 

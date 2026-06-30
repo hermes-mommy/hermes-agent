@@ -3,8 +3,8 @@ from __future__ import annotations
 """Gmail service entry point — asyncio run for systemd ExecStart.
 
 Usage:
-    python -m src.gmail.main
-    python src/gmail/main.py
+    python -m guinvere.gmail.main
+    python guinvere/gmail/main.py
 
 Lifecycle:
     1. Load settings (GmailSettings via pydantic-settings)
@@ -34,7 +34,7 @@ def _try_configure_logging() -> None:
     """Configure structlog for the Gmail service.
 
     Attempts to use ``configure_gmail_logging`` from
-    ``src.gmail.structured_logging``.  Falls back to a basic
+    ``guinvere.gmail.structured_logging``.  Falls back to a basic
     JSON‐rendering setup when the module is not yet available.
     """
     try:
@@ -69,7 +69,7 @@ def _try_configure_logging() -> None:
 def _try_start_metrics_server(port: int) -> None:
     """Start the Prometheus metrics HTTP server on *port*.
 
-    Delegates to ``start_metrics_server`` in ``src.gmail.metrics``
+    Delegates to ``start_metrics_server`` in ``guinvere.gmail.metrics``
     when available; otherwise logs a warning and continues.
     """
     try:

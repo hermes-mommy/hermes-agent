@@ -308,7 +308,7 @@ async def consolidate_episodes_to_facts(
         When ``True`` (default), each consolidated episode receives a
         ``grade=Good`` FSRS review after the fact-creation loop so that its
         next-review timestamp lands in the future.  Lazy-imported from
-        ``src.memory.spaced_repetition``; if the optional ``fsrs`` library
+        ``guinvere.memory.spaced_repetition``; if the optional ``fsrs`` library
         is missing, the call is silently skipped.
 
     Returns

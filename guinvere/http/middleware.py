@@ -1,6 +1,6 @@
 """Prometheus request-count and latency middleware.
 
-Ported from ``src/core/main.py`` L856-897.
+Ported from ``guinvere/core/main.py`` L856-897.
 
 Thin wrapper around ``BaseHTTPMiddleware`` that records
 ``guinevere_requests_total`` (Counter) and ``guinevere_request_duration_seconds``

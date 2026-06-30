@@ -48,7 +48,7 @@ def scope_recall_callable(
 
     The wrapped callable must accept ``project_id: Optional[UUID]`` as a
     keyword argument (as the P19-004 modifications to
-    :func:`src.memory.read_pipeline.recall_memories` do).
+    :func:`guinvere.memory.read_pipeline.recall_memories` do).
     """
     if project_id is None:
         return recall_fn
@@ -119,7 +119,7 @@ class ProjectScopedMemoryStore:
         ----------
         recall_fn:
             The underlying recall callable (e.g.
-            :func:`src.memory.read_pipeline.recall_memories`).
+            :func:`guinvere.memory.read_pipeline.recall_memories`).
         project_id:
             When set, the recall is scoped to episodes whose
             ``project_id == project_id OR project_scope == 'global'``.
@@ -147,7 +147,7 @@ class ProjectScopedMemoryStore:
         ----------
         store_fn:
             The underlying store callable (e.g.
-            :func:`src.memory.write_pipeline.store_episode`).
+            :func:`guinvere.memory.write_pipeline.store_episode`).
         project_id:
             When set, the stored episode is tagged with this project UUID.
             When ``None`` (default), no project tag is applied and the

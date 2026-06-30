@@ -1,6 +1,6 @@
 """Hermes command plugin — /loops.
 
-Migrated from src/discord/cmd_loops.py for Phase 2 Discord migration.
+Migrated from guinvere/discord/cmd_loops.py for Phase 2 Discord migration.
 Lists current and recent Guinevere work loops via LoopManager.list_loops().
 
 Original: 114 lines | Migrated: preserves LoopManager.list_loops() logic.

@@ -269,7 +269,7 @@ async def assemble_system_prompt_with_memory(
         embedding_service: Optional embedding client for vector recall.
         kg_context_enabled: When ``True``, an additional knowledge-graph
             context block (capped at 1000 tokens by
-            :data:`src.knowledge_graph.constants.KG_TOKEN_BUDGET_MAX`) is
+            :data:`guinvere.knowledge_graph.constants.KG_TOKEN_BUDGET_MAX`) is
             appended after the memory section.  Defaults to ``False`` so
             existing call sites keep identical behaviour.  KG unavailability
             is logged and never fails prompt assembly.

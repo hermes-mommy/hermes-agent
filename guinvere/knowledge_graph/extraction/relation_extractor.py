@@ -1,19 +1,19 @@
 """P16-007: rule-based relation extractor (RE, L1 + L2 only).
 
-Sister module to :mod:`src.knowledge_graph.extraction.entity_extractor`.
-This module takes a :class:`~src.knowledge_graph.types.SemanticFact`,
+Sister module to :mod:`guinvere.knowledge_graph.extraction.entity_extractor`.
+This module takes a :class:`~guinvere.knowledge_graph.types.SemanticFact`,
 asks the :class:`EntityExtractor` for the typed entities in the
 subject and object slots, and emits a list of
 :class:`ExtractedRelation` instances ready to be persisted as
-:class:`~src.knowledge_graph.types.KGEdge` rows by the P16-002
+:class:`~guinvere.knowledge_graph.types.KGEdge` rows by the P16-002
 ingestion pipeline.
 
 The relation classification is driven by the source fact's
 **predicate** — the consolidation layer (P3-015) already produces a
 verb phrase that captures the relationship.  We do not re-derive
 the predicate from raw text; we map it through
-:data:`~src.knowledge_graph.extraction.patterns.PREDICATE_MAP` to one
-of the closed :class:`~src.knowledge_graph.types.RelationType` values.
+:data:`~guinvere.knowledge_graph.extraction.patterns.PREDICATE_MAP` to one
+of the closed :class:`~guinvere.knowledge_graph.types.RelationType` values.
 
 Type-aware refinement lives in
 :meth:`RelationExtractor.classify_relation`: when the
@@ -354,7 +354,7 @@ def _match_predicate(predicate: object) -> RelationType | None:
     The longest key wins, so ``"works_at"`` (length 8) beats
     ``"works"`` (length 5) when both could match.  This is the
     standard longest-substring-match idiom — see the unit tests
-    in :mod:`src.knowledge_graph.tests`.
+    in :mod:`guinvere.knowledge_graph.tests`.
 
     Parameters
     ----------

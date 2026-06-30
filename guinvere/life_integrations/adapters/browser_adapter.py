@@ -1,6 +1,6 @@
 """Browser/research integration adapter — wraps existing search/fetch tools.
 
-Wraps src/mcp/tools/brave_search.py, exa_search.py, websearch.py, fetch.py,
+Wraps guinvere/mcp/tools/brave_search.py, exa_search.py, websearch.py, fetch.py,
 obscura_cdp.py. No secrets sent to web tools. Read/search = L1, fill/click = L2.
 
 Consent: consent.research.browser.{read,write}

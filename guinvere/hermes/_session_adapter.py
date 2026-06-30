@@ -6,14 +6,14 @@ archive in Phase 7c).  All runtime behaviour is identical — this is a
 file-level extraction only.
 
 Importing this module does **not** pull in any deprecated modules.
-The deprecated ``src/hermes/session_adapter.py`` is left untouched for
+The deprecated ``guinvere/hermes/session_adapter.py`` is left untouched for
 later git-mv archive.
 
 Usage::
 
     from guinvere.hermes._session_adapter import HermesSessionAdapter
 
-See ``src.hermes.adapter`` for the ``get_adapter()`` singleton factory.
+See ``guinvere.hermes.adapter`` for the ``get_adapter()`` singleton factory.
 """
 
 from __future__ import annotations

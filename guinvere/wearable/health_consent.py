@@ -1,6 +1,6 @@
 """Wearable health consent scopes and fail-closed consent gate.
 
-Follows the surveillance consent pattern from src/surveillance/consent_gate.py.
+Follows the surveillance consent pattern from guinvere/surveillance/consent_gate.py.
 New scopes are independent from surveillance — users can grant wearable consent
 without granting surveillance, and vice versa.
 

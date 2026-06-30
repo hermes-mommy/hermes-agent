@@ -1,6 +1,6 @@
 """Telegram channel adapter — httpx Bot API client (rewrite).
 
-Synthesized from src/life_integrations/adapters/telegram_adapter.py +
+Synthesized from guinvere/life_integrations/adapters/telegram_adapter.py +
 Hermes gateway/platforms/telegram.py patterns. Uses httpx for the Bot
 API (token embedded in URL path).  Supports send/edit/delete/get_updates
 plus media (photo/document).  Per-chat throttle (1.05s minimum) and

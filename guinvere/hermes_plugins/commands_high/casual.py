@@ -1,6 +1,6 @@
 """Hermes command plugin — /casual.
 
-Migrated from src/discord/cmd_casual.py for Phase 2 Discord migration.
+Migrated from guinvere/discord/cmd_casual.py for Phase 2 Discord migration.
 Switches interaction mode to casual in Redis DB0.
 """
 from __future__ import annotations

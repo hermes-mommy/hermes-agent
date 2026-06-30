@@ -39,7 +39,7 @@ logger = structlog.get_logger(__name__)
 class DiscordIntegrationAdapter(BaseIntegrationAdapter):
     """Full-capability Discord integration adapter.
 
-    Wraps the existing Discord REST client (src/life_kernel/discord_rest_client.py)
+    Wraps the existing Discord REST client (guinvere/life_kernel/discord_rest_client.py)
     and discord.py bot. Does NOT recreate the bot — extends existing surface.
 
     Actions:

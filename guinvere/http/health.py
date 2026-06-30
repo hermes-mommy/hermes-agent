@@ -1,6 +1,6 @@
 """Health check logic for Guinevere HTTP endpoints.
 
-Ported from ``src/core/main.py`` L916-1008 (/health, /health/detailed),
+Ported from ``guinvere/core/main.py`` L916-1008 (/health, /health/detailed),
 extended with readiness and agent-state probes.
 
 Design decisions (per r11):

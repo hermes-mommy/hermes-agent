@@ -1,10 +1,10 @@
-"""P22 fetch client shim — wraps ``src.mcp.tools.fetch.fetch_url`` as instance protocol.
+"""P22 fetch client shim — wraps ``guinvere.mcp.tools.fetch.fetch_url`` as instance protocol.
 
 The P22 ``BrowserIntegrationAdapter`` calls instance methods:
 - ``await self._fetch.fetch(url, format=...)``
 
 The real Guinevere fetcher is a module-level function in
-``src.mcp.tools.fetch`` (``fetch_url(url, format="markdown")``) that returns a
+``guinvere.mcp.tools.fetch`` (``fetch_url(url, format="markdown")``) that returns a
 dict containing ``url``, ``title``, ``content``, ``content_length``,
 ``content_type``, and an optional ``warning``.
 
@@ -32,7 +32,7 @@ FetchFn = Callable[[str, str], Awaitable[dict[str, str]]]
 
 
 class FetchClientShim:
-    """Instance wrapper around ``src.mcp.tools.fetch.fetch_url``.
+    """Instance wrapper around ``guinvere.mcp.tools.fetch.fetch_url``.
 
     Usage:
         shim = FetchClientShim(fetch_fn=my_async_fetch)  # test fake wired

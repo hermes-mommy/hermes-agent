@@ -231,7 +231,7 @@ class EmailNotifier:
             fields.append({"name": "Preview", "value": envelope.snippet[:1024], "inline": False})
 
         # Text-only action hints — actual button handling lives in
-        # ``src/discord_ux.py`` / ``src/draft/``.
+        # ``guinvere/discord_ux.py`` / ``guinvere/draft/``.
         actions_str = " · ".join(f"`{a}`" for a in SUPPORTED_ACTIONS)
         fields.append({"name": "Actions", "value": actions_str, "inline": False})
 

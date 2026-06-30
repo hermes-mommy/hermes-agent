@@ -1,1 +1,1 @@
-# src/core/api module
+# guinvere/core/api module

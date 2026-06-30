@@ -14,7 +14,7 @@ Design decisions:
 - All regex compiled at module level with Final[list[...]].
 - Luhn validation for credit/debit card numbers.
 - Log metadata only: never log actual secret/PII values.
-- Prometheus metrics via src/gmail/metrics.py functions.
+- Prometheus metrics via guinvere/gmail/metrics.py functions.
 """
 
 from __future__ import annotations
@@ -266,7 +266,7 @@ def _is_pii_whitelisted(text: str) -> bool:
 class EmailSecretScanner:
     """Email-specific secret scanner extending the surveillance scanner.
 
-    Runs all patterns from ``src/surveillance/secret_scanner.py`` first,
+    Runs all patterns from ``guinvere/surveillance/secret_scanner.py`` first,
     then applies email-specific patterns (Google OAuth tokens, Gmail app
     passwords, bank accounts, credit cards, NPWP, KTP, passport, IBAN,
     SWIFT/BIC, crypto wallets). Also includes high-entropy detection.

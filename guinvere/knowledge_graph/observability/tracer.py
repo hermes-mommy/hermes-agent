@@ -196,7 +196,7 @@ class KGTraceContext:
     def _record_to_metrics(span: KGTraceSpan) -> None:
         """Push the finished span into the query-duration histogram.
 
-        Imported lazily so :mod:`src.knowledge_graph.observability.metrics`
+        Imported lazily so :mod:`guinvere.knowledge_graph.observability.metrics`
         can in turn depend on the logger without creating a cycle.
         """
         try:

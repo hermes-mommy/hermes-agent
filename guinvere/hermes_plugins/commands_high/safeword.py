@@ -1,6 +1,6 @@
 """Hermes command plugin — /safeword.
 
-Migrated from src/discord/cmd_safeword.py for Phase 2 Discord migration.
+Migrated from guinvere/discord/cmd_safeword.py for Phase 2 Discord migration.
 Triggers the HARD STOP protocol via HardStopHandler.
 Preserves the 9-step safety workflow.
 """

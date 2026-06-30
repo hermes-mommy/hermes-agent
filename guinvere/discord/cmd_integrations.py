@@ -18,7 +18,7 @@ Commands:
 
 All responses are ephemeral, Faiz-only, and read the API key from
 ``$GUINEVERE_API_KEY`` (never hardcoded).  Embed colors are sourced from
-``src.discord.colors`` (SUCCESS/WARNING/ALERT/INFO_BLUE).
+``guinvere.discord.colors`` (SUCCESS/WARNING/ALERT/INFO_BLUE).
 """
 
 from __future__ import annotations

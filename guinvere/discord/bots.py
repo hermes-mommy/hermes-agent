@@ -88,7 +88,7 @@ def get_identity(name: str) -> BotIdentity | None:
 # ── Bot Class ────────────────────────────────────────────────────────────
 
 # Import discord.ext.commands dynamically to avoid shadowing by the
-# project-local src/discord/ package.
+# project-local guinvere/discord/ package.
 _commands_module: Any = importlib.import_module("discord.ext.commands")
 commands = _commands_module
 _BotBase: type = commands.Bot

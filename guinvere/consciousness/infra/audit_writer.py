@@ -1,7 +1,7 @@
 """Hash-chained audit trail writer for loop actions.
 
-Ported from ``src/loops/audit_writer.py`` — API preserved for M10 (W14).
-The lazy import of ``src.memory.models.AuditTrail`` is kept so the DB
+Ported from ``guinvere/loops/audit_writer.py`` — API preserved for M10 (W14).
+The lazy import of ``guinvere.memory.models.AuditTrail`` is kept so the DB
 schema reference resolves at write-time (not import-time).
 """
 

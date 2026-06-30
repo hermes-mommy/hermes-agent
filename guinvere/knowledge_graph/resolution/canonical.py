@@ -18,7 +18,7 @@ Design:
        ``kg_entities.aliases``.  Both always exclude tombstoned rows.
 
 The SHA-256 / hex-truncation pattern is the same one used in
-``src/memory/consolidation.py::make_content_key`` — that is the project's
+``guinvere/memory/consolidation.py::make_content_key`` — that is the project's
 house style for content-addressable keys.
 """
 
@@ -84,7 +84,7 @@ NON_ALNUM_PATTERN: re.Pattern[str] = re.compile(r"[^0-9a-z]+")
 """Forces an ASCII-only slug for the canonical key (used in canonicalize step)."""
 
 # ---------------------------------------------------------------------------
-# Session protocol (mirrors src/memory/consolidation.AsyncSessionProtocol)
+# Session protocol (mirrors guinvere/memory/consolidation.AsyncSessionProtocol)
 # ---------------------------------------------------------------------------
 
 
@@ -108,7 +108,7 @@ class _ExecResult(Protocol):
 class AsyncSessionProtocol(Protocol):
     """Minimal async DB session surface for entity resolution lookups.
 
-    Mirrors the pattern in ``src.memory.consolidation.AsyncSessionProtocol``
+    Mirrors the pattern in ``guinvere.memory.consolidation.AsyncSessionProtocol``
     so the resolver is unit-testable with a fake session.
     """
 

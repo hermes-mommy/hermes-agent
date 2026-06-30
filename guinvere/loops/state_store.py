@@ -62,7 +62,7 @@ class LoopStateStore:
 
     The store uses an raw-SQL approach against the existing table so it can
     read and write the checkpoint columns without modifying
-    ``src/memory/models.py``.
+    ``guinvere/memory/models.py``.
     """
 
     def __init__(

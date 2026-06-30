@@ -1,6 +1,6 @@
 """Hermes command plugin — /focus.
 
-Migrated from src/discord/cmd_focus.py for Phase 2 Discord migration.
+Migrated from guinvere/discord/cmd_focus.py for Phase 2 Discord migration.
 Sets the persona focus mode (deep, normal, relaxed) in Redis DB0.
 """
 from __future__ import annotations
