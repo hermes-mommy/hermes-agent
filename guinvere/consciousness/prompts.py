@@ -1,7 +1,7 @@
 """Consciousness prompt templates — rewritten (not ported) for substrate self-prompting.
 
 Each template is a (system, user) pair consumed by the substrate's
-``_self_prompt`` helper, which feeds them to MockLLMRouter (D3) or
+``_self_prompt`` helper, which feeds them to the injected Hermes AIAgent (P5, via 9router) or
 the real auxiliary_client resolution chain in production.
 """
 

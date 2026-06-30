@@ -4,7 +4,7 @@ Each substrate is an async coroutine with its own cadence.  They are
 instantiated as methods on ConsciousnessLoop and registered via
 substrate_registry.build_registry().
 
-All substrates use MockLLMRouter (D3) for self-prompting.  No real
+All substrates delegate to the Hermes AIAgent (single brain via 9router, P5) for self-prompting.  No direct LLM
 LLM calls — deterministic responses only.
 
 Cadences (from ADR-063 §5.2):

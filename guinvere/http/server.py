@@ -49,29 +49,6 @@ async def _noop_placeholder() -> None:
         pass
 
 
-def _build_mock_llm_router() -> Any:
-    """Build a MockLLMRouter for D3 (mock-only LLM in consciousness loop).
-
-    Returns an object with an async ``chat()`` method that returns
-    deterministic responses.  Used for local development and tests.
-    """
-
-    class _MockLLMRouter:
-        """Deterministic mock LLM router — D3 compliance."""
-
-        async def chat(
-            self,
-            messages: list[dict[str, str]],
-            task_type: str = "CORE_REASONING",
-            max_tokens: int = 256,
-        ) -> dict[str, Any]:
-            return {
-                "content": '{"thought": "I am thinking.", "quality_score": 0.8}',
-                "usage": {"input_tokens": 10, "output_tokens": 20},
-                "model": "mock-llm",
-            }
-
-    return _MockLLMRouter()
 
 
 @asynccontextmanager
