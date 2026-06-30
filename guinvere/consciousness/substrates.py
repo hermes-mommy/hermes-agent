@@ -49,28 +49,39 @@ async def _self_prompt(
     user_msg: str,
     max_tokens: int = 256,
 ) -> str:
-    """Send a self-prompt to the (mock) LLM router and return content.
+    """Delegate a self-prompt to the Hermes AIAgent (single brain) and return content.
+
+    The consciousness loop does NOT call the LLM itself -- it delegates to the
+    Hermes AIAgent, which is the single brain routed through 9router. The agent
+    exposes a simple ``chat(message) -> str`` interface (run_agent.AIAgent.chat),
+    so we combine the system + user messages into one prompt and return the
+    agent's string response directly.
 
     Args:
-        llm_router: Injected LLM router (MockLLMRouter in tests, D3).
+        llm_router: The Hermes AIAgent (single brain) with a ``chat(message)``
+            method returning ``str``. Named ``llm_router`` for call-site
+            compatibility with existing substrates.
         system_msg: System prompt.
         user_msg: User prompt.
-        max_tokens: Max response tokens.
+        max_tokens: Max response tokens (advisory; the agent configures its own).
 
     Returns:
-        The LLM response content string.
+        The agent's response string. Empty string on failure (substrate must
+        not crash on a single failed self-prompt -- it runs at second/minute
+        cadence and degrades to an empty thought).
     """
-    messages = [
-        {"role": "system", "content": system_msg},
-        {"role": "user", "content": user_msg},
-    ]
-    result = await llm_router.chat(
-        messages=messages,
-        task_type="CORE_REASONING",
-        max_tokens=max_tokens,
-    )
-    return result.get("content", "")
-
+    prompt = system_msg + chr(10) + chr(10) + user_msg
+    try:
+        result = llm_router.chat(prompt)
+    except Exception as exc:
+        logger.warning("self_prompt.delegate_failed %s", exc)
+        return ""
+    if not isinstance(result, str):
+        # Defensive: if a legacy dict-returning router is wired, extract content.
+        if isinstance(result, dict):
+            return str(result.get("content", ""))
+        return str(result) if result else ""
+    return result
 
 def _thoughts_block(state: ConsciousnessState, n: int = 5) -> str:
     """Format recent thoughts as a newline-separated block."""
