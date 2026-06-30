@@ -1,7 +1,0 @@
-creation_rules:
-  - path_regex: secrets/.*\.yaml$
-    age: age17cyg77cswk0du44k3r02g3l83x2f62crcnjnzv5cz5vtndve7yksck2zqj
-  - path_regex: secrets/.*\.env$
-    age: age17cyg77cswk0du44k3r02g3l83x2f62crcnjnzv5cz5vtndve7yksck2zqj
-  - path_regex: secrets/.*\.json$
-    age: age17cyg77cswk0du44k3r02g3l83x2f62crcnjnzv5cz5vtndve7yksck2zqj
