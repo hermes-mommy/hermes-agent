@@ -1,0 +1,32 @@
+# P25 Step 12 — Client Endpoint Update
+
+> Date: 2026-06-26
+
+## Files Changed
+
+### opencode.json (line 120)
+
+```diff
+- "baseURL": "http://localhost:20128/v1"
++ "baseURL": "http://100.104.210.75:20128/v1"
+```
+
+### settings.json (line 3)
+
+```diff
+- "ANTHROPIC_BASE_URL": "http://127.0.0.1:20128/v1"
++ "ANTHROPIC_BASE_URL": "http://100.104.210.75:20128/v1"
+```
+
+## Not Touched
+
+- API key: unchanged (`sk-dfe2d2c0bed148e8-10vtq0-bed3af1e`)
+- ANTHROPIC_AUTH_TOKEN: unchanged
+- Model names: unchanged (orcestrator, subagent, tester)
+- All other MCP/env config: unchanged
+
+## Notes
+
+- Both files updated to use Tailscale IP 100.104.210.75:20128/v1
+- Only baseURL changed; API key and all other config preserved
+- Hermes stays at localhost (runs on VPS, not relevant to client config)

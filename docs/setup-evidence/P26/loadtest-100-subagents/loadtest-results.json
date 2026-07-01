@@ -1,0 +1,6 @@
+{
+  "phases": [],
+  "hard_stop_triggered": true,
+  "prompt_length": 610,
+  "model": "subagent"
+}

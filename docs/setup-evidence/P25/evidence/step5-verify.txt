@@ -1,0 +1,33 @@
+# P25 Step 5 — Post-Import Verification
+
+> Date: 2026-06-26 | VPS: 49.12.82.34:39999
+
+## Row Counts (Source vs Target)
+
+| Table | Source (local) | Target (VPS) | Match |
+|---|---|---|---|
+| providerConnections | 92 | 92 | ✅ |
+| settings | 1 | 1 | ✅ |
+| combos | 11 | 11 | ✅ |
+| apiKeys | 2 | 2 | ✅ |
+| providerNodes | 4 | 4 | ✅ |
+| proxyPools | 20 | 20 | ✅ |
+
+## PRAGMA Integrity Check
+
+```
+ok
+```
+
+## DB File
+
+```
+-rw-r--r-- 1 root root 896K Jun 26 18:34 /var/lib/9router/db/data.sqlite
+```
+
+## Notes
+
+- All 6 config tables imported with correct row counts matching source
+- PRAGMA integrity_check: ok
+- DB size 896K (fresh DB with config data only, not full 1.5GB from local)
+- 9router-migrate.sql deleted from both Windows local and VPS /root/

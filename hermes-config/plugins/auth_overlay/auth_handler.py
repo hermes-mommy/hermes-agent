@@ -18,8 +18,8 @@ from typing import Protocol, cast
 import structlog
 
 # Import the canonical auth matrix as the sole runtime auth source.
-from src.mcp.auth import AuthLevel, ForbiddenOperationError
-from src.mcp.auth_matrix import (
+from guinvere.mcp.auth import AuthLevel, ForbiddenOperationError
+from guinvere.mcp.auth_matrix import (
     AUTH_MATRIX,
     ALL_TOOL_NAMES,
     get_auth_level,

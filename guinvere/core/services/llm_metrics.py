@@ -28,43 +28,43 @@ from prometheus_client import Counter, Gauge, Histogram, start_http_server
 # ---------------------------------------------------------------------------
 
 LLM_CALLS_TOTAL = Counter(
-    "hermes_llm_calls_total",
+    "guinvere_llm_calls_total",
     "Total LLM calls, partitioned by model and status",
     ["model", "status"],
 )
 
 LLM_LATENCY_SECONDS = Histogram(
-    "hermes_llm_latency_seconds",
+    "guinvere_llm_latency_seconds",
     "Latency of LLM calls in seconds",
     ["model"],
     buckets=(0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, float("inf")),
 )
 
 LLM_COST_USD_TOTAL = Counter(
-    "hermes_llm_cost_usd_total",
+    "guinvere_llm_cost_usd_total",
     "Total LLM cost in USD",
     ["model"],
 )
 
 FALLBACK_ACTIVATIONS_TOTAL = Counter(
-    "hermes_fallback_activations_total",
+    "guinvere_fallback_activations_total",
     "Total fallback activations, partitioned by from_model and to_model",
     ["from_model", "to_model"],
 )
 
 SAFETY_BLOCKS_TOTAL = Counter(
-    "hermes_safety_blocks_total",
+    "guinvere_safety_blocks_total",
     "Total safety blocks, partitioned by gate and reason",
     ["gate", "reason"],
 )
 
 SESSION_COUNT = Gauge(
-    "hermes_session_count",
+    "guinvere_session_count",
     "Current number of active Hermes sessions tracked by the safety plugin",
 )
 
 MESSAGE_COUNT_TOTAL = Counter(
-    "hermes_message_count_total",
+    "guinvere_message_count_total",
     "Total messages processed, partitioned by direction",
     ["direction"],
 )

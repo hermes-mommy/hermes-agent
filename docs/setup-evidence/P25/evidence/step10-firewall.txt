@@ -1,0 +1,42 @@
+# P25 Step 10 — Firewall Add-Only (iptables)
+
+> Date: 2026-06-26 | VPS: 49.12.82.34:39999
+
+## Pre-Rule State (step10-firewall-before)
+
+```
+Chain INPUT (policy ACCEPT)
+(empty — no rules)
+```
+
+## Firewall Rules Applied
+
+```bash
+iptables -A INPUT -i tailscale0 -p tcp --dport 20128 -j ACCEPT
+iptables -A INPUT -i venet0 -p tcp --dport 20128 -j DROP
+```
+
+## Post-Rule State (step10-firewall-after)
+
+```
+Chain INPUT (policy ACCEPT 236K packets, 175M bytes)
+num   pkts bytes target     prot opt in     out     source               destination
+1        0     0 ACCEPT     6    --  tailscale0 *       0.0.0.0/0            0.0.0.0/0            tcp dpt:20128
+2        0     0 DROP       6    --  venet0 *       0.0.0.0/0            0.0.0.0/0            tcp dpt:20128
+```
+
+## Persistence
+
+```bash
+netfilter-persistent save
+```
+
+Saved to `/etc/iptables/rules.v4` at Fri Jun 26 18:26:25 2026.
+
+## Notes
+
+- Add-only: no `iptables -F` used, no existing rules removed
+- SSH port 39999 unaffected (INPUT policy ACCEPT)
+- ACCEPT tailscale0:20128 rule is a no-op in OpenVZ userspace-networking (no kernel tailscale0 interface)
+- DROP venet0:20128 is the effective rule blocking public access
+- Rules persisted via netfilter-persistent to survive reboot

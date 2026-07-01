@@ -23,7 +23,7 @@ HookCallback = Callable[..., object | None]
 
 
 class PersonaPluginRuntime(Protocol):
-    """Runtime hook surface exposed by ``src/hermes/plugins/persona_plugin.py``."""
+    """Runtime hook surface exposed by ``guinvere/hermes/plugins/persona_plugin.py``."""
 
     def pre_llm_call(self, **kwargs: object) -> object | None: ...
 
@@ -38,7 +38,7 @@ def _load_persona_plugin_class() -> type[PersonaPluginRuntime]:
     """Load PersonaPlugin without importing the parent ``src.hermes`` package.
 
     The project package currently has a pre-existing package-level import caveat
-    in ``src/hermes/__init__.py``. Hermes runtime only needs this plugin module,
+    in ``guinvere/hermes/__init__.py``. Hermes runtime only needs this plugin module,
     so load it directly from the repository path.
     """
     repo_root = Path(os.environ.get("GUINEVERE_REPO_ROOT", "/home/guinevere/code/guinevere"))

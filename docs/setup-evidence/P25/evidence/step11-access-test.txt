@@ -1,0 +1,36 @@
+# P25 Step 11 — Three-Way Access Test
+
+> Date: 2026-06-26 | VPS: 49.12.82.34:39999 | Tailscale: 100.104.210.75
+
+## Test 1: Localhost (VPS) — ✅ PASS
+
+```
+$ curl -s http://localhost:20128/v1/models | jq '.data | length'
+74
+```
+
+74 models returned from localhost on VPS.
+
+## Test 2: Tailscale from Windows — ✅ PASS
+
+```
+$ curl.exe -s http://100.104.210.75:20128/v1/models
+{"object":"list","data":[...74 models...]}
+```
+
+Windows netstat confirms: `TCP 100.112.201.124:64022 → 100.104.210.75:20128 ESTABLISHED`
+
+## Test 3b: Public IP from Windows — ✅ BLOCKED
+
+```
+$ Test-NetConnection 49.12.82.34 -Port 20128
+TcpTestSucceeded: False
+```
+
+Connection timeout. DROP rule on venet0:20128 is effective.
+
+## Notes
+
+- Test 3a (VPS self-Tailscale curl) fails — expected: traffic routes through venet0 kernel path (blocked by DROP), not through Tailscale userspace proxy
+- External Tailscale access works because WireGuard tunnel bypasses kernel routing
+- Public internet access confirmed blocked

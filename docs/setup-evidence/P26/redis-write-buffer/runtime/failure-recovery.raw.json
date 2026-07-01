@@ -1,0 +1,292 @@
+﻿{
+  "generatedAt": "2026-06-27T20:34:59.033Z",
+  "requestCount": 4,
+  "before": {
+    "buffer": {
+      "configured": true,
+      "connected": true,
+      "streamKey": "9router:usage_events:v1",
+      "deadletterKey": "9router:usage_events:deadletter:v1",
+      "group": "usage-writers",
+      "consumer": "usage-writer-ninerouter-vps",
+      "streamLength": 639,
+      "deadletterLength": 0,
+      "lag": 0,
+      "pending": 0,
+      "consumers": 0,
+      "lastDeliveredId": null,
+      "lastGeneratedId": null,
+      "lastEntryId": null,
+      "writerHealthy": true,
+      "heartbeatAgeMs": 469,
+      "lastHeartbeatAt": "2026-06-27T20:35:00.979Z",
+      "lastError": null,
+      "lastHealthyAt": "2026-06-27T20:35:01.445Z"
+    },
+    "pm2": {
+      "workerCount": 2,
+      "totalRestarts": 0,
+      "workers": [
+        {
+          "pm_id": 3,
+          "pid": 56767,
+          "status": "online",
+          "restart_time": 0,
+          "httpReqPerMin": 2.27
+        },
+        {
+          "pm_id": 4,
+          "pid": 56774,
+          "status": "online",
+          "restart_time": 0,
+          "httpReqPerMin": 2.43
+        }
+      ]
+    },
+    "writerState": "active"
+  },
+  "stoppedState": {
+    "at": "2026-06-27T20:35:11.656Z",
+    "writerState": "inactive",
+    "buffer": {
+      "configured": true,
+      "connected": true,
+      "streamKey": "9router:usage_events:v1",
+      "deadletterKey": "9router:usage_events:deadletter:v1",
+      "group": "usage-writers",
+      "consumer": "usage-writer-ninerouter-vps",
+      "streamLength": 639,
+      "deadletterLength": 0,
+      "lag": 0,
+      "pending": 0,
+      "consumers": 0,
+      "lastDeliveredId": null,
+      "lastGeneratedId": null,
+      "lastEntryId": null,
+      "writerHealthy": true,
+      "heartbeatAgeMs": 5327,
+      "lastHeartbeatAt": "2026-06-27T20:35:11.009Z",
+      "lastError": null,
+      "lastHealthyAt": "2026-06-27T20:35:16.333Z"
+    }
+  },
+  "duringStop": {
+    "requests": {
+      "startedAt": "2026-06-27T20:35:16.984Z",
+      "endedAt": "2026-06-27T20:35:27.234Z",
+      "count": 4,
+      "statuses": {
+        "200": 4
+      },
+      "minMs": 2001.39,
+      "maxMs": 2958.18,
+      "avgMs": 2562,
+      "latencies": [
+        2958.18,
+        2638.98,
+        2001.39,
+        2649.45
+      ]
+    },
+    "buffer": {
+      "configured": true,
+      "connected": true,
+      "streamKey": "9router:usage_events:v1",
+      "deadletterKey": "9router:usage_events:deadletter:v1",
+      "group": "usage-writers",
+      "consumer": "usage-writer-ninerouter-vps",
+      "streamLength": 643,
+      "deadletterLength": 0,
+      "lag": 0,
+      "pending": 0,
+      "consumers": 0,
+      "lastDeliveredId": null,
+      "lastGeneratedId": null,
+      "lastEntryId": null,
+      "writerHealthy": true,
+      "heartbeatAgeMs": 18323,
+      "lastHeartbeatAt": "2026-06-27T20:35:11.009Z",
+      "lastError": null,
+      "lastHealthyAt": "2026-06-27T20:35:29.329Z"
+    }
+  },
+  "afterStart": {
+    "at": "2026-06-27T20:35:33.594Z",
+    "writerState": "active",
+    "buffer": {
+      "configured": true,
+      "connected": true,
+      "streamKey": "9router:usage_events:v1",
+      "deadletterKey": "9router:usage_events:deadletter:v1",
+      "group": "usage-writers",
+      "consumer": "usage-writer-ninerouter-vps",
+      "streamLength": 643,
+      "deadletterLength": 0,
+      "lag": 0,
+      "pending": 0,
+      "consumers": 0,
+      "lastDeliveredId": null,
+      "lastGeneratedId": null,
+      "lastEntryId": null,
+      "writerHealthy": true,
+      "heartbeatAgeMs": 55,
+      "lastHeartbeatAt": "2026-06-27T20:35:38.483Z",
+      "lastError": null,
+      "lastHealthyAt": "2026-06-27T20:35:38.536Z"
+    }
+  },
+  "drain": {
+    "drained": true,
+    "samples": [
+      {
+        "at": "2026-06-27T20:35:39.183Z",
+        "buffer": {
+          "configured": true,
+          "connected": true,
+          "streamKey": "9router:usage_events:v1",
+          "deadletterKey": "9router:usage_events:deadletter:v1",
+          "group": "usage-writers",
+          "consumer": "usage-writer-ninerouter-vps",
+          "streamLength": 645,
+          "deadletterLength": 0,
+          "lag": 0,
+          "pending": 0,
+          "consumers": 0,
+          "lastDeliveredId": null,
+          "lastGeneratedId": null,
+          "lastEntryId": null,
+          "writerHealthy": true,
+          "heartbeatAgeMs": 2446,
+          "lastHeartbeatAt": "2026-06-27T20:35:39.229Z",
+          "lastError": null,
+          "lastHealthyAt": "2026-06-27T20:35:41.673Z"
+        },
+        "writerState": "active"
+      }
+    ]
+  },
+  "after": {
+    "at": "2026-06-27T20:35:45.944Z",
+    "writerState": "active",
+    "buffer": {
+      "configured": true,
+      "connected": true,
+      "streamKey": "9router:usage_events:v1",
+      "deadletterKey": "9router:usage_events:deadletter:v1",
+      "group": "usage-writers",
+      "consumer": "usage-writer-ninerouter-vps",
+      "streamLength": 653,
+      "deadletterLength": 0,
+      "lag": 0,
+      "pending": 0,
+      "consumers": 0,
+      "lastDeliveredId": null,
+      "lastGeneratedId": null,
+      "lastEntryId": null,
+      "writerHealthy": true,
+      "heartbeatAgeMs": 390,
+      "lastHeartbeatAt": "2026-06-27T20:35:50.242Z",
+      "lastError": null,
+      "lastHealthyAt": "2026-06-27T20:35:50.630Z"
+    },
+    "pm2": {
+      "workerCount": 2,
+      "totalRestarts": 0,
+      "workers": [
+        {
+          "pm_id": 3,
+          "pid": 56767,
+          "status": "online",
+          "restart_time": 0,
+          "httpReqPerMin": 1.15
+        },
+        {
+          "pm_id": 4,
+          "pid": 56774,
+          "status": "online",
+          "restart_time": 0,
+          "httpReqPerMin": 1.21
+        }
+      ]
+    }
+  },
+  "usageWindow": {
+    "total": {
+      "count": 4
+    },
+    "rows": [
+      {
+        "id": 11443,
+        "timestamp": "2026-06-27T20:35:19.302Z",
+        "requestId": "f0b408d6-acb1-4fc0-a6f1-094af01ab277",
+        "model": "mimo-v2.5-pro",
+        "streamId": "1782592519307-0",
+        "workerId": "3",
+        "status": "success",
+        "endpoint": "/v1/chat/completions"
+      },
+      {
+        "id": 11444,
+        "timestamp": "2026-06-27T20:35:21.954Z",
+        "requestId": "954f3aac-0036-4abb-9834-255227421b39",
+        "model": "mimo-v2.5-pro",
+        "streamId": "1782592521956-0",
+        "workerId": "4",
+        "status": "success",
+        "endpoint": "/v1/chat/completions"
+      },
+      {
+        "id": 11445,
+        "timestamp": "2026-06-27T20:35:23.947Z",
+        "requestId": "5d70cdd5-9b0a-468d-a0c5-518914fcca0a",
+        "model": "mimo-v2.5-pro",
+        "streamId": "1782592523950-0",
+        "workerId": "3",
+        "status": "success",
+        "endpoint": "/v1/chat/completions"
+      },
+      {
+        "id": 11446,
+        "timestamp": "2026-06-27T20:35:26.599Z",
+        "requestId": "a2354248-3c9d-4590-981e-23320753203d",
+        "model": "mimo-v2.5-pro",
+        "streamId": "1782592526602-0",
+        "workerId": "4",
+        "status": "success",
+        "endpoint": "/v1/chat/completions"
+      }
+    ]
+  },
+  "writerJournalTail": [
+    "Jun 28 02:53:20 ninerouter-vps systemd[1]: Stopping 9router-usage-writer.service - 9Router usage writer...",
+    "Jun 28 02:53:22 ninerouter-vps node[55469]: [usage-writer] stopped cleanly",
+    "Jun 28 02:53:22 ninerouter-vps systemd[1]: 9router-usage-writer.service: Deactivated successfully.",
+    "Jun 28 02:53:22 ninerouter-vps systemd[1]: Stopped 9router-usage-writer.service - 9Router usage writer.",
+    "Jun 28 02:53:43 ninerouter-vps systemd[1]: Started 9router-usage-writer.service - 9Router usage writer.",
+    "Jun 28 02:53:43 ninerouter-vps node[55633]: [usage-writer] starting {",
+    "Jun 28 02:53:43 ninerouter-vps node[55633]:   pid: 55633,",
+    "Jun 28 02:53:43 ninerouter-vps node[55633]:   dataDir: '/var/lib/9router',",
+    "Jun 28 02:53:43 ninerouter-vps node[55633]:   redisUrl: 'redis://127.0.0.1:6379'",
+    "Jun 28 02:53:43 ninerouter-vps node[55633]: }",
+    "Jun 28 03:20:55 ninerouter-vps systemd[1]: Stopping 9router-usage-writer.service - 9Router usage writer...",
+    "Jun 28 03:20:59 ninerouter-vps node[55633]: [usage-writer] stopped cleanly",
+    "Jun 28 03:20:59 ninerouter-vps systemd[1]: 9router-usage-writer.service: Deactivated successfully.",
+    "Jun 28 03:20:59 ninerouter-vps systemd[1]: Stopped 9router-usage-writer.service - 9Router usage writer.",
+    "Jun 28 03:21:37 ninerouter-vps systemd[1]: Started 9router-usage-writer.service - 9Router usage writer.",
+    "Jun 28 03:21:38 ninerouter-vps node[60021]: [usage-writer] starting {",
+    "Jun 28 03:21:38 ninerouter-vps node[60021]:   pid: 60021,",
+    "Jun 28 03:21:38 ninerouter-vps node[60021]:   dataDir: '/var/lib/9router',",
+    "Jun 28 03:21:38 ninerouter-vps node[60021]:   redisUrl: 'redis://127.0.0.1:6379'",
+    "Jun 28 03:21:38 ninerouter-vps node[60021]: }",
+    "Jun 28 03:35:09 ninerouter-vps systemd[1]: Stopping 9router-usage-writer.service - 9Router usage writer...",
+    "Jun 28 03:35:11 ninerouter-vps node[60021]: [usage-writer] stopped cleanly",
+    "Jun 28 03:35:11 ninerouter-vps systemd[1]: 9router-usage-writer.service: Deactivated successfully.",
+    "Jun 28 03:35:11 ninerouter-vps systemd[1]: Stopped 9router-usage-writer.service - 9Router usage writer.",
+    "Jun 28 03:35:32 ninerouter-vps systemd[1]: Started 9router-usage-writer.service - 9Router usage writer.",
+    "Jun 28 03:35:33 ninerouter-vps node[61408]: [usage-writer] starting {",
+    "Jun 28 03:35:33 ninerouter-vps node[61408]:   pid: 61408,",
+    "Jun 28 03:35:33 ninerouter-vps node[61408]:   dataDir: '/var/lib/9router',",
+    "Jun 28 03:35:33 ninerouter-vps node[61408]:   redisUrl: 'redis://127.0.0.1:6379'",
+    "Jun 28 03:35:33 ninerouter-vps node[61408]: }"
+  ]
+}

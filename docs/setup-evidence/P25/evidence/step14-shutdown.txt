@@ -1,0 +1,24 @@
+# P25 Step 14 — Local 9Router Shutdown
+
+> Date: 2026-06-26
+
+## Status
+
+**Kept alive per Faiz instruction.** Local 9Router continues running alongside VPS 9Router.
+
+## Process State
+
+```
+PID: varies (auto-restarting)
+Path: C:\Program Files\nodejs\node.exe
+Command: --max-old-space-size=12288 custom-server.js
+Port: 0.0.0.0:20128
+```
+
+## Notes
+
+- Original PID 5576 was killed but 9Router auto-restarts (likely npm/Windows service)
+- Faiz instructed: "jangan matiin 9router lokal dulu"
+- Both local and VPS 9Router running simultaneously
+- Clients (OpenCode, Claude Code) point to VPS: 100.104.210.75:20128/v1
+- Local 9Router serves no active clients but remains available as fallback

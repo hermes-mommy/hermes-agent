@@ -1,0 +1,39 @@
+# P25 Step 13 — Final Verification
+
+> Date: 2026-06-26 | VPS: 49.12.82.34:39999 | Tailscale: 100.104.210.75
+
+## Models Endpoint — ✅ PASS
+
+```
+$ curl -s http://100.104.210.75:20128/v1/models | jq '.data | length'
+74
+```
+
+74 models across 9 combos + 65 provider models. All 92 providerConnections active.
+
+## Real Model Request — ✅ PASS
+
+```
+$ curl -s http://100.104.210.75:20128/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <API_KEY>" \
+  -d '{"model":"mimo-v2.5-pro","messages":[{"role":"user","content":"Hi!"}]}'
+```
+
+Response received with 2272 tokens. Model mimo-v2.5-pro responding correctly.
+
+## Systemd Status
+
+```
+9router.service - 9Router AI Gateway
+   Active: active (running)
+   Main PID: (running)
+   Memory: 1.0Gi used / 3.9Gi total
+```
+
+## Notes
+
+- 9Router v0.5.8 running on VPS with 92 providerConnections
+- Tailscale IP 100.104.210.75 accessible from Windows
+- Public IP 49.12.82.34:20128 blocked by firewall
+- OpenCode and Claude Code configured to use VPS
