@@ -63,7 +63,7 @@ class HermesBridge:
                 host="localhost",
                 port=6380,
                 db=5,
-                username="guinevere_core",
+                username="default",
                 password=_redis_password,
                 decode_responses=True,
             )
