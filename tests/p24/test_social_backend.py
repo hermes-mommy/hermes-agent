@@ -9,12 +9,10 @@ get_telegram_updates, edit_telegram, delete_telegram.
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-import pytest
 pytestmark = pytest.mark.social
 
 
@@ -88,16 +86,6 @@ def _mock_httpx(response: _MockResponse):
 
 
 # ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _run(coro):
-    """Run an async coroutine in a fresh event loop."""
-    return asyncio.get_event_loop().run_until_complete(coro)
-
-
-# ---------------------------------------------------------------------------
 # X / Twitter Actions
 # ---------------------------------------------------------------------------
 
@@ -105,33 +93,37 @@ def _run(coro):
 class TestPostX:
     """post_x: Post a tweet via X API v2."""
 
-    def test_post_x_success(self, backend, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_post_x_success(self, backend, monkeypatch):
         _set_x_write_creds(monkeypatch)
         resp = _MockResponse(201, {"data": {"id": "12345", "text": "Hello world"}})
         with _mock_httpx(resp):
-            result = _run(backend.dispatch("post_x", {"text": "Hello world"}))
+            result = await backend.dispatch("post_x", {"text": "Hello world"})
         assert result["ok"] is True
         assert result["tweet_id"] == "12345"
         assert result["text"] == "Hello world"
 
-    def test_post_x_missing_creds(self, backend, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_post_x_missing_creds(self, backend, monkeypatch):
         """No OAuth creds -> config_missing."""
-        result = _run(backend.dispatch("post_x", {"text": "Hello"}))
+        result = await backend.dispatch("post_x", {"text": "Hello"})
         assert result["ok"] is False
         assert result.get("config_missing") is True
 
-    def test_post_x_api_error(self, backend, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_post_x_api_error(self, backend, monkeypatch):
         _set_x_write_creds(monkeypatch)
         resp = _MockResponse(403, {"detail": "Forbidden"})
         with _mock_httpx(resp):
-            result = _run(backend.dispatch("post_x", {"text": "Hello"}))
+            result = await backend.dispatch("post_x", {"text": "Hello"})
         assert result["ok"] is False
         assert "error" in result
 
-    def test_post_x_empty_text(self, backend, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_post_x_empty_text(self, backend, monkeypatch):
         """Empty text should return ok=False or handled gracefully."""
         _set_x_write_creds(monkeypatch)
-        result = _run(backend.dispatch("post_x", {"text": ""}))
+        result = await backend.dispatch("post_x", {"text": ""})
         assert result["ok"] is False
         assert "error" in result
 
@@ -139,7 +131,8 @@ class TestPostX:
 class TestReadMentions:
     """read_mentions: Read mentions via X API v2 with Bearer token."""
 
-    def test_read_mentions_success(self, backend, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_read_mentions_success(self, backend, monkeypatch):
         _set_x_read_creds(monkeypatch)
         resp_data = {
             "data": [
@@ -150,29 +143,32 @@ class TestReadMentions:
         }
         resp = _MockResponse(200, resp_data)
         with _mock_httpx(resp):
-            result = _run(backend.dispatch("read_mentions", {"user_id": "42"}))
+            result = await backend.dispatch("read_mentions", {"user_id": "42"})
         assert result["ok"] is True
         assert len(result["mentions"]) == 2
         assert result["count"] == 2
 
-    def test_read_mentions_no_data(self, backend, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_read_mentions_no_data(self, backend, monkeypatch):
         _set_x_read_creds(monkeypatch)
         resp = _MockResponse(200, {"data": [], "meta": {"result_count": 0}})
         with _mock_httpx(resp):
-            result = _run(backend.dispatch("read_mentions", {"user_id": "42"}))
+            result = await backend.dispatch("read_mentions", {"user_id": "42"})
         assert result["ok"] is True
         assert result["count"] == 0
 
-    def test_read_mentions_missing_creds(self, backend, monkeypatch):
-        result = _run(backend.dispatch("read_mentions", {"user_id": "42"}))
+    @pytest.mark.asyncio
+    async def test_read_mentions_missing_creds(self, backend, monkeypatch):
+        result = await backend.dispatch("read_mentions", {"user_id": "42"})
         assert result["ok"] is False
         assert result.get("config_missing") is True
 
-    def test_read_mentions_api_error(self, backend, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_read_mentions_api_error(self, backend, monkeypatch):
         _set_x_read_creds(monkeypatch)
         resp = _MockResponse(429, {"title": "Too Many Requests"})
         with _mock_httpx(resp):
-            result = _run(backend.dispatch("read_mentions", {"user_id": "42"}))
+            result = await backend.dispatch("read_mentions", {"user_id": "42"})
         assert result["ok"] is False
         assert "error" in result
 
@@ -180,39 +176,43 @@ class TestReadMentions:
 class TestReplyX:
     """reply_x: Reply to a tweet via X API v2."""
 
-    def test_reply_x_success(self, backend, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_reply_x_success(self, backend, monkeypatch):
         _set_x_write_creds(monkeypatch)
         resp = _MockResponse(201, {"data": {"id": "200", "text": "@author nice!"}})
         with _mock_httpx(resp):
-            result = _run(backend.dispatch("reply_x", {
+            result = await backend.dispatch("reply_x", {
                 "text": "@author nice!",
                 "in_reply_to_tweet_id": "199",
-            }))
+            })
         assert result["ok"] is True
         assert result["tweet_id"] == "200"
 
-    def test_reply_x_missing_creds(self, backend, monkeypatch):
-        result = _run(backend.dispatch("reply_x", {
+    @pytest.mark.asyncio
+    async def test_reply_x_missing_creds(self, backend, monkeypatch):
+        result = await backend.dispatch("reply_x", {
             "text": "@author nice!",
             "in_reply_to_tweet_id": "199",
-        }))
+        })
         assert result["ok"] is False
         assert result.get("config_missing") is True
 
-    def test_reply_x_missing_tweet_id(self, backend, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_reply_x_missing_tweet_id(self, backend, monkeypatch):
         _set_x_write_creds(monkeypatch)
-        result = _run(backend.dispatch("reply_x", {"text": "@author nice!"}))
+        result = await backend.dispatch("reply_x", {"text": "@author nice!"})
         assert result["ok"] is False
         assert "error" in result
 
-    def test_reply_x_api_error(self, backend, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_reply_x_api_error(self, backend, monkeypatch):
         _set_x_write_creds(monkeypatch)
         resp = _MockResponse(500, {"error": "internal server error"})
         with _mock_httpx(resp):
-            result = _run(backend.dispatch("reply_x", {
+            result = await backend.dispatch("reply_x", {
                 "text": "@author nice!",
                 "in_reply_to_tweet_id": "199",
-            }))
+            })
         assert result["ok"] is False
         assert "error" in result
 
@@ -225,45 +225,49 @@ class TestReplyX:
 class TestSendTelegram:
     """send_telegram: Send a text message via Telegram Bot API."""
 
-    def test_send_telegram_success(self, backend, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_send_telegram_success(self, backend, monkeypatch):
         _set_telegram_creds(monkeypatch)
         resp = _MockResponse(200, {
             "ok": True,
             "result": {"message_id": 42, "chat": {"id": 12345}, "text": "Hello"},
         })
         with _mock_httpx(resp):
-            result = _run(backend.dispatch("send_telegram", {
+            result = await backend.dispatch("send_telegram", {
                 "chat_id": "12345",
                 "text": "Hello",
-            }))
+            })
         assert result["ok"] is True
         assert result["message_id"] == 42
 
-    def test_send_telegram_missing_creds(self, backend, monkeypatch):
-        result = _run(backend.dispatch("send_telegram", {
+    @pytest.mark.asyncio
+    async def test_send_telegram_missing_creds(self, backend, monkeypatch):
+        result = await backend.dispatch("send_telegram", {
             "chat_id": "12345",
             "text": "Hello",
-        }))
+        })
         assert result["ok"] is False
         assert result.get("config_missing") is True
 
-    def test_send_telegram_api_error(self, backend, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_send_telegram_api_error(self, backend, monkeypatch):
         _set_telegram_creds(monkeypatch)
         resp = _MockResponse(200, {"ok": False, "description": "Bad Request: chat not found"})
         with _mock_httpx(resp):
-            result = _run(backend.dispatch("send_telegram", {
+            result = await backend.dispatch("send_telegram", {
                 "chat_id": "99999",
                 "text": "Hello",
-            }))
+            })
         assert result["ok"] is False
         assert "error" in result
 
-    def test_send_telegram_empty_text(self, backend, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_send_telegram_empty_text(self, backend, monkeypatch):
         _set_telegram_creds(monkeypatch)
-        result = _run(backend.dispatch("send_telegram", {
+        result = await backend.dispatch("send_telegram", {
             "chat_id": "12345",
             "text": "",
-        }))
+        })
         assert result["ok"] is False
         assert "error" in result
 
@@ -271,7 +275,8 @@ class TestSendTelegram:
 class TestGetTelegramUpdates:
     """get_telegram_updates: Get updates via Telegram Bot API."""
 
-    def test_get_updates_success(self, backend, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_get_updates_success(self, backend, monkeypatch):
         _set_telegram_creds(monkeypatch)
         resp = _MockResponse(200, {
             "ok": True,
@@ -281,20 +286,22 @@ class TestGetTelegramUpdates:
             ],
         })
         with _mock_httpx(resp):
-            result = _run(backend.dispatch("get_telegram_updates", {"offset": 0}))
+            result = await backend.dispatch("get_telegram_updates", {"offset": 0})
         assert result["ok"] is True
         assert len(result["updates"]) == 2
 
-    def test_get_updates_empty(self, backend, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_get_updates_empty(self, backend, monkeypatch):
         _set_telegram_creds(monkeypatch)
         resp = _MockResponse(200, {"ok": True, "result": []})
         with _mock_httpx(resp):
-            result = _run(backend.dispatch("get_telegram_updates", {}))
+            result = await backend.dispatch("get_telegram_updates", {})
         assert result["ok"] is True
         assert result["count"] == 0
 
-    def test_get_updates_missing_creds(self, backend, monkeypatch):
-        result = _run(backend.dispatch("get_telegram_updates", {}))
+    @pytest.mark.asyncio
+    async def test_get_updates_missing_creds(self, backend, monkeypatch):
+        result = await backend.dispatch("get_telegram_updates", {})
         assert result["ok"] is False
         assert result.get("config_missing") is True
 
@@ -302,39 +309,42 @@ class TestGetTelegramUpdates:
 class TestEditTelegram:
     """edit_telegram: Edit a message via Telegram Bot API."""
 
-    def test_edit_telegram_success(self, backend, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_edit_telegram_success(self, backend, monkeypatch):
         _set_telegram_creds(monkeypatch)
         resp = _MockResponse(200, {
             "ok": True,
             "result": {"message_id": 42, "edit_date": 1234567890},
         })
         with _mock_httpx(resp):
-            result = _run(backend.dispatch("edit_telegram", {
+            result = await backend.dispatch("edit_telegram", {
                 "chat_id": "12345",
                 "message_id": 42,
                 "text": "Updated text",
-            }))
+            })
         assert result["ok"] is True
         assert result["edited"] is True
 
-    def test_edit_telegram_missing_creds(self, backend, monkeypatch):
-        result = _run(backend.dispatch("edit_telegram", {
+    @pytest.mark.asyncio
+    async def test_edit_telegram_missing_creds(self, backend, monkeypatch):
+        result = await backend.dispatch("edit_telegram", {
             "chat_id": "12345",
             "message_id": 42,
             "text": "Updated",
-        }))
+        })
         assert result["ok"] is False
         assert result.get("config_missing") is True
 
-    def test_edit_telegram_api_error(self, backend, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_edit_telegram_api_error(self, backend, monkeypatch):
         _set_telegram_creds(monkeypatch)
         resp = _MockResponse(200, {"ok": False, "description": "Bad Request: message not found"})
         with _mock_httpx(resp):
-            result = _run(backend.dispatch("edit_telegram", {
+            result = await backend.dispatch("edit_telegram", {
                 "chat_id": "12345",
                 "message_id": 99999,
                 "text": "Updated",
-            }))
+            })
         assert result["ok"] is False
         assert "error" in result
 
@@ -342,34 +352,37 @@ class TestEditTelegram:
 class TestDeleteTelegram:
     """delete_telegram: Delete a message via Telegram Bot API."""
 
-    def test_delete_telegram_success(self, backend, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_delete_telegram_success(self, backend, monkeypatch):
         _set_telegram_creds(monkeypatch)
         resp = _MockResponse(200, {"ok": True, "result": True})
         with _mock_httpx(resp):
-            result = _run(backend.dispatch("delete_telegram", {
+            result = await backend.dispatch("delete_telegram", {
                 "chat_id": "12345",
                 "message_id": 42,
-            }))
+            })
         assert result["ok"] is True
         assert result["deleted"] is True
         assert "restore_method" in result
 
-    def test_delete_telegram_missing_creds(self, backend, monkeypatch):
-        result = _run(backend.dispatch("delete_telegram", {
+    @pytest.mark.asyncio
+    async def test_delete_telegram_missing_creds(self, backend, monkeypatch):
+        result = await backend.dispatch("delete_telegram", {
             "chat_id": "12345",
             "message_id": 42,
-        }))
+        })
         assert result["ok"] is False
         assert result.get("config_missing") is True
 
-    def test_delete_telegram_api_error(self, backend, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_delete_telegram_api_error(self, backend, monkeypatch):
         _set_telegram_creds(monkeypatch)
         resp = _MockResponse(200, {"ok": False, "description": "Bad Request"})
         with _mock_httpx(resp):
-            result = _run(backend.dispatch("delete_telegram", {
+            result = await backend.dispatch("delete_telegram", {
                 "chat_id": "12345",
                 "message_id": 99999,
-            }))
+            })
         assert result["ok"] is False
         assert "error" in result
 
@@ -398,16 +411,18 @@ class TestContract:
                     "get_telegram_updates", "edit_telegram", "delete_telegram"}
         assert names == expected
 
-    def test_dispatch_unknown_returns_error(self, backend):
-        result = _run(backend.dispatch("nonexistent_action", {}))
+    @pytest.mark.asyncio
+    async def test_dispatch_unknown_returns_error(self, backend):
+        result = await backend.dispatch("nonexistent_action", {})
         assert result["ok"] is False
         assert "error" in result
 
-    def test_dispatch_never_raises(self, backend, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_dispatch_never_raises(self, backend, monkeypatch):
         """dispatch() must NEVER raise to caller (fail-soft)."""
         # Pass garbage args that could cause TypeError
         monkeypatch.setenv("X_POSTER_X_ACCESS_TOKEN", "x")
-        result = _run(backend.dispatch("read_mentions", {"user_id": "42"}))
+        result = await backend.dispatch("read_mentions", {"user_id": "42"})
         # Should return a dict with ok field, not raise
         assert isinstance(result, dict)
         assert "ok" in result
