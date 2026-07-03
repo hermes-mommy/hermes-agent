@@ -365,20 +365,16 @@ async def test_api_error_returns_fail_soft(backend, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_is_available_with_credentials(monkeypatch):
+async def test_is_available_with_credentials(tmp_path, monkeypatch):
     """is_available returns True when credentials file exists."""
     import guinevere.tools.backends.email as email_mod
-    monkeypatch.setattr(email_mod, "_CREDENTIALS_PATH", "/tmp/fake_token.json")
 
-    # Patch Path.exists to return True
-    from pathlib import Path
-    original_exists = Path.exists
-    monkeypatch.setattr(Path, "exists", lambda self: str(self) == "/tmp/fake_token.json")
+    creds_file = tmp_path / "token.json"
+    creds_file.write_text("{}")
+    monkeypatch.setattr(email_mod, "_CREDENTIALS_PATH", str(creds_file))
 
     backend = EmailBackend()
     assert backend.is_available() is True
-
-    monkeypatch.setattr(Path, "exists", original_exists)
 
 
 @pytest.mark.asyncio
