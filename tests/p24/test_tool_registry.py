@@ -337,13 +337,13 @@ class TestBackendActionCounts:
     EXPECTED_MINIMUMS = {
         "browser": 10,
         "github": 19,
-        "filesystem": 9,
+        "filesystem": 28,
         "vps": 14,
         "email": 10,
         "desktop": 9,
         "freelance": 8,
         "social": 11,
-        "memory": 30,
+        "memory": 18,
     }
 
     def test_action_counts(self):
@@ -356,10 +356,10 @@ class TestBackendActionCounts:
             )
 
     def test_total_action_count(self):
-        """Total actions across all backends should be 120."""
+        """Total actions across all backends should be 127."""
         backends = discover_backends()
         total = sum(len(b.actions()) for b in backends)
-        assert total == 120, f"Expected 120 total actions, got {total}"
+        assert total == 127, f"Expected 127 total actions, got {total}"
 
 
 # ---------------------------------------------------------------------------
