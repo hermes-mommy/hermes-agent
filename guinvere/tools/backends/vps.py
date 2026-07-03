@@ -4,10 +4,16 @@ Ported from: P22 vps_adapter.py, P23 vps_executor (Section 4.3),
 MCP docker_tool.py, shell_tool.py, redis_tool.py, postgres_tool.py.
 
 14 actions: 6 L1 READ, 7 L2 WRITE, 1 L3 DESTRUCTIVE.
+
+Standalone SSH functions (15):
+  ssh_exec, scp_upload, scp_download, systemctl_status, systemctl_start,
+  systemctl_stop, systemctl_restart, journalctl, df, du, free, uptime,
+  ps, kill, tail_log.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from typing import Any
@@ -15,6 +21,378 @@ from typing import Any
 from guinevere.tools.tool_backend import Action, ActionTier, ToolBackend
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_HOST = "guinevere-vps"
+
+
+# ===================================================================
+# Standalone SSH functions (15 actions)
+# ===================================================================
+
+
+async def ssh_exec(
+    host: str, command: str, timeout: int = 30,
+) -> dict[str, Any]:
+    """Execute command on remote host via SSH.
+
+    Args:
+        host: SSH host alias (from ~/.ssh/config).
+        command: Shell command to execute.
+        timeout: Timeout in seconds (default 30).
+
+    Returns:
+        Structured dict with ok, action, stdout, stderr, returncode.
+    """
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "ssh", host, command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(
+            proc.communicate(), timeout=timeout,
+        )
+        return {
+            "ok": proc.returncode == 0,
+            "action": "ssh_exec",
+            "stdout": stdout.decode("utf-8", errors="replace"),
+            "stderr": stderr.decode("utf-8", errors="replace"),
+            "returncode": proc.returncode,
+        }
+    except asyncio.TimeoutError:
+        return {"ok": False, "action": "ssh_exec", "error": "command timed out"}
+    except FileNotFoundError as exc:
+        return {"ok": False, "action": "ssh_exec", "error": f"binary not found: {exc}"}
+    except OSError as exc:
+        return {"ok": False, "action": "ssh_exec", "error": f"os error: {exc}"}
+
+
+async def scp_upload(
+    local: str, remote: str,
+    host: str = _DEFAULT_HOST, timeout: int = 30,
+) -> dict[str, Any]:
+    """Upload file to remote host via SCP.
+
+    Args:
+        local: Local file path.
+        remote: Remote file path.
+        host: SSH host alias (default guinevere-vps).
+        timeout: Timeout in seconds (default 30).
+
+    Returns:
+        Structured dict with ok, action, local, remote, stdout, stderr, returncode.
+    """
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "scp", local, f"{host}:{remote}",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(
+            proc.communicate(), timeout=timeout,
+        )
+        return {
+            "ok": proc.returncode == 0,
+            "action": "scp_upload",
+            "local": local,
+            "remote": remote,
+            "stdout": stdout.decode("utf-8", errors="replace"),
+            "stderr": stderr.decode("utf-8", errors="replace"),
+            "returncode": proc.returncode,
+        }
+    except asyncio.TimeoutError:
+        return {"ok": False, "action": "scp_upload", "error": "command timed out"}
+    except FileNotFoundError as exc:
+        return {"ok": False, "action": "scp_upload", "error": f"binary not found: {exc}"}
+    except OSError as exc:
+        return {"ok": False, "action": "scp_upload", "error": f"os error: {exc}"}
+
+
+async def scp_download(
+    remote: str, local: str,
+    host: str = _DEFAULT_HOST, timeout: int = 30,
+) -> dict[str, Any]:
+    """Download file from remote host via SCP.
+
+    Args:
+        remote: Remote file path.
+        local: Local file path.
+        host: SSH host alias (default guinevere-vps).
+        timeout: Timeout in seconds (default 30).
+
+    Returns:
+        Structured dict with ok, action, remote, local, stdout, stderr, returncode.
+    """
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "scp", f"{host}:{remote}", local,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(
+            proc.communicate(), timeout=timeout,
+        )
+        return {
+            "ok": proc.returncode == 0,
+            "action": "scp_download",
+            "remote": remote,
+            "local": local,
+            "stdout": stdout.decode("utf-8", errors="replace"),
+            "stderr": stderr.decode("utf-8", errors="replace"),
+            "returncode": proc.returncode,
+        }
+    except asyncio.TimeoutError:
+        return {"ok": False, "action": "scp_download", "error": "command timed out"}
+    except FileNotFoundError as exc:
+        return {"ok": False, "action": "scp_download", "error": f"binary not found: {exc}"}
+    except OSError as exc:
+        return {"ok": False, "action": "scp_download", "error": f"os error: {exc}"}
+
+
+async def systemctl_status(
+    service: str, host: str = _DEFAULT_HOST, timeout: int = 30,
+) -> dict[str, Any]:
+    """Get systemd service status.
+
+    Args:
+        service: Service name.
+        host: SSH host alias (default guinevere-vps).
+        timeout: Timeout in seconds (default 30).
+
+    Returns:
+        Structured dict with ok, action, service, stdout, stderr, returncode.
+    """
+    result = await ssh_exec(host, f"systemctl status {service}", timeout=timeout)
+    result["action"] = "systemctl_status"
+    result["service"] = service
+    return result
+
+
+async def systemctl_start(
+    service: str, host: str = _DEFAULT_HOST, timeout: int = 30,
+) -> dict[str, Any]:
+    """Start systemd service.
+
+    Args:
+        service: Service name.
+        host: SSH host alias (default guinevere-vps).
+        timeout: Timeout in seconds (default 30).
+
+    Returns:
+        Structured dict with ok, action, service, stdout, stderr, returncode.
+    """
+    result = await ssh_exec(host, f"sudo systemctl start {service}", timeout=timeout)
+    result["action"] = "systemctl_start"
+    result["service"] = service
+    return result
+
+
+async def systemctl_stop(
+    service: str, host: str = _DEFAULT_HOST, timeout: int = 30,
+) -> dict[str, Any]:
+    """Stop systemd service.
+
+    Args:
+        service: Service name.
+        host: SSH host alias (default guinevere-vps).
+        timeout: Timeout in seconds (default 30).
+
+    Returns:
+        Structured dict with ok, action, service, stdout, stderr, returncode.
+    """
+    result = await ssh_exec(host, f"sudo systemctl stop {service}", timeout=timeout)
+    result["action"] = "systemctl_stop"
+    result["service"] = service
+    return result
+
+
+async def systemctl_restart(
+    service: str, host: str = _DEFAULT_HOST, timeout: int = 30,
+) -> dict[str, Any]:
+    """Restart systemd service.
+
+    Args:
+        service: Service name.
+        host: SSH host alias (default guinevere-vps).
+        timeout: Timeout in seconds (default 30).
+
+    Returns:
+        Structured dict with ok, action, service, stdout, stderr, returncode.
+    """
+    result = await ssh_exec(host, f"sudo systemctl restart {service}", timeout=timeout)
+    result["action"] = "systemctl_restart"
+    result["service"] = service
+    return result
+
+
+async def journalctl(
+    unit: str, lines: int = 50,
+    host: str = _DEFAULT_HOST, timeout: int = 30,
+) -> dict[str, Any]:
+    """Get service logs via journalctl.
+
+    Args:
+        unit: Systemd unit name.
+        lines: Number of lines to retrieve (default 50).
+        host: SSH host alias (default guinevere-vps).
+        timeout: Timeout in seconds (default 30).
+
+    Returns:
+        Structured dict with ok, action, unit, lines, entries, stderr, returncode.
+    """
+    result = await ssh_exec(
+        host,
+        f"journalctl -u {unit} -n {lines} --no-pager -o cat",
+        timeout=timeout,
+    )
+    result["action"] = "journalctl"
+    result["unit"] = unit
+    result["lines"] = lines
+    if result.get("ok"):
+        out = result.get("stdout", "")
+        result["entries"] = [ln for ln in out.splitlines() if ln.strip()]
+    else:
+        result.setdefault("entries", [])
+    return result
+
+
+async def df(
+    path: str = "/",
+    host: str = _DEFAULT_HOST, timeout: int = 30,
+) -> dict[str, Any]:
+    """Get disk usage via df.
+
+    Args:
+        path: Filesystem path to check (default "/").
+        host: SSH host alias (default guinevere-vps).
+        timeout: Timeout in seconds (default 30).
+
+    Returns:
+        Structured dict with ok, action, stdout, stderr, returncode.
+    """
+    result = await ssh_exec(host, f"df {path}", timeout=timeout)
+    result["action"] = "df"
+    return result
+
+
+async def du(
+    path: str,
+    host: str = _DEFAULT_HOST, timeout: int = 30,
+) -> dict[str, Any]:
+    """Get directory size via du.
+
+    Args:
+        path: Directory path to measure.
+        host: SSH host alias (default guinevere-vps).
+        timeout: Timeout in seconds (default 30).
+
+    Returns:
+        Structured dict with ok, action, path, stdout, stderr, returncode.
+    """
+    result = await ssh_exec(host, f"du -sh {path}", timeout=timeout)
+    result["action"] = "du"
+    result["path"] = path
+    return result
+
+
+async def free(
+    host: str = _DEFAULT_HOST, timeout: int = 30,
+) -> dict[str, Any]:
+    """Get memory usage via free.
+
+    Args:
+        host: SSH host alias (default guinevere-vps).
+        timeout: Timeout in seconds (default 30).
+
+    Returns:
+        Structured dict with ok, action, stdout, stderr, returncode.
+    """
+    result = await ssh_exec(host, "free -b", timeout=timeout)
+    result["action"] = "free"
+    return result
+
+
+async def uptime(
+    host: str = _DEFAULT_HOST, timeout: int = 30,
+) -> dict[str, Any]:
+    """Get system uptime and load average.
+
+    Args:
+        host: SSH host alias (default guinevere-vps).
+        timeout: Timeout in seconds (default 30).
+
+    Returns:
+        Structured dict with ok, action, stdout, stderr, returncode.
+    """
+    result = await ssh_exec(host, "uptime", timeout=timeout)
+    result["action"] = "uptime"
+    return result
+
+
+async def ps(
+    host: str = _DEFAULT_HOST, timeout: int = 30,
+) -> dict[str, Any]:
+    """Get process list via ps aux.
+
+    Args:
+        host: SSH host alias (default guinevere-vps).
+        timeout: Timeout in seconds (default 30).
+
+    Returns:
+        Structured dict with ok, action, stdout, stderr, returncode.
+    """
+    result = await ssh_exec(host, "ps aux", timeout=timeout)
+    result["action"] = "ps"
+    return result
+
+
+async def kill(
+    pid: int, signal: str = "TERM",
+    host: str = _DEFAULT_HOST, timeout: int = 30,
+) -> dict[str, Any]:
+    """Kill process by PID.
+
+    Args:
+        pid: Process ID to kill.
+        signal: Signal name (default "TERM"). Use "KILL" for SIGKILL.
+        host: SSH host alias (default guinevere-vps).
+        timeout: Timeout in seconds (default 30).
+
+    Returns:
+        Structured dict with ok, action, pid, stdout, stderr, returncode.
+    """
+    sig_flag = "-9" if signal == "KILL" else f"-s {signal}"
+    result = await ssh_exec(host, f"kill {sig_flag} {pid}", timeout=timeout)
+    result["action"] = "kill"
+    result["pid"] = pid
+    return result
+
+
+async def tail_log(
+    path: str, n: int = 50,
+    host: str = _DEFAULT_HOST, timeout: int = 30,
+) -> dict[str, Any]:
+    """Tail last N lines of a log file.
+
+    Args:
+        path: Remote log file path.
+        n: Number of lines (default 50).
+        host: SSH host alias (default guinevere-vps).
+        timeout: Timeout in seconds (default 30).
+
+    Returns:
+        Structured dict with ok, action, path, lines, stdout, stderr, returncode.
+    """
+    result = await ssh_exec(host, f"tail -n {n} {path}", timeout=timeout)
+    result["action"] = "tail_log"
+    result["path"] = path
+    result["lines"] = n
+    return result
+
+
+# ===================================================================
+# VPSBackend class (legacy, uses local subprocess_shell)
+# ===================================================================
 
 
 class VPSBackend(ToolBackend):
