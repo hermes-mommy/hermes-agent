@@ -19,7 +19,10 @@ import logging
 import math
 import uuid
 from datetime import datetime, timezone
+from collections.abc import Awaitable, Callable
 from typing import Any
+
+_Handler = Callable[["MemoryBackend", str, dict[str, Any]], Awaitable[dict[str, Any]]]
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -36,8 +39,13 @@ logger = logging.getLogger(__name__)
 # Async session factory -- module-level so tests can monkeypatch
 # ---------------------------------------------------------------------------
 
-def _create_session_factory():
-    """Create an async session factory from guinvere.memory.db."""
+def _create_session_factory() -> Any:
+    """Create an async session factory from guinvere.memory.db.
+
+    Returns a callable that yields ``AsyncSession`` (async context manager).
+    Typed as ``Any`` because the real return is an async generator context
+    manager, not a plain callable — mypy cannot reconcile the two.
+    """
     from guinvere.memory.db import get_async_session
     return get_async_session
 
@@ -155,7 +163,7 @@ class MemoryBackend(ToolBackend):
     # -----------------------------------------------------------------------
 
     async def dispatch(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
-        """Execute a memory action.  Never raises."""
+        """Execute a memory action.  Never raises (fail-soft dispatch boundary)."""
         action_lower = action.lower()
 
         try:
@@ -168,10 +176,16 @@ class MemoryBackend(ToolBackend):
             logger.error("memory.dispatch DB error action=%s: %s", action, exc,
                          exc_info=True)
             return {"ok": False, "action": action, "error": f"db error: {exc}"}
-        except Exception as exc:
-            logger.error("memory.dispatch failed action=%s: %s", action, exc,
+        except (TypeError, ValueError, KeyError, AttributeError) as exc:
+            # Input validation errors (bad types, missing keys, invalid values)
+            logger.error("memory.dispatch validation error action=%s: %s", action, exc,
                          exc_info=True)
-            return {"ok": False, "action": action, "error": str(exc)}
+            return {"ok": False, "action": action, "error": f"validation error: {exc}"}
+        except OSError as exc:
+            # File system errors during consolidation/import
+            logger.error("memory.dispatch IO error action=%s: %s", action, exc,
+                         exc_info=True)
+            return {"ok": False, "action": action, "error": f"io error: {exc}"}
 
     # -----------------------------------------------------------------------
     # 1. store_memory
@@ -776,7 +790,7 @@ class MemoryBackend(ToolBackend):
 # Handler dispatch map
 # ---------------------------------------------------------------------------
 
-_HANDLERS: dict[str, Any] = {
+_HANDLERS: dict[str, _Handler] = {
     "store_memory": MemoryBackend._store_memory,
     "recall_memory": MemoryBackend._recall_memory,
     "search_memory": MemoryBackend._search_memory,
