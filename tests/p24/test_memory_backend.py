@@ -1,16 +1,24 @@
-"""Tests for MemoryBackend — P6 memory/finance/Notion/Drive/calendar.
+"""Tests for MemoryBackend -- P24 Task 3: PostgreSQL+pgvector memory actions.
 
-REAL actions (12): memory core (redis.asyncio DB5) + finance (asyncpg).
-CONFIG_MISSING actions (18): Notion/Drive/Calendar external APIs.
-
-All external clients are MOCKED — no live network calls.
+18 actions, 3+ tests per action, 54+ tests total.
+Uses in-memory SQLite via aiosqlite for fast, isolated testing.
+All external dependencies (pgvector, Redis) are avoided -- pure SQLAlchemy async.
 """
 from __future__ import annotations
 
 import json
-import pytest
-import pytest_asyncio
+import uuid
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone, timedelta
 
+import pytest
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+
+from guinevere.memory.models import Base, Memory, MemoryCollection, MemoryType
 from guinevere.tools.backends.memory import MemoryBackend
 
 
@@ -19,189 +27,755 @@ from guinevere.tools.backends.memory import MemoryBackend
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
+async def db_engine():
+    """Create an in-memory SQLite async engine with all tables."""
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield engine
+    await engine.dispose()
+
+
+@pytest.fixture
+async def session_factory(db_engine):
+    """Create a session factory bound to the test engine."""
+    return async_sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)
+
+
+@pytest.fixture
 def backend():
     return MemoryBackend()
 
 
-# -- Mock Redis -------------------------------------------------------------
+@pytest.fixture
+def patch_session(monkeypatch, session_factory):
+    """Monkeypatch the memory backend's session factory to use the test DB."""
+    import guinevere.tools.backends.memory as mod
 
-class FakeRedisPipeline:
-    """Fake pipeline that records commands."""
-    def __init__(self):
-        self.commands = []
-    def zadd(self, key, mapping):
-        self.commands.append(("zadd", key, mapping))
-        return self
-    def hset(self, key, mapping=None, **kwargs):
-        self.commands.append(("hset", key, mapping or kwargs))
-        return self
-    def set(self, key, value):
-        self.commands.append(("set", key, value))
-        return self
-    def sadd(self, key, *values):
-        self.commands.append(("sadd", key, values))
-        return self
-    async def execute(self):
-        return [True] * len(self.commands)
+    @asynccontextmanager
+    async def _test_session():
+        async with session_factory() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
 
-
-class FakeRedis:
-    """Fake redis.asyncio client for testing."""
-    def __init__(self):
-        self.store: dict[str, str] = {}
-        self.sets: dict[str, set] = {}
-        self.sorted_sets: dict[str, list] = {}
-        self.hashes: dict[str, dict] = {}
-        self._pipeline = None
-
-    def pipeline(self, transaction=True):
-        self._pipeline = FakeRedisPipeline()
-        return self._pipeline
-
-    async def execute_command(self, *args, **kwargs):
-        # Handle SCAN commands for search_kg
-        if args and args[0] == "SCAN":
-            pattern = ""
-            for i, a in enumerate(args):
-                if a == "MATCH" and i + 1 < len(args):
-                    pattern = args[i + 1]
-                    break
-            matched = []
-            if pattern:
-                prefix = pattern.replace("*", "")
-                for key in list(self.hashes.keys()):
-                    if key.startswith(prefix):
-                        matched.append(key)
-            return (0, matched)  # cursor=0 means done
-        return []
-
-    async def zadd(self, key, mapping):
-        self.sorted_sets.setdefault(key, []).extend(mapping.items())
-        return len(mapping)
-
-    async def zrangebyscore(self, key, min_score, max_score, start=None, num=None, withscores=False):
-        entries = self.sorted_sets.get(key, [])
-        if start is not None and num is not None:
-            entries = entries[start:start + num]
-        # Real redis returns just members by default; tuples only with withscores=True
-        if withscores:
-            return entries
-        return [e[0] if isinstance(e, (list, tuple)) else e for e in entries]
-
-    async def hset(self, key, mapping=None, **kwargs):
-        d = mapping or kwargs
-        self.hashes.setdefault(key, {}).update(d)
-        return len(d)
-
-    async def hgetall(self, key):
-        return self.hashes.get(key, {})
-
-    async def set(self, key, value):
-        self.store[key] = value
-        return True
-
-    async def get(self, key):
-        return self.store.get(key)
-
-    async def sadd(self, key, *values):
-        self.sets.setdefault(key, set()).update(values)
-        return len(values)
-
-    async def smembers(self, key):
-        return self.sets.get(key, set())
-
-    async def sismember(self, key, value):
-        return value in self.sets.get(key, set())
-
-    async def close(self):
-        pass
-
-
-class FakeRedisFactory:
-    """Creates FakeRedis instances via from_url()."""
-    def __init__(self):
-        self._instance = None
-    def from_url(self, url, **kwargs):
-        if self._instance is None:
-            self._instance = FakeRedis()
-        return self._instance
-
-
-# -- Mock asyncpg -----------------------------------------------------------
-
-class FakePGConnection:
-    """Fake asyncpg connection for testing."""
-    def __init__(self):
-        self.tables: dict[str, list[dict]] = {
-            "finance_transactions": [],
-        }
-        self._next_id = 1
-
-    async def execute(self, sql, *args):
-        # CREATE TABLE / DDL
-        if sql.strip().upper().startswith("CREATE"):
-            return "CREATE TABLE"
-        # INSERT
-        if sql.strip().upper().startswith("INSERT"):
-            return "INSERT 0 1"
-        # UPDATE
-        if sql.strip().upper().startswith("UPDATE"):
-            return "UPDATE 0"
-        return "OK"
-
-    async def fetch(self, sql, *args):
-        if "finance_transactions" in sql:
-            rows = self.tables["finance_transactions"]
-            sql_upper = sql.upper()
-            # GROUP BY category
-            if "GROUP BY" in sql_upper:
-                cats: dict = {}
-                for r in rows:
-                    cat = r.get("category", "")
-                    if cat not in cats:
-                        cats[cat] = {"category": cat, "total": 0.0, "count": 0}
-                    cats[cat]["total"] += float(r.get("amount", 0))
-                    cats[cat]["count"] += 1
-                return list(cats.values())
-            return [dict(row) for row in rows]
-        return []
-
-    async def fetchrow(self, sql, *args):
-        # Handle aggregate queries (COUNT, SUM, AVG)
-        if "finance_transactions" in sql:
-            rows = self.tables["finance_transactions"]
-            sql_upper = sql.upper()
-            if "COUNT" in sql_upper or "SUM" in sql_upper or "AVG" in sql_upper:
-                count = len(rows)
-                total = sum(float(r.get("amount", 0)) for r in rows)
-                avg = total / count if count > 0 else 0.0
-                return {"count": count, "total": total, "avg_amount": avg}
-            if rows:
-                return dict(rows[0])
-        return None
-
-    async def fetchval(self, sql, *args):
-        if "COUNT" in sql.upper():
-            return len(self.tables.get("finance_transactions", []))
-        return self._next_id
-
-    async def close(self):
-        pass
-
-
-class FakePGFactory:
-    """Creates FakePGConnection instances via connect()."""
-    def __init__(self):
-        self._instance = None
-    async def connect(self, dsn=None, **kwargs):
-        if self._instance is None:
-            self._instance = FakePGConnection()
-        return self._instance
+    monkeypatch.setattr(mod, "_get_session", lambda: _test_session)
+    return session_factory
 
 
 # ---------------------------------------------------------------------------
-# Action catalogue tests
+# Helpers
 # ---------------------------------------------------------------------------
+
+def _sample_embedding(dim: int = 8) -> list[float]:
+    """Return a small sample embedding for tests."""
+    return [0.1 * i for i in range(dim)]
+
+
+def _other_embedding(dim: int = 8) -> list[float]:
+    """Return a different embedding (orthogonal to _sample_embedding)."""
+    return [1.0 - 0.1 * i for i in range(dim)]
+
+
+async def _seed_memory(session_factory, **overrides) -> str:
+    """Insert a test memory and return its ID."""
+    memory_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    defaults = {
+        "id": memory_id,
+        "content": "test memory content",
+        "memory_type": MemoryType.EPISODIC.value,
+        "embedding_json": _sample_embedding(),
+        "metadata_json": {"source": "test"},
+        "collection": None,
+        "source": "test",
+        "importance": 1.0,
+        "do_not_recall": False,
+        "created_at": now,
+        "updated_at": now,
+    }
+    defaults.update(overrides)
+    async with session_factory() as session:
+        session.add(Memory(**defaults))
+        await session.commit()
+    return memory_id
+
+
+# ===========================================================================
+# 1. store_memory (3 tests)
+# ===========================================================================
+
+class TestStoreMemory:
+    async def test_store_with_all_fields(self, backend, patch_session):
+        result = await backend.dispatch("store_memory", {
+            "content": "I learned a new algorithm",
+            "memory_type": MemoryType.SEMANTIC.value,
+            "embedding": _sample_embedding(),
+            "metadata": {"topic": "algorithms"},
+            "collection": "cs-notes",
+            "source": "study",
+            "importance": 2.5,
+        })
+        assert result["ok"] is True
+        assert result["action"] == "store_memory"
+        assert "memory_id" in result
+        assert len(result["memory_id"]) == 36  # UUID format
+
+    async def test_store_minimal(self, backend, patch_session):
+        result = await backend.dispatch("store_memory", {
+            "content": "hello world",
+        })
+        assert result["ok"] is True
+        assert "memory_id" in result
+
+    async def test_store_empty_content_returns_error(self, backend, patch_session):
+        result = await backend.dispatch("store_memory", {"content": ""})
+        assert result["ok"] is False
+        assert "content is required" in result["error"]
+
+    async def test_store_missing_content_returns_error(self, backend, patch_session):
+        result = await backend.dispatch("store_memory", {})
+        assert result["ok"] is False
+        assert "content is required" in result["error"]
+
+
+# ===========================================================================
+# 2. recall_memory (3 tests)
+# ===========================================================================
+
+class TestRecallMemory:
+    async def test_recall_existing(self, backend, patch_session, session_factory):
+        mid = await _seed_memory(session_factory)
+        result = await backend.dispatch("recall_memory", {"memory_id": mid})
+        assert result["ok"] is True
+        assert result["memory"]["id"] == mid
+        assert result["memory"]["content"] == "test memory content"
+
+    async def test_recall_not_found(self, backend, patch_session):
+        result = await backend.dispatch("recall_memory", {
+            "memory_id": "nonexistent-id-000",
+        })
+        assert result["ok"] is False
+        assert "memory not found" in result["error"]
+
+    async def test_recall_missing_id(self, backend, patch_session):
+        result = await backend.dispatch("recall_memory", {})
+        assert result["ok"] is False
+        assert "memory_id is required" in result["error"]
+
+    async def test_recall_returns_all_fields(self, backend, patch_session, session_factory):
+        mid = await _seed_memory(session_factory, source="unit_test")
+        result = await backend.dispatch("recall_memory", {"memory_id": mid})
+        assert result["ok"] is True
+        mem = result["memory"]
+        assert "memory_type" in mem
+        assert "created_at" in mem
+        assert "updated_at" in mem
+        assert mem["source"] == "unit_test"
+
+
+# ===========================================================================
+# 3. search_memory (3 tests)
+# ===========================================================================
+
+class TestSearchMemory:
+    async def test_search_returns_ranked_results(self, backend, patch_session, session_factory):
+        await _seed_memory(session_factory, content="cats are cute",
+                           embedding_json=[1.0, 0.0, 0.0])
+        await _seed_memory(session_factory, content="dogs are loyal",
+                           embedding_json=[0.0, 1.0, 0.0])
+        await _seed_memory(session_factory, content="cats purr loudly",
+                           embedding_json=[0.9, 0.1, 0.0])
+
+        result = await backend.dispatch("search_memory", {
+            "query_embedding": [1.0, 0.0, 0.0],
+            "limit": 10,
+        })
+        assert result["ok"] is True
+        assert result["count"] == 3
+        # First result should be closest to [1,0,0]
+        assert result["results"][0]["score"] >= result["results"][-1]["score"]
+
+    async def test_search_respects_limit(self, backend, patch_session, session_factory):
+        for i in range(5):
+            await _seed_memory(session_factory, content=f"memory {i}",
+                               embedding_json=[float(i), 0.0, 0.0])
+        result = await backend.dispatch("search_memory", {
+            "query_embedding": [0.0, 0.0, 0.0],
+            "limit": 2,
+        })
+        assert result["ok"] is True
+        assert result["count"] == 2
+
+    async def test_search_missing_embedding(self, backend, patch_session):
+        result = await backend.dispatch("search_memory", {"limit": 5})
+        assert result["ok"] is False
+        assert "query_embedding" in result["error"]
+
+    async def test_search_empty_database(self, backend, patch_session):
+        result = await backend.dispatch("search_memory", {
+            "query_embedding": [1.0, 0.0],
+        })
+        assert result["ok"] is True
+        assert result["count"] == 0
+
+    async def test_search_by_collection(self, backend, patch_session, session_factory):
+        await _seed_memory(session_factory, content="in alpha",
+                           collection="alpha", embedding_json=[1.0, 0.0])
+        await _seed_memory(session_factory, content="in beta",
+                           collection="beta", embedding_json=[1.0, 0.0])
+
+        result = await backend.dispatch("search_memory", {
+            "query_embedding": [1.0, 0.0],
+            "collection": "alpha",
+        })
+        assert result["ok"] is True
+        assert result["count"] == 1
+        assert result["results"][0]["collection"] == "alpha"
+
+
+# ===========================================================================
+# 4. update_memory (3 tests)
+# ===========================================================================
+
+class TestUpdateMemory:
+    async def test_update_content(self, backend, patch_session, session_factory):
+        mid = await _seed_memory(session_factory)
+        result = await backend.dispatch("update_memory", {
+            "memory_id": mid,
+            "content": "updated content",
+        })
+        assert result["ok"] is True
+        # Verify
+        recall = await backend.dispatch("recall_memory", {"memory_id": mid})
+        assert recall["memory"]["content"] == "updated content"
+
+    async def test_update_multiple_fields(self, backend, patch_session, session_factory):
+        mid = await _seed_memory(session_factory)
+        result = await backend.dispatch("update_memory", {
+            "memory_id": mid,
+            "content": "new content",
+            "memory_type": MemoryType.SEMANTIC.value,
+            "importance": 5.0,
+            "source": "updated",
+        })
+        assert result["ok"] is True
+        recall = await backend.dispatch("recall_memory", {"memory_id": mid})
+        assert recall["memory"]["memory_type"] == MemoryType.SEMANTIC.value
+        assert recall["memory"]["importance"] == 5.0
+
+    async def test_update_not_found(self, backend, patch_session):
+        result = await backend.dispatch("update_memory", {
+            "memory_id": "nonexistent",
+            "content": "x",
+        })
+        assert result["ok"] is False
+        assert "memory not found" in result["error"]
+
+    async def test_update_missing_id(self, backend, patch_session):
+        result = await backend.dispatch("update_memory", {"content": "x"})
+        assert result["ok"] is False
+        assert "memory_id is required" in result["error"]
+
+
+# ===========================================================================
+# 5. delete_memory (3 tests)
+# ===========================================================================
+
+class TestDeleteMemory:
+    async def test_delete_existing(self, backend, patch_session, session_factory):
+        mid = await _seed_memory(session_factory)
+        result = await backend.dispatch("delete_memory", {"memory_id": mid})
+        assert result["ok"] is True
+        assert result["deleted"] is True
+        # Verify gone
+        recall = await backend.dispatch("recall_memory", {"memory_id": mid})
+        assert recall["ok"] is False
+
+    async def test_delete_not_found(self, backend, patch_session):
+        result = await backend.dispatch("delete_memory", {
+            "memory_id": "nonexistent",
+        })
+        assert result["ok"] is False
+        assert "memory not found" in result["error"]
+
+    async def test_delete_missing_id(self, backend, patch_session):
+        result = await backend.dispatch("delete_memory", {})
+        assert result["ok"] is False
+        assert "memory_id is required" in result["error"]
+
+
+# ===========================================================================
+# 6. list_memories (3 tests)
+# ===========================================================================
+
+class TestListMemories:
+    async def test_list_empty(self, backend, patch_session):
+        result = await backend.dispatch("list_memories", {})
+        assert result["ok"] is True
+        assert result["memories"] == []
+        assert result["total"] == 0
+
+    async def test_list_with_items(self, backend, patch_session, session_factory):
+        for i in range(3):
+            await _seed_memory(session_factory, content=f"item {i}")
+        result = await backend.dispatch("list_memories", {})
+        assert result["ok"] is True
+        assert result["total"] == 3
+        assert len(result["memories"]) == 3
+
+    async def test_list_pagination(self, backend, patch_session, session_factory):
+        for i in range(5):
+            await _seed_memory(session_factory, content=f"item {i}")
+        result = await backend.dispatch("list_memories", {"limit": 2, "offset": 1})
+        assert result["ok"] is True
+        assert result["total"] == 5
+        assert len(result["memories"]) == 2
+
+    async def test_list_returns_all_fields(self, backend, patch_session, session_factory):
+        await _seed_memory(session_factory)
+        result = await backend.dispatch("list_memories", {})
+        mem = result["memories"][0]
+        assert "id" in mem
+        assert "content" in mem
+        assert "memory_type" in mem
+        assert "created_at" in mem
+
+
+# ===========================================================================
+# 7. get_memory_by_id (3 tests)
+# ===========================================================================
+
+class TestGetMemoryById:
+    async def test_get_by_id(self, backend, patch_session, session_factory):
+        mid = await _seed_memory(session_factory, content="hello from alias")
+        result = await backend.dispatch("get_memory_by_id", {"memory_id": mid})
+        assert result["ok"] is True
+        assert result["memory"]["content"] == "hello from alias"
+
+    async def test_get_by_id_not_found(self, backend, patch_session):
+        result = await backend.dispatch("get_memory_by_id", {
+            "memory_id": "missing",
+        })
+        assert result["ok"] is False
+
+    async def test_get_by_id_missing_id(self, backend, patch_session):
+        result = await backend.dispatch("get_memory_by_id", {})
+        assert result["ok"] is False
+        assert "memory_id is required" in result["error"]
+
+
+# ===========================================================================
+# 8. get_memories_by_type (3 tests)
+# ===========================================================================
+
+class TestGetMemoriesByType:
+    async def test_filter_by_type(self, backend, patch_session, session_factory):
+        await _seed_memory(session_factory, content="ep1",
+                           memory_type=MemoryType.EPISODIC.value)
+        await _seed_memory(session_factory, content="sem1",
+                           memory_type=MemoryType.SEMANTIC.value)
+        await _seed_memory(session_factory, content="ep2",
+                           memory_type=MemoryType.EPISODIC.value)
+
+        result = await backend.dispatch("get_memories_by_type", {
+            "memory_type": MemoryType.EPISODIC.value,
+        })
+        assert result["ok"] is True
+        assert result["count"] == 2
+        assert all(m["memory_type"] == "episodic" for m in result["memories"])
+
+    async def test_filter_by_type_no_results(self, backend, patch_session, session_factory):
+        await _seed_memory(session_factory, content="x",
+                           memory_type=MemoryType.EPISODIC.value)
+        result = await backend.dispatch("get_memories_by_type", {
+            "memory_type": MemoryType.PROCEDURAL.value,
+        })
+        assert result["ok"] is True
+        assert result["count"] == 0
+
+    async def test_filter_by_type_missing(self, backend, patch_session):
+        result = await backend.dispatch("get_memories_by_type", {})
+        assert result["ok"] is False
+        assert "memory_type is required" in result["error"]
+
+
+# ===========================================================================
+# 9. get_memories_by_time_range (3 tests)
+# ===========================================================================
+
+class TestGetMemoriesByTimeRange:
+    async def test_filter_by_range(self, backend, patch_session, session_factory):
+        now = datetime.now(timezone.utc)
+        await _seed_memory(session_factory, content="recent",
+                           created_at=now)
+        await _seed_memory(session_factory, content="old",
+                           created_at=now - timedelta(days=30))
+
+        start = (now - timedelta(hours=1)).isoformat()
+        end = (now + timedelta(hours=1)).isoformat()
+        result = await backend.dispatch("get_memories_by_time_range", {
+            "start_date": start,
+            "end_date": end,
+        })
+        assert result["ok"] is True
+        assert result["count"] == 1
+        assert result["memories"][0]["content"] == "recent"
+
+    async def test_filter_range_no_results(self, backend, patch_session, session_factory):
+        now = datetime.now(timezone.utc)
+        await _seed_memory(session_factory, content="x", created_at=now)
+        far_future = (now + timedelta(days=365)).isoformat()
+        result = await backend.dispatch("get_memories_by_time_range", {
+            "start_date": far_future,
+            "end_date": far_future,
+        })
+        assert result["ok"] is True
+        assert result["count"] == 0
+
+    async def test_filter_range_missing_dates(self, backend, patch_session):
+        result = await backend.dispatch("get_memories_by_time_range", {
+            "start_date": "2025-01-01",
+        })
+        assert result["ok"] is False
+        assert "start_date and end_date" in result["error"]
+
+
+# ===========================================================================
+# 10. consolidate_memories (3 tests)
+# ===========================================================================
+
+class TestConsolidateMemories:
+    async def test_consolidate_two(self, backend, patch_session, session_factory):
+        m1 = await _seed_memory(session_factory, content="first part",
+                                embedding_json=[1.0, 0.0])
+        m2 = await _seed_memory(session_factory, content="second part",
+                                embedding_json=[0.0, 1.0])
+
+        result = await backend.dispatch("consolidate_memories", {
+            "memory_ids": [m1, m2],
+        })
+        assert result["ok"] is True
+        assert result["source_count"] == 2
+        assert "merged_id" in result
+        # Verify originals deleted
+        r1 = await backend.dispatch("recall_memory", {"memory_id": m1})
+        assert r1["ok"] is False
+
+    async def test_consolidate_insufficient_ids(self, backend, patch_session):
+        result = await backend.dispatch("consolidate_memories", {
+            "memory_ids": ["only-one"],
+        })
+        assert result["ok"] is False
+        assert "at least 2" in result["error"]
+
+    async def test_consolidate_empty_ids(self, backend, patch_session):
+        result = await backend.dispatch("consolidate_memories", {
+            "memory_ids": [],
+        })
+        assert result["ok"] is False
+
+    async def test_consolidate_preserves_max_importance(
+        self, backend, patch_session, session_factory
+    ):
+        m1 = await _seed_memory(session_factory, content="a", importance=2.0)
+        m2 = await _seed_memory(session_factory, content="b", importance=5.0)
+        result = await backend.dispatch("consolidate_memories", {
+            "memory_ids": [m1, m2],
+        })
+        assert result["ok"] is True
+        recall = await backend.dispatch("recall_memory", {
+            "memory_id": result["merged_id"],
+        })
+        assert recall["memory"]["importance"] == 5.0
+
+
+# ===========================================================================
+# 11. export_memories (3 tests)
+# ===========================================================================
+
+class TestExportMemories:
+    async def test_export_empty(self, backend, patch_session):
+        result = await backend.dispatch("export_memories", {})
+        assert result["ok"] is True
+        assert result["memories"] == []
+        assert result["count"] == 0
+
+    async def test_export_with_items(self, backend, patch_session, session_factory):
+        await _seed_memory(session_factory, content="a")
+        await _seed_memory(session_factory, content="b")
+        result = await backend.dispatch("export_memories", {})
+        assert result["ok"] is True
+        assert result["count"] == 2
+        assert isinstance(result["memories"], list)
+        # Verify serialisable
+        json.dumps(result["memories"])
+
+    async def test_export_fields_present(self, backend, patch_session, session_factory):
+        await _seed_memory(session_factory, content="x",
+                           metadata_json={"k": "v"})
+        result = await backend.dispatch("export_memories", {})
+        mem = result["memories"][0]
+        assert "id" in mem
+        assert "content" in mem
+        assert "memory_type" in mem
+        assert "embedding" in mem
+        assert "metadata" in mem
+
+
+# ===========================================================================
+# 12. import_memories (3 tests)
+# ===========================================================================
+
+class TestImportMemories:
+    async def test_import_basic(self, backend, patch_session):
+        result = await backend.dispatch("import_memories", {
+            "memories": [
+                {"content": "imported 1", "memory_type": "semantic"},
+                {"content": "imported 2", "metadata": {"tag": "x"}},
+            ],
+        })
+        assert result["ok"] is True
+        assert result["imported"] == 2
+        assert result["errors"] == []
+
+    async def test_import_skips_empty_content(self, backend, patch_session):
+        result = await backend.dispatch("import_memories", {
+            "memories": [
+                {"content": "valid"},
+                {"content": ""},
+                {"metadata": {"no": "content"}},
+            ],
+        })
+        assert result["ok"] is True
+        assert result["imported"] == 1
+        assert len(result["errors"]) == 2
+
+    async def test_import_empty_list(self, backend, patch_session):
+        result = await backend.dispatch("import_memories", {
+            "memories": [],
+        })
+        assert result["ok"] is True
+        assert result["imported"] == 0
+
+    async def test_import_invalid_type(self, backend, patch_session):
+        result = await backend.dispatch("import_memories", {
+            "memories": "not a list",
+        })
+        assert result["ok"] is False
+        assert "memories must be a list" in result["error"]
+
+    async def test_import_verifies_stored(self, backend, patch_session, session_factory):
+        await backend.dispatch("import_memories", {
+            "memories": [{"content": "verify me"}],
+        })
+        result = await backend.dispatch("list_memories", {})
+        assert result["total"] == 1
+        assert result["memories"][0]["content"] == "verify me"
+
+
+# ===========================================================================
+# 13. get_memory_stats (3 tests)
+# ===========================================================================
+
+class TestGetMemoryStats:
+    async def test_stats_empty(self, backend, patch_session):
+        result = await backend.dispatch("get_memory_stats", {})
+        assert result["ok"] is True
+        assert result["total_count"] == 0
+        assert result["by_type"] == {}
+
+    async def test_stats_counts_by_type(self, backend, patch_session, session_factory):
+        await _seed_memory(session_factory, content="ep",
+                           memory_type=MemoryType.EPISODIC.value)
+        await _seed_memory(session_factory, content="sem",
+                           memory_type=MemoryType.SEMANTIC.value)
+        await _seed_memory(session_factory, content="ep2",
+                           memory_type=MemoryType.EPISODIC.value)
+
+        result = await backend.dispatch("get_memory_stats", {})
+        assert result["ok"] is True
+        assert result["total_count"] == 3
+        assert result["by_type"]["episodic"] == 2
+        assert result["by_type"]["semantic"] == 1
+
+    async def test_stats_reports_size(self, backend, patch_session, session_factory):
+        await _seed_memory(session_factory, content="hello")
+        await _seed_memory(session_factory, content="world!")
+        result = await backend.dispatch("get_memory_stats", {})
+        assert result["ok"] is True
+        assert result["total_size"] == len("hello") + len("world!")
+
+
+# ===========================================================================
+# 14. create_memory_collection (3 tests)
+# ===========================================================================
+
+class TestCreateMemoryCollection:
+    async def test_create_collection(self, backend, patch_session):
+        result = await backend.dispatch("create_memory_collection", {
+            "name": "project-alpha",
+            "description": "Alpha project notes",
+        })
+        assert result["ok"] is True
+        assert result["name"] == "project-alpha"
+        assert "collection_id" in result
+
+    async def test_create_duplicate_collection(self, backend, patch_session):
+        await backend.dispatch("create_memory_collection", {"name": "dup"})
+        result = await backend.dispatch("create_memory_collection", {"name": "dup"})
+        assert result["ok"] is False
+        assert "already exists" in result["error"]
+
+    async def test_create_collection_missing_name(self, backend, patch_session):
+        result = await backend.dispatch("create_memory_collection", {})
+        assert result["ok"] is False
+        assert "name is required" in result["error"]
+
+
+# ===========================================================================
+# 15. delete_memory_collection (3 tests)
+# ===========================================================================
+
+class TestDeleteMemoryCollection:
+    async def test_delete_collection(self, backend, patch_session):
+        await backend.dispatch("create_memory_collection", {"name": "to-delete"})
+        result = await backend.dispatch("delete_memory_collection", {
+            "name": "to-delete",
+        })
+        assert result["ok"] is True
+        assert result["deleted"] is True
+
+    async def test_delete_not_found(self, backend, patch_session):
+        result = await backend.dispatch("delete_memory_collection", {
+            "name": "nonexistent",
+        })
+        assert result["ok"] is False
+        assert "collection not found" in result["error"]
+
+    async def test_delete_missing_name(self, backend, patch_session):
+        result = await backend.dispatch("delete_memory_collection", {})
+        assert result["ok"] is False
+        assert "name is required" in result["error"]
+
+
+# ===========================================================================
+# 16. list_memory_collections (3 tests)
+# ===========================================================================
+
+class TestListMemoryCollections:
+    async def test_list_empty(self, backend, patch_session):
+        result = await backend.dispatch("list_memory_collections", {})
+        assert result["ok"] is True
+        assert result["collections"] == []
+        assert result["count"] == 0
+
+    async def test_list_with_items(self, backend, patch_session):
+        await backend.dispatch("create_memory_collection", {"name": "alpha"})
+        await backend.dispatch("create_memory_collection", {"name": "beta"})
+        result = await backend.dispatch("list_memory_collections", {})
+        assert result["ok"] is True
+        assert result["count"] == 2
+        names = {c["name"] for c in result["collections"]}
+        assert names == {"alpha", "beta"}
+
+    async def test_list_returns_fields(self, backend, patch_session):
+        await backend.dispatch("create_memory_collection", {
+            "name": "gamma", "description": "test",
+        })
+        result = await backend.dispatch("list_memory_collections", {})
+        c = result["collections"][0]
+        assert "id" in c
+        assert "name" in c
+        assert "description" in c
+        assert "created_at" in c
+
+
+# ===========================================================================
+# 17. set_memory_metadata (3 tests)
+# ===========================================================================
+
+class TestSetMemoryMetadata:
+    async def test_set_metadata_new(self, backend, patch_session, session_factory):
+        mid = await _seed_memory(session_factory, metadata_json=None)
+        result = await backend.dispatch("set_memory_metadata", {
+            "memory_id": mid,
+            "metadata": {"key": "value", "count": 42},
+        })
+        assert result["ok"] is True
+        # Verify
+        meta = await backend.dispatch("get_memory_metadata", {"memory_id": mid})
+        assert meta["metadata"]["key"] == "value"
+        assert meta["metadata"]["count"] == 42
+
+    async def test_set_metadata_merge(self, backend, patch_session, session_factory):
+        mid = await _seed_memory(session_factory, metadata_json={"a": 1, "b": 2})
+        result = await backend.dispatch("set_memory_metadata", {
+            "memory_id": mid,
+            "metadata": {"b": 99, "c": 3},
+        })
+        assert result["ok"] is True
+        meta = await backend.dispatch("get_memory_metadata", {"memory_id": mid})
+        assert meta["metadata"]["a"] == 1
+        assert meta["metadata"]["b"] == 99
+        assert meta["metadata"]["c"] == 3
+
+    async def test_set_metadata_not_found(self, backend, patch_session):
+        result = await backend.dispatch("set_memory_metadata", {
+            "memory_id": "missing",
+            "metadata": {"x": 1},
+        })
+        assert result["ok"] is False
+        assert "memory not found" in result["error"]
+
+    async def test_set_metadata_missing_id(self, backend, patch_session):
+        result = await backend.dispatch("set_memory_metadata", {
+            "metadata": {"x": 1},
+        })
+        assert result["ok"] is False
+        assert "memory_id is required" in result["error"]
+
+
+# ===========================================================================
+# 18. get_memory_metadata (3 tests)
+# ===========================================================================
+
+class TestGetMemoryMetadata:
+    async def test_get_metadata(self, backend, patch_session, session_factory):
+        mid = await _seed_memory(session_factory, metadata_json={"foo": "bar"})
+        result = await backend.dispatch("get_memory_metadata", {
+            "memory_id": mid,
+        })
+        assert result["ok"] is True
+        assert result["metadata"]["foo"] == "bar"
+
+    async def test_get_metadata_empty(self, backend, patch_session, session_factory):
+        mid = await _seed_memory(session_factory, metadata_json=None)
+        result = await backend.dispatch("get_memory_metadata", {
+            "memory_id": mid,
+        })
+        assert result["ok"] is True
+        assert result["metadata"] == {}
+
+    async def test_get_metadata_not_found(self, backend, patch_session):
+        result = await backend.dispatch("get_memory_metadata", {
+            "memory_id": "missing",
+        })
+        assert result["ok"] is False
+        assert "memory not found" in result["error"]
+
+    async def test_get_metadata_missing_id(self, backend, patch_session):
+        result = await backend.dispatch("get_memory_metadata", {})
+        assert result["ok"] is False
+        assert "memory_id is required" in result["error"]
+
+
+# ===========================================================================
+# Integration / cross-cutting tests
+# ===========================================================================
 
 class TestActionCatalogue:
     def test_name(self, backend):
@@ -212,480 +786,63 @@ class TestActionCatalogue:
 
     def test_action_count(self, backend):
         actions = backend.actions()
-        assert len(actions) == 30
+        assert len(actions) == 18
 
     def test_action_names_unique(self, backend):
         names = [a.name for a in backend.actions()]
         assert len(names) == len(set(names))
 
-    def test_has_memory_core_actions(self, backend):
-        names = {a.name for a in backend.actions()}
-        for a in ("recall", "store", "store_fact", "mark_dnr", "search_kg"):
-            assert a in names, f"missing memory core action: {a}"
-
-    def test_has_finance_actions(self, backend):
-        names = {a.name for a in backend.actions()}
-        for a in ("list_transactions", "summarize", "detect_anomalies",
-                   "export_transactions", "record_transaction",
-                   "correct_transaction", "bulk_import"):
-            assert a in names, f"missing finance action: {a}"
-
-    def test_has_notion_actions(self, backend):
-        names = {a.name for a in backend.actions()}
-        for a in ("retrieve_page", "search_notes", "create_page",
-                   "update_page", "append_blocks", "archive_page"):
-            assert a in names, f"missing notion action: {a}"
-
-    def test_has_drive_actions(self, backend):
-        names = {a.name for a in backend.actions()}
-        for a in ("list_files", "get_file", "create_file", "update_file",
-                   "trash_file", "delete_file", "public_share"):
-            assert a in names, f"missing drive action: {a}"
-
-    def test_has_calendar_actions(self, backend):
-        names = {a.name for a in backend.actions()}
-        for a in ("list_events", "get_event", "create_event",
-                   "update_event", "delete_event"):
-            assert a in names, f"missing calendar action: {a}"
-
     def test_find_action(self, backend):
-        assert backend.find_action("recall") is not None
+        assert backend.find_action("store_memory") is not None
         assert backend.find_action("nonexistent") is None
 
-    def test_l3_destructive_actions(self, backend):
-        l3 = [a.name for a in backend.actions() if a.label.value == "L3"]
-        assert "mark_dnr" in l3
-        assert "correct_transaction" in l3
-        assert "bulk_import" in l3
-        assert "delete_event" in l3
-        assert "archive_page" in l3
-        assert "delete_file" in l3
-        assert "public_share" in l3
+    def test_l3_actions(self, backend):
+        l3 = [a.name for a in backend.actions()
+              if a.label.value == "L3"]
+        assert "delete_memory" in l3
 
+    def test_l2_actions(self, backend):
+        l2 = [a.name for a in backend.actions()
+              if a.label.value == "L2"]
+        assert "store_memory" in l2
+        assert "create_memory_collection" in l2
 
-# ---------------------------------------------------------------------------
-# Memory core — REAL actions (redis.asyncio DB5 mocked)
-# ---------------------------------------------------------------------------
+    def test_l1_actions(self, backend):
+        l1 = [a.name for a in backend.actions()
+              if a.label.value == "L1"]
+        assert "recall_memory" in l1
+        assert "search_memory" in l1
 
-class TestMemoryCoreReal:
-    """Tests for recall, store, store_fact, mark_dnr, search_kg."""
-
-    @pytest.fixture
-    def fake_redis_factory(self, monkeypatch):
-        factory = FakeRedisFactory()
-        import guinevere.tools.backends.memory as mod
-        monkeypatch.setattr(mod, "_get_redis", lambda: factory.from_url("redis://localhost/5"))
-        return factory
-
-    @pytest.mark.asyncio
-    async def test_recall_returns_results(self, backend, fake_redis_factory):
-        redis = fake_redis_factory.from_url("redis://localhost/5")
-        # Seed sorted set with an episode
-        redis.sorted_sets["memory:episodes"] = [
-            ("ep:1", 1000.0),
-        ]
-        redis.hashes["ep:1"] = {"content": "I love cats", "tags": json.dumps(["animals"])}
-
-        result = await backend.dispatch("recall", {"query": "cats", "limit": 5})
-        assert result["ok"] is True
-        assert result["action"] == "recall"
-        assert result["query"] == "cats"
-        assert isinstance(result["results"], list)
-        assert result["count"] >= 0
-
-    @pytest.mark.asyncio
-    async def test_recall_fail_soft_on_error(self, backend, monkeypatch):
-        import guinevere.tools.backends.memory as mod
-        def boom():
-            raise ConnectionError("redis down")
-        monkeypatch.setattr(mod, "_get_redis", boom)
-        result = await backend.dispatch("recall", {"query": "test"})
-        assert result["ok"] is False
-        assert "error" in result
-
-    @pytest.mark.asyncio
-    async def test_store_creates_episode(self, backend, fake_redis_factory):
-        result = await backend.dispatch("store", {"content": "The sky is blue", "tags": ["nature"]})
-        assert result["ok"] is True
-        assert result["action"] == "store"
-        assert "episode_id" in result
-        assert result["episode_id"] != ""
-        assert result["content_len"] == len("The sky is blue")
-
-    @pytest.mark.asyncio
-    async def test_store_fail_soft(self, backend, monkeypatch):
-        import guinevere.tools.backends.memory as mod
-        def boom():
-            raise OSError("disk full")
-        monkeypatch.setattr(mod, "_get_redis", boom)
-        result = await backend.dispatch("store", {"content": "x"})
-        assert result["ok"] is False
-        assert "error" in result
-
-    @pytest.mark.asyncio
-    async def test_store_fact_creates_fact(self, backend, fake_redis_factory):
-        result = await backend.dispatch("store_fact", {
-            "subject": "user", "predicate": "likes", "object": "coffee",
-        })
-        assert result["ok"] is True
-        assert result["action"] == "store_fact"
-        assert "fact_id" in result
-        assert result["fact_id"] != ""
-        assert result["subject"] == "user"
-        assert result["predicate"] == "likes"
-
-    @pytest.mark.asyncio
-    async def test_store_fact_fail_soft(self, backend, monkeypatch):
-        import guinevere.tools.backends.memory as mod
-        def boom():
-            raise ConnectionRefusedError("no redis")
-        monkeypatch.setattr(mod, "_get_redis", boom)
-        result = await backend.dispatch("store_fact", {"subject": "a", "predicate": "b", "object": "c"})
-        assert result["ok"] is False
-
-    @pytest.mark.asyncio
-    async def test_mark_dnr_sets_flag(self, backend, fake_redis_factory):
-        redis = fake_redis_factory.from_url("redis://localhost/5")
-        # First store an episode so it exists
-        await backend.dispatch("store", {"content": "secret data"})
-        # Pick up an episode_id from a fresh store
-        result = await backend.dispatch("store", {"content": "test ep"})
-        ep_id = result["episode_id"]
-
-        result = await backend.dispatch("mark_dnr", {"episode_id": ep_id, "reason": "privacy"})
-        assert result["ok"] is True
-        assert result["marked"] is True
-        assert result["episode_id"] == ep_id
-
-    @pytest.mark.asyncio
-    async def test_mark_dnr_fail_soft(self, backend, monkeypatch):
-        import guinevere.tools.backends.memory as mod
-        def boom():
-            raise RuntimeError("broken")
-        monkeypatch.setattr(mod, "_get_redis", boom)
-        result = await backend.dispatch("mark_dnr", {"episode_id": "x"})
-        assert result["ok"] is False
-
-    @pytest.mark.asyncio
-    async def test_search_kg_returns_results(self, backend, fake_redis_factory):
-        redis = fake_redis_factory.from_url("redis://localhost/5")
-        redis.hashes["kg:user:likes"] = {"subject": "user", "predicate": "likes", "object": "coffee"}
-
-        result = await backend.dispatch("search_kg", {"query": "user likes"})
-        assert result["ok"] is True
-        assert result["action"] == "search_kg"
-        assert isinstance(result["results"], list)
-
-    @pytest.mark.asyncio
-    async def test_search_kg_fail_soft(self, backend, monkeypatch):
-        import guinevere.tools.backends.memory as mod
-        def boom():
-            raise TimeoutError("redis timeout")
-        monkeypatch.setattr(mod, "_get_redis", boom)
-        result = await backend.dispatch("search_kg", {"query": "x"})
-        assert result["ok"] is False
-
-
-# ---------------------------------------------------------------------------
-# Finance — REAL actions (asyncpg mocked)
-# ---------------------------------------------------------------------------
-
-class TestFinanceReal:
-    """Tests for all 7 finance actions via asyncpg."""
-
-    @pytest.fixture
-    def fake_pg_factory(self, monkeypatch):
-        factory = FakePGFactory()
-        import guinevere.tools.backends.memory as mod
-        monkeypatch.setattr(mod, "_get_pg", lambda: factory.connect())
-        return factory
-
-    @pytest.mark.asyncio
-    async def test_list_transactions_empty(self, backend, fake_pg_factory):
-        result = await backend.dispatch("list_transactions", {})
-        assert result["ok"] is True
-        assert result["action"] == "list_transactions"
-        assert isinstance(result["transactions"], list)
-        assert result["count"] >= 0
-
-    @pytest.mark.asyncio
-    async def test_list_transactions_fail_soft(self, backend, monkeypatch):
-        import guinevere.tools.backends.memory as mod
-        async def boom():
-            raise ConnectionError("pg down")
-        monkeypatch.setattr(mod, "_get_pg", boom)
-        result = await backend.dispatch("list_transactions", {})
-        assert result["ok"] is False
-
-    @pytest.mark.asyncio
-    async def test_summarize(self, backend, fake_pg_factory):
-        result = await backend.dispatch("summarize", {"period": "month"})
-        assert result["ok"] is True
-        assert result["action"] == "summarize"
-        assert result["period"] == "month"
-        assert isinstance(result["summary"], dict)
-
-    @pytest.mark.asyncio
-    async def test_summarize_fail_soft(self, backend, monkeypatch):
-        import guinevere.tools.backends.memory as mod
-        async def boom():
-            raise OSError("pg gone")
-        monkeypatch.setattr(mod, "_get_pg", boom)
-        result = await backend.dispatch("summarize", {"period": "week"})
-        assert result["ok"] is False
-
-    @pytest.mark.asyncio
-    async def test_detect_anomalies(self, backend, fake_pg_factory):
-        result = await backend.dispatch("detect_anomalies", {})
-        assert result["ok"] is True
-        assert result["action"] == "detect_anomalies"
-        assert isinstance(result["anomalies"], list)
-        assert result["count"] >= 0
-
-    @pytest.mark.asyncio
-    async def test_detect_anomalies_fail_soft(self, backend, monkeypatch):
-        import guinevere.tools.backends.memory as mod
-        async def boom():
-            raise RuntimeError("broken pg")
-        monkeypatch.setattr(mod, "_get_pg", boom)
-        result = await backend.dispatch("detect_anomalies", {})
-        assert result["ok"] is False
-
-    @pytest.mark.asyncio
-    async def test_export_transactions_csv(self, backend, fake_pg_factory):
-        result = await backend.dispatch("export_transactions", {"format": "csv"})
-        assert result["ok"] is True
-        assert result["action"] == "export_transactions"
-        assert result["format"] == "csv"
-
-    @pytest.mark.asyncio
-    async def test_export_transactions_json(self, backend, fake_pg_factory):
-        result = await backend.dispatch("export_transactions", {"format": "json"})
-        assert result["ok"] is True
-        assert result["format"] == "json"
-
-    @pytest.mark.asyncio
-    async def test_export_transactions_fail_soft(self, backend, monkeypatch):
-        import guinevere.tools.backends.memory as mod
-        async def boom():
-            raise ConnectionError("no pg")
-        monkeypatch.setattr(mod, "_get_pg", boom)
-        result = await backend.dispatch("export_transactions", {"format": "csv"})
-        assert result["ok"] is False
-
-    @pytest.mark.asyncio
-    async def test_record_transaction(self, backend, fake_pg_factory):
-        result = await backend.dispatch("record_transaction", {
-            "amount": 42.50, "description": "coffee", "category": "food",
-        })
-        assert result["ok"] is True
-        assert result["action"] == "record_transaction"
-        assert result["amount"] == 42.50
-        assert "transaction_id" in result
-
-    @pytest.mark.asyncio
-    async def test_record_transaction_fail_soft(self, backend, monkeypatch):
-        import guinevere.tools.backends.memory as mod
-        async def boom():
-            raise OSError("disk full")
-        monkeypatch.setattr(mod, "_get_pg", boom)
-        result = await backend.dispatch("record_transaction", {"amount": 10})
-        assert result["ok"] is False
-
-    @pytest.mark.asyncio
-    async def test_correct_transaction(self, backend, fake_pg_factory):
-        result = await backend.dispatch("correct_transaction", {
-            "transaction_id": "txn_001", "new_amount": 35.00, "reason": "typo",
-        })
-        assert result["ok"] is True
-        assert result["action"] == "correct_transaction"
-        assert result["transaction_id"] == "txn_001"
-        assert result["corrected"] is True
-
-    @pytest.mark.asyncio
-    async def test_correct_transaction_fail_soft(self, backend, monkeypatch):
-        import guinevere.tools.backends.memory as mod
-        async def boom():
-            raise ConnectionError("pg unreachable")
-        monkeypatch.setattr(mod, "_get_pg", boom)
-        result = await backend.dispatch("correct_transaction", {"transaction_id": "x"})
-        assert result["ok"] is False
-
-    @pytest.mark.asyncio
-    async def test_bulk_import(self, backend, fake_pg_factory):
-        # Provide inline data instead of file
-        result = await backend.dispatch("bulk_import", {
-            "data": [
-                {"amount": 10, "description": "a"},
-                {"amount": 20, "description": "b"},
-            ],
-        })
-        assert result["ok"] is True
-        assert result["action"] == "bulk_import"
-        assert result["imported"] >= 0
-
-    @pytest.mark.asyncio
-    async def test_bulk_import_fail_soft(self, backend, monkeypatch):
-        import guinevere.tools.backends.memory as mod
-        async def boom():
-            raise RuntimeError("pg exploded")
-        monkeypatch.setattr(mod, "_get_pg", boom)
-        result = await backend.dispatch("bulk_import", {"data": [{"amount": 1}]})
-        assert result["ok"] is False
-
-
-# ---------------------------------------------------------------------------
-# CONFIG_MISSING — Notion (6 actions)
-# ---------------------------------------------------------------------------
-
-class TestNotionConfigMissing:
-    @pytest.mark.asyncio
-    async def test_retrieve_page_config_missing(self, backend):
-        result = await backend.dispatch("retrieve_page", {"page_id": "abc"})
-        assert result["ok"] is False
-        assert result["config_missing"] is True
-        assert "Notion" in result["error"]
-
-    @pytest.mark.asyncio
-    async def test_search_notes_config_missing(self, backend):
-        result = await backend.dispatch("search_notes", {"query": "test"})
-        assert result["ok"] is False
-        assert result["config_missing"] is True
-
-    @pytest.mark.asyncio
-    async def test_create_page_config_missing(self, backend):
-        result = await backend.dispatch("create_page", {"title": "New Page"})
-        assert result["ok"] is False
-        assert result["config_missing"] is True
-
-    @pytest.mark.asyncio
-    async def test_update_page_config_missing(self, backend):
-        result = await backend.dispatch("update_page", {"page_id": "abc"})
-        assert result["ok"] is False
-        assert result["config_missing"] is True
-
-    @pytest.mark.asyncio
-    async def test_append_blocks_config_missing(self, backend):
-        result = await backend.dispatch("append_blocks", {"page_id": "abc"})
-        assert result["ok"] is False
-        assert result["config_missing"] is True
-
-    @pytest.mark.asyncio
-    async def test_archive_page_config_missing(self, backend):
-        result = await backend.dispatch("archive_page", {"page_id": "abc"})
-        assert result["ok"] is False
-        assert result["config_missing"] is True
-
-
-# ---------------------------------------------------------------------------
-# CONFIG_MISSING — Drive (7 actions)
-# ---------------------------------------------------------------------------
-
-class TestDriveConfigMissing:
-    @pytest.mark.asyncio
-    async def test_list_files_config_missing(self, backend):
-        result = await backend.dispatch("list_files", {})
-        assert result["ok"] is False
-        assert result["config_missing"] is True
-        assert "Drive" in result["error"]
-
-    @pytest.mark.asyncio
-    async def test_get_file_config_missing(self, backend):
-        result = await backend.dispatch("get_file", {"file_id": "fid"})
-        assert result["ok"] is False
-        assert result["config_missing"] is True
-
-    @pytest.mark.asyncio
-    async def test_create_file_config_missing(self, backend):
-        result = await backend.dispatch("create_file", {"name": "doc.txt"})
-        assert result["ok"] is False
-        assert result["config_missing"] is True
-
-    @pytest.mark.asyncio
-    async def test_update_file_config_missing(self, backend):
-        result = await backend.dispatch("update_file", {"file_id": "fid"})
-        assert result["ok"] is False
-        assert result["config_missing"] is True
-
-    @pytest.mark.asyncio
-    async def test_trash_file_config_missing(self, backend):
-        result = await backend.dispatch("trash_file", {"file_id": "fid"})
-        assert result["ok"] is False
-        assert result["config_missing"] is True
-
-    @pytest.mark.asyncio
-    async def test_delete_file_config_missing(self, backend):
-        result = await backend.dispatch("delete_file", {"file_id": "fid"})
-        assert result["ok"] is False
-        assert result["config_missing"] is True
-
-    @pytest.mark.asyncio
-    async def test_public_share_config_missing(self, backend):
-        result = await backend.dispatch("public_share", {"file_id": "fid"})
-        assert result["ok"] is False
-        assert result["config_missing"] is True
-
-
-# ---------------------------------------------------------------------------
-# CONFIG_MISSING — Calendar (5 actions)
-# ---------------------------------------------------------------------------
-
-class TestCalendarConfigMissing:
-    @pytest.mark.asyncio
-    async def test_list_events_config_missing(self, backend):
-        result = await backend.dispatch("list_events", {})
-        assert result["ok"] is False
-        assert result["config_missing"] is True
-        assert "calendar" in result["error"].lower()
-
-    @pytest.mark.asyncio
-    async def test_get_event_config_missing(self, backend):
-        result = await backend.dispatch("get_event", {"event_id": "evt1"})
-        assert result["ok"] is False
-        assert result["config_missing"] is True
-
-    @pytest.mark.asyncio
-    async def test_create_event_config_missing(self, backend):
-        result = await backend.dispatch("create_event", {"title": "Meeting"})
-        assert result["ok"] is False
-        assert result["config_missing"] is True
-
-    @pytest.mark.asyncio
-    async def test_update_event_config_missing(self, backend):
-        result = await backend.dispatch("update_event", {"event_id": "evt1"})
-        assert result["ok"] is False
-        assert result["config_missing"] is True
-
-    @pytest.mark.asyncio
-    async def test_delete_event_config_missing(self, backend):
-        result = await backend.dispatch("delete_event", {"event_id": "evt1"})
-        assert result["ok"] is False
-        assert result["config_missing"] is True
-
-
-# ---------------------------------------------------------------------------
-# Fail-soft + unknown action
-# ---------------------------------------------------------------------------
 
 class TestFailSoft:
-    @pytest.mark.asyncio
-    async def test_unknown_action_returns_error(self, backend):
-        result = await backend.dispatch("nonexistent_action_xyz", {})
+    async def test_unknown_action(self, backend, patch_session):
+        result = await backend.dispatch("nonexistent_xyz", {})
         assert result["ok"] is False
         assert "error" in result
 
-    @pytest.mark.asyncio
-    async def test_dispatch_never_raises(self, backend):
-        """dispatch() must NEVER raise to caller — always return dict."""
-        # Even with completely wrong args, it must return a dict
-        result = await backend.dispatch("recall", {"bad_key": [1, 2, 3]})
+    async def test_dispatch_never_raises(self, backend, patch_session):
+        """dispatch() must NEVER raise to caller."""
+        result = await backend.dispatch("recall_memory", {"bad_key": [1]})
         assert isinstance(result, dict)
         assert "ok" in result
 
-    @pytest.mark.asyncio
-    async def test_all_actions_return_dict(self, backend):
-        """Every action must return a dict with 'ok' key."""
+    async def test_all_actions_return_dict(self, backend, patch_session):
+        """Every action returns a dict with 'ok' key."""
         for action in backend.actions():
             result = await backend.dispatch(action.name, {})
             assert isinstance(result, dict), f"{action.name} did not return dict"
             assert "ok" in result, f"{action.name} missing 'ok' key"
+
+
+class TestMemoryType:
+    def test_all_enum_values(self):
+        values = {e.value for e in MemoryType}
+        assert "episodic" in values
+        assert "semantic" in values
+        assert "procedural" in values
+        assert "working" in values
+        assert "emotional" in values
+        assert "relationship" in values
+
+    def test_enum_count(self):
+        assert len(MemoryType) == 6

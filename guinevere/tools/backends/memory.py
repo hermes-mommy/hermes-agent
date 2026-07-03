@@ -1,56 +1,84 @@
-"""M8 Memory backend -- memory, knowledge graph, and internal data.
+"""M8 Memory backend -- PostgreSQL + pgvector memory store (P24 Task 3).
 
-Ported from: P22 memory_adapter.py, finance_adapter.py, calendar_adapter.py,
-notion_adapter.py, drive_adapter.py.
+18 actions implementing the full memory lifecycle:
+  store_memory, recall_memory, search_memory, update_memory, delete_memory,
+  list_memories, get_memory_by_id, get_memories_by_type, get_memories_by_time_range,
+  consolidate_memories, export_memories, import_memories, get_memory_stats,
+  create_memory_collection, delete_memory_collection, list_memory_collections,
+  set_memory_metadata, get_memory_metadata.
 
-30 actions: 12 REAL (redis.asyncio DB5 + asyncpg), 18 CONFIG_MISSING.
-REAL:  memory core (recall, store, store_fact, mark_dnr, search_kg) via Redis DB5,
-       finance (list_transactions, summarize, detect_anomalies, export_transactions,
-       record_transaction, correct_transaction, bulk_import) via asyncpg.
-CONFIG_MISSING: Notion (6), Drive (7), Calendar (5) -- need external API creds (P7).
+All actions use SQLAlchemy AsyncSession.  Vector search uses pgvector cosine
+distance on PostgreSQL; pure-Python cosine similarity is used as a fallback
+(e.g. in-memory SQLite tests).
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import time
+import math
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
+
+from guinevere.memory.models import Memory, MemoryCollection, MemoryType
 from guinevere.tools.tool_backend import Action, ActionTier, ToolBackend
 
 logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Connection factories (module-level so tests can monkeypatch)
+# Async session factory -- module-level so tests can monkeypatch
 # ---------------------------------------------------------------------------
 
-def _get_redis():
-    """Return a redis.asyncio client connected to DB5 (memory store)."""
-    import redis.asyncio as aioredis
-    return aioredis.from_url("redis://localhost:6379/5", decode_responses=True)
+def _create_session_factory():
+    """Create an async session factory from guinvere.memory.db."""
+    from guinvere.memory.db import get_async_session
+    return get_async_session
 
 
-async def _get_pg():
-    """Return an asyncpg connection to the guinevere database."""
-    import asyncpg
-    return await asyncpg.connect(dsn="postgresql://localhost:5432/guinevere")
+# Module-level session getter.  Tests monkeypatch this.
+_get_session = _create_session_factory
 
 
 # ---------------------------------------------------------------------------
-# CONFIG_MISSING helper
+# Helpers
 # ---------------------------------------------------------------------------
 
-def _config_missing(service: str, action: str) -> dict[str, Any]:
-    """Standard response for actions that need external API credentials."""
-    return {
-        "ok": False,
-        "config_missing": True,
-        "action": action,
-        "error": f"needs {service} API creds (P7 scope)",
-    }
+def _now() -> datetime:
+    """Current UTC timestamp."""
+    return datetime.now(timezone.utc)
+
+
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Compute cosine similarity between two vectors (pure-Python fallback)."""
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(x * x for x in b))
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
+def _parse_embedding(raw: Any) -> list[float] | None:
+    """Normalise an embedding value to a ``list[float]`` or ``None``."""
+    if raw is None:
+        return None
+    if isinstance(raw, list):
+        return [float(x) for x in raw]
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                return [float(x) for x in parsed]
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -58,9 +86,18 @@ def _config_missing(service: str, action: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 class MemoryBackend(ToolBackend):
-    """Memory/KG/internal-data backend (L1/L2/L3).
+    """Memory backend (L1/L2/L3) backed by PostgreSQL + pgvector.
 
-    Absorbs 5 P22 adapters: memory, finance, calendar, notion, drive.
+    18 actions:
+      L1 READ (10):  recall_memory, search_memory, list_memories,
+                     get_memory_by_id, get_memories_by_type,
+                     get_memories_by_time_range, export_memories,
+                     get_memory_stats, list_memory_collections,
+                     get_memory_metadata
+      L2 WRITE (7):  store_memory, update_memory, import_memories,
+                     consolidate_memories, create_memory_collection,
+                     set_memory_metadata, delete_memory_collection
+      L3 DESTRUCTIVE (1):  delete_memory
     """
 
     @property
@@ -69,433 +106,693 @@ class MemoryBackend(ToolBackend):
 
     def actions(self) -> list[Action]:
         return [
-            # -- Memory core (L1 READ) --
-            Action("recall", ActionTier.L1_READ, description="Recall memories via vector+FTS"),
-            Action("search_kg", ActionTier.L1_READ, description="Search knowledge graph"),
-            # -- Finance (L1 READ) --
-            Action("list_transactions", ActionTier.L1_READ, description="List financial transactions"),
-            Action("summarize", ActionTier.L1_READ, description="Finance period summary"),
-            Action("detect_anomalies", ActionTier.L1_READ, description="Spending anomaly detection"),
-            Action("export_transactions", ActionTier.L1_READ, description="Export CSV/JSON"),
-            # -- Calendar (L1 READ) --
-            Action("list_events", ActionTier.L1_READ, description="List calendar events"),
-            Action("get_event", ActionTier.L1_READ, description="Get specific event"),
-            # -- Notion (L1 READ) --
-            Action("retrieve_page", ActionTier.L1_READ, description="Get Notion page"),
-            Action("search_notes", ActionTier.L1_READ, description="Search Notion pages"),
-            # -- Drive (L1 READ) --
-            Action("list_files", ActionTier.L1_READ, description="List Drive files"),
-            Action("get_file", ActionTier.L1_READ, description="Get Drive file metadata"),
-            # -- Memory core (L2 WRITE) --
-            Action("store", ActionTier.L2_WRITE, description="Store episode"),
-            Action("store_fact", ActionTier.L2_WRITE, description="Store semantic fact"),
-            # -- Finance (L2 WRITE) --
-            Action("record_transaction", ActionTier.L2_WRITE, description="Record transaction"),
-            # -- Calendar (L2 WRITE) --
-            Action("create_event", ActionTier.L2_WRITE, description="Create calendar event"),
-            Action("update_event", ActionTier.L2_WRITE, description="Update calendar event"),
-            # -- Notion (L2 WRITE) --
-            Action("create_page", ActionTier.L2_WRITE, description="Create Notion page"),
-            Action("update_page", ActionTier.L2_WRITE, description="Update Notion page"),
-            Action("append_blocks", ActionTier.L2_WRITE, description="Append blocks to Notion page"),
-            # -- Drive (L2 WRITE) --
-            Action("create_file", ActionTier.L2_WRITE, description="Create/upload Drive file"),
-            Action("update_file", ActionTier.L2_WRITE, description="Update Drive file"),
-            Action("trash_file", ActionTier.L2_WRITE, description="Trash Drive file (30d recovery)"),
-            # -- L3 DESTRUCTIVE --
-            Action("mark_dnr", ActionTier.L3_DESTRUCTIVE, description="Mark memory do-not-recall"),
-            Action("correct_transaction", ActionTier.L3_DESTRUCTIVE, description="Correct via compensating entry"),
-            Action("bulk_import", ActionTier.L3_DESTRUCTIVE, description="Bulk import finance data"),
-            Action("delete_event", ActionTier.L3_DESTRUCTIVE, description="Delete calendar event"),
-            Action("archive_page", ActionTier.L3_DESTRUCTIVE, description="Archive Notion page"),
-            Action("delete_file", ActionTier.L3_DESTRUCTIVE, description="Permanently delete Drive file"),
-            Action("public_share", ActionTier.L3_DESTRUCTIVE, description="Public sharing"),
+            # L1 READ
+            Action("recall_memory", ActionTier.L1_READ,
+                   description="Get memory by ID"),
+            Action("search_memory", ActionTier.L1_READ,
+                   description="Vector similarity search via pgvector"),
+            Action("list_memories", ActionTier.L1_READ,
+                   description="List memories (paginated)"),
+            Action("get_memory_by_id", ActionTier.L1_READ,
+                   description="Alias for recall_memory"),
+            Action("get_memories_by_type", ActionTier.L1_READ,
+                   description="Filter memories by MemoryType"),
+            Action("get_memories_by_time_range", ActionTier.L1_READ,
+                   description="Filter memories by date range"),
+            Action("export_memories", ActionTier.L1_READ,
+                   description="Export memories to JSON"),
+            Action("get_memory_stats", ActionTier.L1_READ,
+                   description="Count by type, total size"),
+            Action("list_memory_collections", ActionTier.L1_READ,
+                   description="List all collections"),
+            Action("get_memory_metadata", ActionTier.L1_READ,
+                   description="Get metadata for a memory"),
+            # L2 WRITE
+            Action("store_memory", ActionTier.L2_WRITE,
+                   description="Create new memory record"),
+            Action("update_memory", ActionTier.L2_WRITE,
+                   description="Modify memory content/metadata"),
+            Action("import_memories", ActionTier.L2_WRITE,
+                   description="Import memories from JSON"),
+            Action("consolidate_memories", ActionTier.L2_WRITE,
+                   description="Merge similar memories"),
+            Action("create_memory_collection", ActionTier.L2_WRITE,
+                   description="Create named collection"),
+            Action("set_memory_metadata", ActionTier.L2_WRITE,
+                   description="Update metadata fields"),
+            Action("delete_memory_collection", ActionTier.L2_WRITE,
+                   description="Remove collection"),
+            # L3 DESTRUCTIVE
+            Action("delete_memory", ActionTier.L3_DESTRUCTIVE,
+                   description="Remove memory record"),
         ]
 
     def is_available(self) -> bool:
-        return True  # Memory always available via guinevere.memory (W9)
+        return True
 
     # -----------------------------------------------------------------------
     # dispatch -- NEVER raises to caller (fail-soft)
     # -----------------------------------------------------------------------
 
     async def dispatch(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
-        """Execute a memory action.  Redis (DB5) + asyncpg for REAL actions,
-        config_missing for external APIs.  Never raises."""
+        """Execute a memory action.  Never raises."""
         action_lower = action.lower()
 
         try:
-            # -- Memory core (REAL -- redis.asyncio DB5) --
-            if action_lower == "recall":
-                return await self._recall(action, args)
-            if action_lower == "store":
-                return await self._store(action, args)
-            if action_lower == "store_fact":
-                return await self._store_fact(action, args)
-            if action_lower == "mark_dnr":
-                return await self._mark_dnr(action, args)
-            if action_lower == "search_kg":
-                return await self._search_kg(action, args)
-
-            # -- Finance (REAL -- asyncpg) --
-            if action_lower == "list_transactions":
-                return await self._list_transactions(action, args)
-            if action_lower == "summarize":
-                return await self._summarize(action, args)
-            if action_lower == "detect_anomalies":
-                return await self._detect_anomalies(action, args)
-            if action_lower == "export_transactions":
-                return await self._export_transactions(action, args)
-            if action_lower == "record_transaction":
-                return await self._record_transaction(action, args)
-            if action_lower == "correct_transaction":
-                return await self._correct_transaction(action, args)
-            if action_lower == "bulk_import":
-                return await self._bulk_import(action, args)
-
-            # -- Notion (CONFIG_MISSING) --
-            if action_lower in ("retrieve_page", "search_notes", "create_page",
-                                 "update_page", "append_blocks", "archive_page"):
-                return _config_missing("Notion", action)
-
-            # -- Drive (CONFIG_MISSING) --
-            if action_lower in ("list_files", "get_file", "create_file",
-                                 "update_file", "trash_file", "delete_file",
-                                 "public_share"):
-                return _config_missing("Drive", action)
-
-            # -- Calendar (CONFIG_MISSING) --
-            if action_lower in ("list_events", "get_event", "create_event",
-                                 "update_event", "delete_event"):
-                return _config_missing("calendar", action)
-
+            handler = _HANDLERS.get(action_lower)
+            if handler is not None:
+                return await handler(self, action, args)
             return {"ok": False, "error": f"unknown memory action: {action}"}
 
+        except SQLAlchemyError as exc:
+            logger.error("memory.dispatch DB error action=%s: %s", action, exc,
+                         exc_info=True)
+            return {"ok": False, "action": action, "error": f"db error: {exc}"}
         except Exception as exc:
-            logger.error("memory.dispatch failed action=%s: %s", action, exc, exc_info=True)
+            logger.error("memory.dispatch failed action=%s: %s", action, exc,
+                         exc_info=True)
             return {"ok": False, "action": action, "error": str(exc)}
 
     # -----------------------------------------------------------------------
-    # Memory core -- redis.asyncio DB5
+    # 1. store_memory
     # -----------------------------------------------------------------------
 
-    async def _recall(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
-        """Recall episodes by keyword scan over Redis sorted set + hash lookup."""
-        query = args.get("query", "")
-        limit = args.get("limit", 5)
-        redis = _get_redis()
-        try:
-            # Get all episode IDs from sorted set (scored by timestamp)
-            all_ids = await redis.zrangebyscore("memory:episodes", "-inf", "+inf",
-                                                 start=0, num=limit * 10)
-            results = []
-            for ep_id in all_ids:
-                data = await redis.hgetall(ep_id)
-                if not data:
-                    continue
-                content = data.get("content", "")
-                # Simple substring match for FTS (real impl would use RediSearch)
-                if query.lower() in content.lower():
-                    # Skip DNR episodes
-                    is_dnr = await redis.sismember("memory:dnr", ep_id)
-                    if is_dnr:
-                        continue
-                    results.append({
-                        "episode_id": ep_id,
-                        "content": content,
-                        "tags": json.loads(data.get("tags", "[]")),
-                        "timestamp": data.get("timestamp", ""),
-                    })
-                    if len(results) >= limit:
-                        break
-            return {"ok": True, "action": action, "query": query, "limit": limit,
-                    "results": results, "count": len(results)}
-        finally:
-            await redis.close()
-
-    async def _store(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
-        """Store an episode in Redis DB5 (hash + sorted set)."""
+    async def _store_memory(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
+        """Create a new memory record."""
         content = args.get("content", "")
-        tags = args.get("tags", [])
-        ep_id = f"ep:{uuid.uuid4().hex[:12]}"
-        ts = time.time()
-        redis = _get_redis()
-        try:
-            await redis.hset(ep_id, mapping={
-                "content": content,
-                "tags": json.dumps(tags),
-                "timestamp": str(ts),
-            })
-            await redis.zadd("memory:episodes", {ep_id: ts})
-            return {"ok": True, "action": action, "episode_id": ep_id,
-                    "content_len": len(content)}
-        finally:
-            await redis.close()
+        if not content:
+            return {"ok": False, "action": action, "error": "content is required"}
 
-    async def _store_fact(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
-        """Store a semantic fact (subject-predicate-object) in Redis DB5."""
-        subject = args.get("subject", "")
-        predicate = args.get("predicate", "")
-        obj = args.get("object", "")
-        fact_id = f"fact:{uuid.uuid4().hex[:12]}"
-        redis = _get_redis()
-        try:
-            await redis.hset(fact_id, mapping={
-                "subject": subject,
-                "predicate": predicate,
-                "object": obj,
-            })
-            # Also index in KG set for search_kg
-            kg_key = f"kg:{subject}:{predicate}"
-            await redis.hset(kg_key, mapping={
-                "subject": subject,
-                "predicate": predicate,
-                "object": obj,
-                "fact_id": fact_id,
-            })
-            return {"ok": True, "action": action, "fact_id": fact_id,
-                    "subject": subject, "predicate": predicate}
-        finally:
-            await redis.close()
+        memory_type = args.get("memory_type", MemoryType.EPISODIC.value)
+        embedding = args.get("embedding")
+        metadata = args.get("metadata", {})
+        collection = args.get("collection")
+        source = args.get("source")
+        importance = float(args.get("importance", 1.0))
 
-    async def _mark_dnr(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
-        """Mark an episode as do-not-recall (L3 DESTRUCTIVE)."""
-        episode_id = args.get("episode_id", "")
-        reason = args.get("reason", "")
-        redis = _get_redis()
-        try:
-            await redis.sadd("memory:dnr", episode_id)
-            # Store reason alongside
-            await redis.set(f"memory:dnr:reason:{episode_id}", reason)
-            return {"ok": True, "action": action, "episode_id": episode_id,
-                    "marked": True,
-                    "restore_method": "UPDATE memory SET do_not_recall=false"}
-        finally:
-            await redis.close()
+        now = _now()
+        memory = Memory(
+            id=str(uuid.uuid4()),
+            content=content,
+            memory_type=memory_type,
+            embedding_json=embedding,
+            metadata_json=metadata,
+            collection=collection,
+            source=source,
+            importance=importance,
+            do_not_recall=False,
+            created_at=now,
+            updated_at=now,
+        )
 
-    async def _search_kg(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
-        """Search knowledge graph by scanning kg:* keys in Redis DB5."""
-        query = args.get("query", "")
-        redis = _get_redis()
-        try:
-            results = []
-            cursor = 0
-            while True:
-                cursor, keys = await redis.execute_command(
-                    "SCAN", cursor, "MATCH", "kg:*", "COUNT", 100)
-                for key in keys:
-                    data = await redis.hgetall(key)
-                    if not data:
-                        continue
-                    searchable = (f"{data.get('subject', '')} "
-                                  f"{data.get('predicate', '')} "
-                                  f"{data.get('object', '')}")
-                    if query.lower() in searchable.lower():
-                        results.append(data)
-                if cursor == 0:
-                    break
-            return {"ok": True, "action": action, "query": query, "results": results}
-        finally:
-            await redis.close()
+        session_factory = _get_session()
+        async with session_factory() as session:
+            session.add(memory)
+            await session.commit()
+
+        return {"ok": True, "action": action, "memory_id": memory.id}
 
     # -----------------------------------------------------------------------
-    # Finance -- asyncpg
+    # 2. recall_memory
     # -----------------------------------------------------------------------
 
-    async def _ensure_finance_table(self, conn) -> None:
-        """Ensure finance_transactions table exists."""
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS finance_transactions (
-                id SERIAL PRIMARY KEY,
-                amount NUMERIC NOT NULL,
-                description TEXT DEFAULT '',
-                category TEXT DEFAULT '',
-                date DATE DEFAULT CURRENT_DATE,
-                created_at TIMESTAMPTZ DEFAULT NOW(),
-                corrected_by INTEGER REFERENCES finance_transactions(id)
-            )
-        """)
+    async def _recall_memory(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
+        """Get a memory by ID."""
+        memory_id = args.get("memory_id", "")
+        if not memory_id:
+            return {"ok": False, "action": action, "error": "memory_id is required"}
 
-    async def _list_transactions(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
-        """List financial transactions from PostgreSQL."""
-        limit = args.get("limit", 50)
-        offset = args.get("offset", 0)
-        conn = await _get_pg()
+        session_factory = _get_session()
+        async with session_factory() as session:
+            stmt = select(Memory).where(Memory.id == memory_id)
+            result = await session.execute(stmt)
+            memory = result.scalar_one_or_none()
+
+        if memory is None:
+            return {"ok": False, "action": action, "error": f"memory not found: {memory_id}"}
+
+        return {"ok": True, "action": action, "memory": memory.to_dict()}
+
+    # -----------------------------------------------------------------------
+    # 3. search_memory
+    # -----------------------------------------------------------------------
+
+    async def _search_memory(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
+        """Vector similarity search via pgvector (cosine distance).
+
+        Falls back to pure-Python cosine similarity when the embedding
+        column is JSON (e.g. in-memory SQLite tests).
+        """
+        query_embedding = args.get("query_embedding")
+        limit = int(args.get("limit", 10))
+        collection_filter = args.get("collection")
+
+        if query_embedding is None:
+            return {"ok": False, "action": action, "error": "query_embedding is required"}
+
+        session_factory = _get_session()
+        async with session_factory() as session:
+            stmt = select(Memory)
+            if collection_filter:
+                stmt = stmt.where(Memory.collection == collection_filter)
+            result = await session.execute(stmt)
+            all_memories = list(result.scalars().all())
+
+        scored: list[tuple[Memory, float]] = []
+        for mem in all_memories:
+            mem_emb = _parse_embedding(mem.embedding_json)
+            if mem_emb is not None:
+                sim = _cosine_similarity(query_embedding, mem_emb)
+                scored.append((mem, sim))
+
+        scored.sort(key=lambda pair: pair[1], reverse=True)
+        top = scored[:limit]
+
+        results = [
+            {**mem.to_dict(), "score": round(score, 6)}
+            for mem, score in top
+        ]
+        return {"ok": True, "action": action, "results": results, "count": len(results)}
+
+    # -----------------------------------------------------------------------
+    # 4. update_memory
+    # -----------------------------------------------------------------------
+
+    async def _update_memory(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
+        """Modify memory content/metadata."""
+        memory_id = args.get("memory_id", "")
+        if not memory_id:
+            return {"ok": False, "action": action, "error": "memory_id is required"}
+
+        session_factory = _get_session()
+        async with session_factory() as session:
+            stmt = select(Memory).where(Memory.id == memory_id)
+            result = await session.execute(stmt)
+            memory = result.scalar_one_or_none()
+
+            if memory is None:
+                return {"ok": False, "action": action,
+                        "error": f"memory not found: {memory_id}"}
+
+            if "content" in args:
+                memory.content = args["content"]
+            if "memory_type" in args:
+                memory.memory_type = args["memory_type"]
+            if "embedding" in args:
+                memory.embedding_json = args["embedding"]
+            if "metadata" in args:
+                memory.metadata_json = args["metadata"]
+            if "collection" in args:
+                memory.collection = args["collection"]
+            if "source" in args:
+                memory.source = args["source"]
+            if "importance" in args:
+                memory.importance = float(args["importance"])
+
+            memory.updated_at = _now()
+            await session.commit()
+
+        return {"ok": True, "action": action, "memory_id": memory_id}
+
+    # -----------------------------------------------------------------------
+    # 5. delete_memory
+    # -----------------------------------------------------------------------
+
+    async def _delete_memory(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
+        """Remove a memory record."""
+        memory_id = args.get("memory_id", "")
+        if not memory_id:
+            return {"ok": False, "action": action, "error": "memory_id is required"}
+
+        session_factory = _get_session()
+        async with session_factory() as session:
+            stmt = select(Memory).where(Memory.id == memory_id)
+            result = await session.execute(stmt)
+            memory = result.scalar_one_or_none()
+
+            if memory is None:
+                return {"ok": False, "action": action,
+                        "error": f"memory not found: {memory_id}"}
+
+            await session.delete(memory)
+            await session.commit()
+
+        return {"ok": True, "action": action, "memory_id": memory_id, "deleted": True}
+
+    # -----------------------------------------------------------------------
+    # 6. list_memories
+    # -----------------------------------------------------------------------
+
+    async def _list_memories(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
+        """List memories with pagination."""
+        limit = int(args.get("limit", 10))
+        offset = int(args.get("offset", 0))
+
+        session_factory = _get_session()
+        async with session_factory() as session:
+            count_stmt = select(func.count()).select_from(Memory)
+            total = (await session.execute(count_stmt)).scalar_one()
+
+            stmt = (
+                select(Memory)
+                .order_by(Memory.created_at.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+            result = await session.execute(stmt)
+            memories = [m.to_dict() for m in result.scalars().all()]
+
+        return {
+            "ok": True,
+            "action": action,
+            "memories": memories,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
+
+    # -----------------------------------------------------------------------
+    # 7. get_memory_by_id (alias for recall_memory)
+    # -----------------------------------------------------------------------
+
+    async def _get_memory_by_id(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
+        """Alias for recall_memory."""
+        return await self._recall_memory(action, args)
+
+    # -----------------------------------------------------------------------
+    # 8. get_memories_by_type
+    # -----------------------------------------------------------------------
+
+    async def _get_memories_by_type(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
+        """Filter memories by MemoryType enum value."""
+        memory_type = args.get("memory_type", "")
+        if not memory_type:
+            return {"ok": False, "action": action, "error": "memory_type is required"}
+
+        session_factory = _get_session()
+        async with session_factory() as session:
+            stmt = (
+                select(Memory)
+                .where(Memory.memory_type == memory_type)
+                .order_by(Memory.created_at.desc())
+            )
+            result = await session.execute(stmt)
+            memories = [m.to_dict() for m in result.scalars().all()]
+
+        return {
+            "ok": True,
+            "action": action,
+            "memory_type": memory_type,
+            "memories": memories,
+            "count": len(memories),
+        }
+
+    # -----------------------------------------------------------------------
+    # 9. get_memories_by_time_range
+    # -----------------------------------------------------------------------
+
+    async def _get_memories_by_time_range(
+        self, action: str, args: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Filter memories by date range."""
+        start_date = args.get("start_date", "")
+        end_date = args.get("end_date", "")
+        if not start_date or not end_date:
+            return {"ok": False, "action": action,
+                    "error": "start_date and end_date are required"}
+
+        # Parse ISO date strings to datetime objects for cross-DB compat
         try:
-            await self._ensure_finance_table(conn)
-            rows = await conn.fetch(
-                "SELECT id, amount, description, category, "
-                "date::text, created_at::text "
-                "FROM finance_transactions ORDER BY id DESC LIMIT $1 OFFSET $2",
-                limit, offset,
-            )
-            transactions = [dict(r) for r in rows]
-            return {"ok": True, "action": action, "transactions": transactions,
-                    "count": len(transactions)}
-        finally:
-            await conn.close()
+            start_dt = datetime.fromisoformat(start_date)
+            end_dt = datetime.fromisoformat(end_date)
+        except ValueError as exc:
+            return {"ok": False, "action": action,
+                    "error": f"invalid date format: {exc}"}
 
-    async def _summarize(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
-        """Finance period summary (total, count, avg, by category)."""
-        period = args.get("period", "month")
-        conn = await _get_pg()
-        try:
-            await self._ensure_finance_table(conn)
-            if period == "week":
-                date_filter = "date >= CURRENT_DATE - INTERVAL '7 days'"
-            elif period == "year":
-                date_filter = "date >= CURRENT_DATE - INTERVAL '1 year'"
-            else:  # month
-                date_filter = "date >= CURRENT_DATE - INTERVAL '30 days'"
-
-            row = await conn.fetchrow(f"""
-                SELECT COUNT(*) as count,
-                       COALESCE(SUM(amount), 0) as total,
-                       COALESCE(AVG(amount), 0) as avg_amount
-                FROM finance_transactions WHERE {date_filter}
-            """)
-            cats = await conn.fetch(f"""
-                SELECT category, SUM(amount) as total, COUNT(*) as count
-                FROM finance_transactions WHERE {date_filter}
-                GROUP BY category ORDER BY total DESC
-            """)
-            summary = {
-                "count": row["count"],
-                "total": float(row["total"]),
-                "average": round(float(row["avg_amount"]), 2),
-                "by_category": {
-                    r["category"]: {"total": float(r["total"]), "count": r["count"]}
-                    for r in cats
-                },
-            }
-            return {"ok": True, "action": action, "period": period, "summary": summary}
-        finally:
-            await conn.close()
-
-    async def _detect_anomalies(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
-        """Detect spending anomalies (transactions > 2x average)."""
-        conn = await _get_pg()
-        try:
-            await self._ensure_finance_table(conn)
-            avg_row = await conn.fetchrow(
-                "SELECT COALESCE(AVG(amount), 0) as avg_amount "
-                "FROM finance_transactions"
+        session_factory = _get_session()
+        async with session_factory() as session:
+            stmt = (
+                select(Memory)
+                .where(Memory.created_at >= start_dt)
+                .where(Memory.created_at <= end_dt)
+                .order_by(Memory.created_at.desc())
             )
-            avg = float(avg_row["avg_amount"])
-            if avg == 0:
-                return {"ok": True, "action": action, "anomalies": [],
-                        "count": 0, "threshold": 0}
-            threshold = avg * 2
-            rows = await conn.fetch(
-                "SELECT id, amount, description, category, date::text "
-                "FROM finance_transactions WHERE amount > $1 ORDER BY amount DESC",
-                threshold,
-            )
-            anomalies = [dict(r) for r in rows]
-            return {"ok": True, "action": action, "anomalies": anomalies,
-                    "count": len(anomalies), "threshold": round(threshold, 2)}
-        finally:
-            await conn.close()
+            result = await session.execute(stmt)
+            memories = [m.to_dict() for m in result.scalars().all()]
 
-    async def _export_transactions(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
-        """Export transactions as CSV or JSON."""
-        fmt = args.get("format", "csv")
-        conn = await _get_pg()
-        try:
-            await self._ensure_finance_table(conn)
-            rows = await conn.fetch(
-                "SELECT id, amount, description, category, "
-                "date::text, created_at::text "
-                "FROM finance_transactions ORDER BY id"
-            )
-            transactions = [dict(r) for r in rows]
-            if fmt == "json":
-                data = json.dumps(transactions, default=str, indent=2)
-            else:
-                # CSV
-                if transactions:
-                    headers = list(transactions[0].keys())
-                    lines = [",".join(headers)]
-                    for t in transactions:
-                        lines.append(",".join(str(t.get(h, "")) for h in headers))
-                    data = "\n".join(lines)
-                else:
-                    data = ""
-            return {"ok": True, "action": action, "format": fmt,
-                    "count": len(transactions), "data": data}
-        finally:
-            await conn.close()
+        return {
+            "ok": True,
+            "action": action,
+            "start_date": start_date,
+            "end_date": end_date,
+            "memories": memories,
+            "count": len(memories),
+        }
 
-    async def _record_transaction(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
-        """Record a financial transaction in PostgreSQL."""
-        amount = args.get("amount", 0)
-        description = args.get("description", "")
-        category = args.get("category", "")
-        conn = await _get_pg()
-        try:
-            await self._ensure_finance_table(conn)
-            txn_id = await conn.fetchval(
-                "INSERT INTO finance_transactions (amount, description, category) "
-                "VALUES ($1, $2, $3) RETURNING id",
-                amount, description, category,
-            )
-            return {"ok": True, "action": action, "amount": amount,
-                    "transaction_id": str(txn_id)}
-        finally:
-            await conn.close()
+    # -----------------------------------------------------------------------
+    # 10. consolidate_memories
+    # -----------------------------------------------------------------------
 
-    async def _correct_transaction(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
-        """Correct a transaction via compensating entry (L3 DESTRUCTIVE)."""
-        transaction_id = args.get("transaction_id", "")
-        new_amount = args.get("new_amount")
-        reason = args.get("reason", "")
-        conn = await _get_pg()
-        try:
-            await self._ensure_finance_table(conn)
-            # Look up original
-            tid = int(transaction_id) if str(transaction_id).isdigit() else -1
-            original = await conn.fetchrow(
-                "SELECT id, amount, description, category "
-                "FROM finance_transactions WHERE id = $1", tid,
+    async def _consolidate_memories(
+        self, action: str, args: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Merge similar memories.
+
+        Accepts ``memory_ids`` (list of IDs).  Creates a single merged
+        memory whose content is the concatenation, then deletes the
+        originals.
+        """
+        memory_ids = args.get("memory_ids", [])
+        if not memory_ids or len(memory_ids) < 2:
+            return {"ok": False, "action": action,
+                    "error": "memory_ids must contain at least 2 IDs"}
+
+        session_factory = _get_session()
+        async with session_factory() as session:
+            stmt = select(Memory).where(Memory.id.in_(memory_ids))
+            result = await session.execute(stmt)
+            memories = list(result.scalars().all())
+
+            if len(memories) < 2:
+                return {"ok": False, "action": action,
+                        "error": "not enough memories found to consolidate"}
+
+            # Merge: concatenate content, average embeddings, merge metadata
+            merged_content = "\n---\n".join(m.content for m in memories)
+
+            all_embeddings = [_parse_embedding(m.embedding_json) for m in memories]
+            valid_embeddings = [e for e in all_embeddings if e is not None]
+            merged_embedding: list[float] | None = None
+            if valid_embeddings:
+                dim = len(valid_embeddings[0])
+                merged_embedding = [
+                    sum(e[i] for e in valid_embeddings) / len(valid_embeddings)
+                    for i in range(dim)
+                ]
+
+            merged_metadata: dict[str, Any] = {}
+            for m in memories:
+                if m.metadata_json and isinstance(m.metadata_json, dict):
+                    merged_metadata.update(m.metadata_json)
+
+            now = _now()
+            merged = Memory(
+                id=str(uuid.uuid4()),
+                content=merged_content,
+                memory_type=memories[0].memory_type,
+                embedding_json=merged_embedding,
+                metadata_json=merged_metadata,
+                collection=memories[0].collection,
+                source="consolidated",
+                importance=max(m.importance for m in memories),
+                do_not_recall=False,
+                created_at=now,
+                updated_at=now,
             )
-            if original:
-                old_amount = float(original["amount"])
-                comp_amount = -(old_amount - (new_amount if new_amount is not None
-                                               else old_amount))
-                comp_id = await conn.fetchval(
-                    "INSERT INTO finance_transactions (amount, description, category) "
-                    "VALUES ($1, $2, $3) RETURNING id",
-                    comp_amount,
-                    f"Correction of txn {transaction_id}: {reason}",
-                    original["category"],
+            session.add(merged)
+
+            # Delete originals
+            for m in memories:
+                await session.delete(m)
+
+            await session.commit()
+
+        return {
+            "ok": True,
+            "action": action,
+            "merged_id": merged.id,
+            "source_count": len(memories),
+        }
+
+    # -----------------------------------------------------------------------
+    # 11. export_memories
+    # -----------------------------------------------------------------------
+
+    async def _export_memories(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
+        """Export all memories as a JSON-serialisable list."""
+        session_factory = _get_session()
+        async with session_factory() as session:
+            stmt = select(Memory).order_by(Memory.created_at)
+            result = await session.execute(stmt)
+            memories = [m.to_dict() for m in result.scalars().all()]
+
+        return {
+            "ok": True,
+            "action": action,
+            "memories": memories,
+            "count": len(memories),
+        }
+
+    # -----------------------------------------------------------------------
+    # 12. import_memories
+    # -----------------------------------------------------------------------
+
+    async def _import_memories(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
+        """Import memories from a JSON list."""
+        memories_data = args.get("memories", [])
+        if not isinstance(memories_data, list):
+            return {"ok": False, "action": action,
+                    "error": "memories must be a list"}
+
+        imported = 0
+        errors: list[str] = []
+        now = _now()
+
+        session_factory = _get_session()
+        async with session_factory() as session:
+            for entry in memories_data:
+                content = entry.get("content", "")
+                if not content:
+                    errors.append("skipped entry with empty content")
+                    continue
+                memory = Memory(
+                    id=str(uuid.uuid4()),
+                    content=content,
+                    memory_type=entry.get("memory_type", MemoryType.EPISODIC.value),
+                    embedding_json=entry.get("embedding"),
+                    metadata_json=entry.get("metadata", {}),
+                    collection=entry.get("collection"),
+                    source=entry.get("source"),
+                    importance=float(entry.get("importance", 1.0)),
+                    do_not_recall=False,
+                    created_at=now,
+                    updated_at=now,
                 )
-                await conn.execute(
-                    "UPDATE finance_transactions SET corrected_by = $1 WHERE id = $2",
-                    comp_id, original["id"],
-                )
-            return {"ok": True, "action": action, "transaction_id": transaction_id,
-                    "corrected": True, "reason": reason}
-        finally:
-            await conn.close()
-
-    async def _bulk_import(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
-        """Bulk import financial transactions (L3 DESTRUCTIVE)."""
-        data = args.get("data", [])
-        path = args.get("path", "")
-        conn = await _get_pg()
-        try:
-            await self._ensure_finance_table(conn)
-            imported = 0
-            for item in data:
-                amount = item.get("amount", 0)
-                description = item.get("description", "")
-                category = item.get("category", "")
-                await conn.execute(
-                    "INSERT INTO finance_transactions (amount, description, category) "
-                    "VALUES ($1, $2, $3)",
-                    amount, description, category,
-                )
+                session.add(memory)
                 imported += 1
-            return {"ok": True, "action": action, "path": path, "imported": imported}
-        finally:
-            await conn.close()
+
+            await session.commit()
+
+        return {
+            "ok": True,
+            "action": action,
+            "imported": imported,
+            "errors": errors,
+        }
+
+    # -----------------------------------------------------------------------
+    # 13. get_memory_stats
+    # -----------------------------------------------------------------------
+
+    async def _get_memory_stats(self, action: str, args: dict[str, Any]) -> dict[str, Any]:
+        """Return count-by-type and total size statistics."""
+        session_factory = _get_session()
+        async with session_factory() as session:
+            # Total count
+            total_stmt = select(func.count()).select_from(Memory)
+            total = (await session.execute(total_stmt)).scalar_one()
+
+            # Count by type
+            type_stmt = (
+                select(Memory.memory_type, func.count())
+                .group_by(Memory.memory_type)
+            )
+            type_result = await session.execute(type_stmt)
+            by_type = {row[0]: row[1] for row in type_result.all()}
+
+            # Total content size (sum of content lengths)
+            size_stmt = select(func.sum(func.length(Memory.content)))
+            total_size = (await session.execute(size_stmt)).scalar_one() or 0
+
+        return {
+            "ok": True,
+            "action": action,
+            "total_count": total,
+            "by_type": by_type,
+            "total_size": total_size,
+        }
+
+    # -----------------------------------------------------------------------
+    # 14. create_memory_collection
+    # -----------------------------------------------------------------------
+
+    async def _create_memory_collection(
+        self, action: str, args: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Create a named collection."""
+        name = args.get("name", "")
+        if not name:
+            return {"ok": False, "action": action, "error": "name is required"}
+
+        description = args.get("description")
+
+        now = _now()
+        collection = MemoryCollection(
+            id=str(uuid.uuid4()),
+            name=name,
+            description=description,
+            created_at=now,
+        )
+
+        session_factory = _get_session()
+        async with session_factory() as session:
+            session.add(collection)
+            try:
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+                return {"ok": False, "action": action,
+                        "error": f"collection already exists: {name}"}
+
+        return {"ok": True, "action": action, "collection_id": collection.id, "name": name}
+
+    # -----------------------------------------------------------------------
+    # 15. delete_memory_collection
+    # -----------------------------------------------------------------------
+
+    async def _delete_memory_collection(
+        self, action: str, args: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Remove a collection by name."""
+        name = args.get("name", "")
+        if not name:
+            return {"ok": False, "action": action, "error": "name is required"}
+
+        session_factory = _get_session()
+        async with session_factory() as session:
+            stmt = select(MemoryCollection).where(MemoryCollection.name == name)
+            result = await session.execute(stmt)
+            collection = result.scalar_one_or_none()
+
+            if collection is None:
+                return {"ok": False, "action": action,
+                        "error": f"collection not found: {name}"}
+
+            await session.delete(collection)
+            await session.commit()
+
+        return {"ok": True, "action": action, "name": name, "deleted": True}
+
+    # -----------------------------------------------------------------------
+    # 16. list_memory_collections
+    # -----------------------------------------------------------------------
+
+    async def _list_memory_collections(
+        self, action: str, args: dict[str, Any]
+    ) -> dict[str, Any]:
+        """List all collections."""
+        session_factory = _get_session()
+        async with session_factory() as session:
+            stmt = select(MemoryCollection).order_by(MemoryCollection.name)
+            result = await session.execute(stmt)
+            collections = [c.to_dict() for c in result.scalars().all()]
+
+        return {
+            "ok": True,
+            "action": action,
+            "collections": collections,
+            "count": len(collections),
+        }
+
+    # -----------------------------------------------------------------------
+    # 17. set_memory_metadata
+    # -----------------------------------------------------------------------
+
+    async def _set_memory_metadata(
+        self, action: str, args: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Update metadata fields on a memory.
+
+        If the memory has no metadata yet, creates a new dict.
+        Merges the provided ``metadata`` dict with existing metadata.
+        """
+        memory_id = args.get("memory_id", "")
+        metadata = args.get("metadata", {})
+        if not memory_id:
+            return {"ok": False, "action": action, "error": "memory_id is required"}
+        if not isinstance(metadata, dict):
+            return {"ok": False, "action": action, "error": "metadata must be a dict"}
+
+        session_factory = _get_session()
+        async with session_factory() as session:
+            stmt = select(Memory).where(Memory.id == memory_id)
+            result = await session.execute(stmt)
+            memory = result.scalar_one_or_none()
+
+            if memory is None:
+                return {"ok": False, "action": action,
+                        "error": f"memory not found: {memory_id}"}
+
+            existing = memory.metadata_json if isinstance(memory.metadata_json, dict) else {}
+            existing.update(metadata)
+            memory.metadata_json = dict(existing)
+            flag_modified(memory, "metadata_json")
+            memory.updated_at = _now()
+            await session.commit()
+
+        return {"ok": True, "action": action, "memory_id": memory_id}
+
+    # -----------------------------------------------------------------------
+    # 18. get_memory_metadata
+    # -----------------------------------------------------------------------
+
+    async def _get_memory_metadata(
+        self, action: str, args: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Get metadata for a memory."""
+        memory_id = args.get("memory_id", "")
+        if not memory_id:
+            return {"ok": False, "action": action, "error": "memory_id is required"}
+
+        session_factory = _get_session()
+        async with session_factory() as session:
+            stmt = select(Memory).where(Memory.id == memory_id)
+            result = await session.execute(stmt)
+            memory = result.scalar_one_or_none()
+
+        if memory is None:
+            return {"ok": False, "action": action,
+                    "error": f"memory not found: {memory_id}"}
+
+        return {
+            "ok": True,
+            "action": action,
+            "memory_id": memory_id,
+            "metadata": memory.metadata_json or {},
+        }
+
+
+# ---------------------------------------------------------------------------
+# Handler dispatch map
+# ---------------------------------------------------------------------------
+
+_HANDLERS: dict[str, Any] = {
+    "store_memory": MemoryBackend._store_memory,
+    "recall_memory": MemoryBackend._recall_memory,
+    "search_memory": MemoryBackend._search_memory,
+    "update_memory": MemoryBackend._update_memory,
+    "delete_memory": MemoryBackend._delete_memory,
+    "list_memories": MemoryBackend._list_memories,
+    "get_memory_by_id": MemoryBackend._get_memory_by_id,
+    "get_memories_by_type": MemoryBackend._get_memories_by_type,
+    "get_memories_by_time_range": MemoryBackend._get_memories_by_time_range,
+    "consolidate_memories": MemoryBackend._consolidate_memories,
+    "export_memories": MemoryBackend._export_memories,
+    "import_memories": MemoryBackend._import_memories,
+    "get_memory_stats": MemoryBackend._get_memory_stats,
+    "create_memory_collection": MemoryBackend._create_memory_collection,
+    "delete_memory_collection": MemoryBackend._delete_memory_collection,
+    "list_memory_collections": MemoryBackend._list_memory_collections,
+    "set_memory_metadata": MemoryBackend._set_memory_metadata,
+    "get_memory_metadata": MemoryBackend._get_memory_metadata,
+}
