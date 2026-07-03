@@ -50,9 +50,9 @@ def test_is_available(backend: FilesystemBackend) -> None:
     assert backend.is_available() is True
 
 
-def test_actions_count_is_23(backend: FilesystemBackend) -> None:
-    """The plan requires exactly 23 actions."""
-    assert len(backend.actions()) == 23
+def test_actions_count_is_28(backend: FilesystemBackend) -> None:
+    """The plan requires exactly 28 actions (23 original + 5 audit fixes)."""
+    assert len(backend.actions()) == 28
 
 
 def test_all_actions_are_async(backend: FilesystemBackend) -> None:
@@ -931,3 +931,190 @@ async def test_unknown_action_returns_error(backend: FilesystemBackend) -> None:
     result = await backend.dispatch("nonexistent_action_xyz", {"path": "/tmp"})
     assert result["ok"] is False
     assert "unknown" in result["error"].lower()
+
+
+# ===================================================================
+# 25.  rename  (L2 WRITE) — audit fix for missing plan action
+# ===================================================================
+
+
+async def test_rename_file(backend: FilesystemBackend, tmp_path: Path) -> None:
+    """rename moves a file in-place within the same directory."""
+    src = tmp_path / "old.txt"
+    src.write_text("content")
+
+    result = await backend.dispatch("rename", {"path": str(src), "new_name": "new.txt"})
+
+    assert result["ok"] is True
+    assert not src.exists()
+    assert (tmp_path / "new.txt").read_text() == "content"
+    assert result["dest"] == str(tmp_path / "new.txt")
+
+
+async def test_rename_nonexistent(backend: FilesystemBackend, tmp_path: Path) -> None:
+    """rename on non-existent source fails with ok=False."""
+    result = await backend.dispatch(
+        "rename", {"path": str(tmp_path / "ghost"), "new_name": "new.txt"}
+    )
+    assert result["ok"] is False
+
+
+# ===================================================================
+# 26.  hardlink  (L2 WRITE) — audit fix for missing plan action
+# ===================================================================
+
+
+async def test_hardlink_creates_link(backend: FilesystemBackend, tmp_path: Path) -> None:
+    """hardlink creates a second directory entry pointing to the same inode."""
+    src = tmp_path / "source.txt"
+    src.write_text("shared content")
+    dest = tmp_path / "hardlink.txt"
+
+    result = await backend.dispatch("hardlink", {"path": str(src), "dest": str(dest)})
+
+    assert result["ok"] is True
+    assert dest.exists()
+    assert dest.read_text() == "shared content"
+    # Same inode = hard link confirmed
+    assert os.stat(src).st_ino == os.stat(dest).st_ino
+
+
+async def test_hardlink_nonexistent_source(
+    backend: FilesystemBackend, tmp_path: Path
+) -> None:
+    """hardlink on non-existent source fails."""
+    result = await backend.dispatch(
+        "hardlink",
+        {"path": str(tmp_path / "ghost"), "dest": str(tmp_path / "link")},
+    )
+    assert result["ok"] is False
+
+
+# ===================================================================
+# 27.  find  (L1 READ) — audit fix for missing plan action
+# ===================================================================
+
+
+async def test_find_returns_matching_files(backend: FilesystemBackend, tmp_path: Path) -> None:
+    """find locates files matching a pattern recursively."""
+    (tmp_path / "a.txt").write_text("a")
+    (tmp_path / "b.log").write_text("b")
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    (sub / "c.txt").write_text("c")
+
+    result = await backend.dispatch("find", {"path": str(tmp_path), "pattern": "*.txt"})
+
+    assert result["ok"] is True
+    assert result["count"] == 2
+    assert any("a.txt" in r for r in result["results"])
+    assert any("c.txt" in r for r in result["results"])
+
+
+async def test_find_no_matches(backend: FilesystemBackend, tmp_path: Path) -> None:
+    """find returns empty results when no files match."""
+    (tmp_path / "a.txt").write_text("a")
+
+    result = await backend.dispatch("find", {"path": str(tmp_path), "pattern": "*.xyz"})
+
+    assert result["ok"] is True
+    assert result["count"] == 0
+
+
+async def test_find_by_type_directory(backend: FilesystemBackend, tmp_path: Path) -> None:
+    """find with type=dir returns only directories."""
+    (tmp_path / "a.txt").write_text("a")
+    (tmp_path / "subdir").mkdir()
+
+    result = await backend.dispatch(
+        "find", {"path": str(tmp_path), "pattern": "*", "type": "dir"}
+    )
+
+    assert result["ok"] is True
+    assert all(os.path.isdir(r) for r in result["results"])
+    assert any("subdir" in r for r in result["results"])
+
+
+# ===================================================================
+# 28.  watch_file  (L1 READ) — audit fix for missing plan action
+# ===================================================================
+
+
+async def test_watch_file_timeout_no_change(
+    backend: FilesystemBackend, tmp_path: Path
+) -> None:
+    """watch_file returns changed=False, timeout=True when file doesn't change."""
+    f = tmp_path / "watched.txt"
+    f.write_text("initial")
+
+    result = await backend.dispatch(
+        "watch_file", {"path": str(f), "timeout": "1"}
+    )
+
+    assert result["ok"] is True
+    assert result["changed"] is False
+    assert result["timeout"] is True
+
+
+async def test_watch_file_detects_change(
+    backend: FilesystemBackend, tmp_path: Path
+) -> None:
+    """watch_file returns changed=True when file is modified during watch window."""
+    import asyncio as _asyncio
+
+    f = tmp_path / "watched.txt"
+    f.write_text("initial")
+
+    async def modify_after_delay() -> None:
+        await _asyncio.sleep(0.6)
+        f.write_text("modified")
+
+    modify_task = _asyncio.create_task(modify_after_delay())
+
+    result = await backend.dispatch(
+        "watch_file", {"path": str(f), "timeout": "5"}
+    )
+
+    await modify_task
+
+    assert result["ok"] is True
+    assert result["changed"] is True
+
+
+# ===================================================================
+# 29.  chown  (L3 DESTRUCTIVE) — audit fix for missing plan action
+# ===================================================================
+
+
+@pytest.mark.skipif(
+    _IS_WINDOWS,
+    reason="chown is POSIX-only; Windows has no concept of uid/gid",
+)
+async def test_chown_noop_with_minus_one(backend: FilesystemBackend, tmp_path: Path) -> None:
+    """chown with uid=-1, gid=-1 is a no-op (preserves current ownership)."""
+    f = tmp_path / "owned.txt"
+    f.write_text("data")
+
+    original_stat = os.stat(f)
+
+    result = await backend.dispatch(
+        "chown", {"path": str(f), "uid": "-1", "gid": "-1"}
+    )
+
+    assert result["ok"] is True
+    new_stat = os.stat(f)
+    assert new_stat.st_uid == original_stat.st_uid
+    assert new_stat.st_gid == original_stat.st_gid
+
+
+@pytest.mark.skipif(
+    _IS_WINDOWS,
+    reason="chown is POSIX-only",
+)
+async def test_chown_nonexistent(backend: FilesystemBackend, tmp_path: Path) -> None:
+    """chown on non-existent file fails."""
+    result = await backend.dispatch(
+        "chown", {"path": str(tmp_path / "ghost"), "uid": "-1", "gid": "-1"}
+    )
+    assert result["ok"] is False
+

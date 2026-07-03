@@ -3,11 +3,12 @@
 Ported from: P22 filesystem_adapter.py, P23 filesystem_executor (Section 4.5),
 MCP filesystem.py, shell_tool.py, git_tool.py.
 
-23 actions: 10 L1 READ, 10 L2 WRITE, 3 L3 DESTRUCTIVE.
+28 actions: 12 L1 READ, 13 L2 WRITE, 3 L3 DESTRUCTIVE.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -38,6 +39,7 @@ class FilesystemBackend(ToolBackend):
             Action("list", ActionTier.L1_READ, description="List directory"),
             Action("glob", ActionTier.L1_READ, description="Glob pattern match"),
             Action("grep", ActionTier.L1_READ, description="Search in files"),
+            Action("find", ActionTier.L1_READ, description="Find files by name pattern"),
             Action("exists", ActionTier.L1_READ, description="Check file/dir existence"),
             Action("stat", ActionTier.L1_READ, description="File metadata"),
             Action("read_bytes", ActionTier.L1_READ, description="Read binary file"),
@@ -48,17 +50,21 @@ class FilesystemBackend(ToolBackend):
             Action("write", ActionTier.L2_WRITE, description="Write text file"),
             Action("append", ActionTier.L2_WRITE, description="Append to file"),
             Action("copy", ActionTier.L2_WRITE, description="Copy file"),
-            Action("move", ActionTier.L2_WRITE, description="Move/rename file"),
+            Action("move", ActionTier.L2_WRITE, description="Move file"),
+            Action("rename", ActionTier.L2_WRITE, description="Rename file/dir"),
             Action("mkdir", ActionTier.L2_WRITE, description="Create directory"),
             Action("write_bytes", ActionTier.L2_WRITE, description="Write binary file"),
             Action("write_json", ActionTier.L2_WRITE, description="Write formatted JSON"),
             Action("archive", ActionTier.L2_WRITE, description="Create archive"),
             Action("extract", ActionTier.L2_WRITE, description="Extract archive"),
             Action("symlink", ActionTier.L2_WRITE, description="Create symlink"),
+            Action("hardlink", ActionTier.L2_WRITE, description="Create hard link"),
+            Action("watch_file", ActionTier.L2_WRITE, description="Watch file for changes"),
             # L3 DESTRUCTIVE
             Action("delete", ActionTier.L3_DESTRUCTIVE, description="Delete file/dir"),
             Action("rm_tree", ActionTier.L3_DESTRUCTIVE, description="Remove dir tree"),
             Action("chmod", ActionTier.L3_DESTRUCTIVE, description="Change permissions"),
+            Action("chown", ActionTier.L3_DESTRUCTIVE, description="Change owner"),
         ]
 
     def is_available(self) -> bool:
@@ -109,13 +115,13 @@ class FilesystemBackend(ToolBackend):
             if action_lower == "glob":
                 pattern = args.get("pattern", "*")
                 base = Path(path_str) if path_str else Path(".")
-                matches = sorted(str(m) for m in base.glob(pattern))
+                glob_matches = sorted(str(m) for m in base.glob(pattern))
                 return {
                     "ok": True,
                     "action": action,
                     "path": path_str,
                     "pattern": pattern,
-                    "matches": matches,
+                    "matches": glob_matches,
                 }
 
             if action_lower == "grep":
@@ -445,6 +451,111 @@ class FilesystemBackend(ToolBackend):
                     "action": action,
                     "path": path_str,
                     "mode": mode_str,
+                }
+
+            # ==============================================================
+            # Missing plan actions
+            # ==============================================================
+
+            if action_lower == "rename":
+                src = Path(path_str)
+                new_name = args.get("new_name", "")
+                dest = src.parent / new_name
+                shutil.move(str(src), str(dest))
+                return {
+                    "ok": True,
+                    "action": action,
+                    "path": path_str,
+                    "new_name": new_name,
+                    "dest": str(dest),
+                }
+
+            if action_lower == "chown":
+                p = Path(path_str)
+                uid_str = args.get("uid", "-1")
+                gid_str = args.get("gid", "-1")
+                uid = int(uid_str) if uid_str != "-1" else -1
+                gid = int(gid_str) if gid_str != "-1" else -1
+                os.chown(str(p), uid, gid)
+                return {
+                    "ok": True,
+                    "action": action,
+                    "path": path_str,
+                    "uid": uid_str,
+                    "gid": gid_str,
+                }
+
+            if action_lower == "hardlink":
+                src = Path(path_str)
+                dest = Path(args.get("dest", ""))
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                os.link(str(src), str(dest))
+                return {
+                    "ok": True,
+                    "action": action,
+                    "path": path_str,
+                    "dest": str(dest),
+                }
+
+            if action_lower == "watch_file":
+                p = Path(path_str)
+                timeout_str = args.get("timeout", "30")
+                timeout = int(timeout_str)
+                # Polling-based watch for cross-platform compatibility
+                import time
+                start = time.time()
+                original_mtime = p.stat().st_mtime if p.exists() else 0
+                while time.time() - start < timeout:
+                    await asyncio.sleep(0.5)
+                    if p.exists() and p.stat().st_mtime > original_mtime:
+                        return {
+                            "ok": True,
+                            "action": action,
+                            "path": path_str,
+                            "changed": True,
+                        }
+                return {
+                    "ok": True,
+                    "action": action,
+                    "path": path_str,
+                    "changed": False,
+                    "timeout": True,
+                }
+
+            if action_lower == "find":
+                directory = Path(path_str)
+                pattern = args.get("pattern", "*")
+                file_type = args.get("type", "all")  # "file", "dir", or "all"
+                max_depth_str = args.get("max_depth", "-1")
+                max_depth = int(max_depth_str)
+
+                results = []
+                for root, dirs, files in os.walk(str(directory)):
+                    # Calculate current depth
+                    depth = root.count(os.sep) - str(directory).count(os.sep)
+                    if max_depth >= 0 and depth > max_depth:
+                        dirs.clear()
+                        continue
+
+                    if file_type in ("file", "all"):
+                        for fname in files:
+                            fpath = Path(root) / fname
+                            if fpath.match(pattern):
+                                results.append(str(fpath))
+
+                    if file_type in ("dir", "all"):
+                        for dname in dirs:
+                            dpath = Path(root) / dname
+                            if dpath.match(pattern):
+                                results.append(str(dpath))
+
+                return {
+                    "ok": True,
+                    "action": action,
+                    "path": path_str,
+                    "pattern": pattern,
+                    "results": results,
+                    "count": len(results),
                 }
 
             # ==============================================================
