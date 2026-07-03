@@ -109,23 +109,23 @@ class FilesystemBackend(ToolBackend):
             if action_lower == "glob":
                 pattern = args.get("pattern", "*")
                 base = Path(path_str) if path_str else Path(".")
-                matches = sorted(str(m) for m in base.glob(pattern))
+                glob_matches = sorted(str(m) for m in base.glob(pattern))
                 return {
                     "ok": True,
                     "action": action,
                     "path": path_str,
                     "pattern": pattern,
-                    "matches": matches,
+                    "matches": glob_matches,
                 }
 
             if action_lower == "grep":
                 query = args.get("query", "")
                 p = Path(path_str)
-                matches: list[dict[str, Any]] = []
+                grep_matches: list[dict[str, Any]] = []
                 if p.is_file():
                     for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
                         if query in line:
-                            matches.append({"line": i, "text": line})
+                            grep_matches.append({"line": i, "text": line})
                 elif p.is_dir():
                     for fp in p.rglob("*"):
                         if fp.is_file():
@@ -135,7 +135,7 @@ class FilesystemBackend(ToolBackend):
                                     1,
                                 ):
                                     if query in line:
-                                        matches.append(
+                                        grep_matches.append(
                                             {
                                                 "file": str(fp),
                                                 "line": i,
@@ -149,7 +149,7 @@ class FilesystemBackend(ToolBackend):
                     "action": action,
                     "path": path_str,
                     "query": query,
-                    "matches": matches,
+                    "matches": grep_matches,
                 }
 
             if action_lower == "exists":
@@ -328,11 +328,11 @@ class FilesystemBackend(ToolBackend):
                 }
 
             if action_lower == "write_json":
-                data = args.get("data")
+                json_data: Any = args.get("data")
                 indent = args.get("indent", 2)
                 p = Path(path_str)
                 p.parent.mkdir(parents=True, exist_ok=True)
-                text = json.dumps(data, indent=indent, ensure_ascii=False)
+                text = json.dumps(json_data, indent=indent, ensure_ascii=False)
                 p.write_text(text, encoding="utf-8")
                 return {
                     "ok": True,
@@ -398,14 +398,14 @@ class FilesystemBackend(ToolBackend):
 
             if action_lower == "symlink":
                 link = Path(path_str)
-                target = Path(args.get("target", ""))
+                target_path = Path(args.get("target", ""))
                 link.parent.mkdir(parents=True, exist_ok=True)
-                link.symlink_to(target)
+                link.symlink_to(target_path)
                 return {
                     "ok": True,
                     "action": action,
                     "path": path_str,
-                    "target": str(target),
+                    "target": str(target_path),
                 }
 
             # ==============================================================
