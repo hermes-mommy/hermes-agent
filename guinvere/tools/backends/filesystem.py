@@ -391,7 +391,7 @@ class FilesystemBackend(ToolBackend):
                         files_count = len(zf.namelist())
                 else:
                     with tarfile.open(str(archive_path), "r:*") as tf:
-                        tf.extractall(str(dest))
+                        tf.extractall(str(dest), filter="data")
                         files_count = len(tf.getnames())
 
                 return {

@@ -24,6 +24,14 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_HOST = "guinevere-vps"
 
+# Identifier validation — blocks command injection for standalone functions.
+_SAFE_ID_RE = re.compile(r"^[A-Za-z0-9._\-/]+$")
+
+
+def _is_safe_id(value: str) -> bool:
+    """Return True only for safe identifiers (blocks command injection)."""
+    return bool(value) and _SAFE_ID_RE.fullmatch(value) is not None
+
 
 # ===================================================================
 # Standalone SSH functions (15 actions)
@@ -162,6 +170,8 @@ async def systemctl_status(
     Returns:
         Structured dict with ok, action, service, stdout, stderr, returncode.
     """
+    if not _is_safe_id(service):
+        return {"ok": False, "action": "systemctl_status", "error": "unsafe service name"}
     result = await ssh_exec(host, f"systemctl status {service}", timeout=timeout)
     result["action"] = "systemctl_status"
     result["service"] = service
@@ -181,6 +191,8 @@ async def systemctl_start(
     Returns:
         Structured dict with ok, action, service, stdout, stderr, returncode.
     """
+    if not _is_safe_id(service):
+        return {"ok": False, "action": "systemctl_start", "error": "unsafe service name"}
     result = await ssh_exec(host, f"sudo systemctl start {service}", timeout=timeout)
     result["action"] = "systemctl_start"
     result["service"] = service
@@ -200,6 +212,8 @@ async def systemctl_stop(
     Returns:
         Structured dict with ok, action, service, stdout, stderr, returncode.
     """
+    if not _is_safe_id(service):
+        return {"ok": False, "action": "systemctl_stop", "error": "unsafe service name"}
     result = await ssh_exec(host, f"sudo systemctl stop {service}", timeout=timeout)
     result["action"] = "systemctl_stop"
     result["service"] = service
@@ -219,6 +233,8 @@ async def systemctl_restart(
     Returns:
         Structured dict with ok, action, service, stdout, stderr, returncode.
     """
+    if not _is_safe_id(service):
+        return {"ok": False, "action": "systemctl_restart", "error": "unsafe service name"}
     result = await ssh_exec(host, f"sudo systemctl restart {service}", timeout=timeout)
     result["action"] = "systemctl_restart"
     result["service"] = service
@@ -240,6 +256,8 @@ async def journalctl(
     Returns:
         Structured dict with ok, action, unit, lines, entries, stderr, returncode.
     """
+    if not _is_safe_id(unit):
+        return {"ok": False, "action": "journalctl", "error": "unsafe unit name"}
     result = await ssh_exec(
         host,
         f"journalctl -u {unit} -n {lines} --no-pager -o cat",
@@ -270,6 +288,8 @@ async def df(
     Returns:
         Structured dict with ok, action, stdout, stderr, returncode.
     """
+    if not _is_safe_id(path):
+        return {"ok": False, "action": "df", "error": "unsafe path"}
     result = await ssh_exec(host, f"df {path}", timeout=timeout)
     result["action"] = "df"
     return result
@@ -289,6 +309,8 @@ async def du(
     Returns:
         Structured dict with ok, action, path, stdout, stderr, returncode.
     """
+    if not _is_safe_id(path):
+        return {"ok": False, "action": "du", "error": "unsafe path"}
     result = await ssh_exec(host, f"du -sh {path}", timeout=timeout)
     result["action"] = "du"
     result["path"] = path
@@ -453,7 +475,7 @@ class VPSBackend(ToolBackend):
         return bool(re.fullmatch(r"[A-Za-z0-9._\-/@:]+", value))
 
     @staticmethod
-    def _validate_identifiers(args, keys):
+    def _validate_identifiers(args: dict[str, Any], keys: list[str]) -> str | None:
         """Return error string if any key has an unsafe value, else None."""
         for k in keys:
             v = args.get(k, "")
@@ -540,7 +562,9 @@ class VPSBackend(ToolBackend):
             if action_lower == "health_metrics":
                 # Real CPU/mem/disk via standard tools (top-free, portable).
                 # CPU load avg (1min) as percent of cores; mem via free; disk via df.
-                def _run_sync(c):
+                def _run_sync(c: str) -> str:
+                    # shell=True required for pipe chains (awk, tr).  All callers
+                    # pass hardcoded constants — no user input interpolated.
                     try:
                         r = subprocess.run(c, shell=True, capture_output=True, text=True, timeout=5)
                         return r.stdout.strip()
@@ -628,7 +652,11 @@ class VPSBackend(ToolBackend):
 
             if action_lower == "pg_dump":
                 db = args.get("db", "")
+                if not self._is_safe_identifier(db):
+                    return {"ok": False, "action": action, "error": "unsafe db name"}
                 dump_path = args.get("dump_path", f"/tmp/pgdump_{db}.sql")
+                if not self._is_safe_identifier(dump_path):
+                    return {"ok": False, "action": action, "error": "unsafe dump_path"}
                 proc = await asyncio.create_subprocess_shell(
                     f"pg_dump {db} -f {dump_path}",
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE,
