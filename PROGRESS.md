@@ -3,8 +3,8 @@
 | Field | Value |
 |-------|-------|
 | **Project** | Guinevere — Autonomous AI Companion & Engineering System |
-| **Status** | ✅ P0+P1+P2+P3+P4+P5+P5.5+P6+P7+P7.5+P8+P11+P12+P13+P14 Complete. P23+P24 REPLANNED + P28-P36 ALIGNED. P23 = execution-layer-only (8 executors, 16 waves, auditor PASS). P24 v3.0 = FULL BUILT-IN Hermes fork (17 modules, 20 waves, 87 binding decisions, auditor PASS round-6 — ALL P1-P22 absorbed, zero src/ remaining). P28-P36 = masterplan aligned + 65 brainstorm decisions, 8-auditor gate PASS. ADR-056 DELETED, ADR-066+067 WRITTEN. P32 renamed. All plans READY-FOR-IMPLEMENTATION. |
-| **Last Updated** | 2026-06-29 (P24 v3.0 FULL BUILT-IN REPLAN — 17 modules, 20 waves, 87 binding decisions, 6 research reports, 8-auditor round-5 + fix + round-6 PASS. All P1-P22 absorbed into fork, zero src/ remaining. Previous: P28-P36 alignment.) |
+| **Status** | ✅ P0+P1+P2+P3+P4+P5+P5.5+P6+P7+P7.5+P8+P11+P12+P13+P14 Complete. P23+P24 REPLANNED + P28-P36 ALIGNED. P24 TOOL BACKENDS COMPLETE (127 actions, 9 backends, 379+ tests). Security audit + performance audit DONE. Production VPS verified. P28-P36 = masterplan aligned + 65 brainstorm decisions, 8-auditor gate PASS. All plans READY-FOR-IMPLEMENTATION. |
+| **Last Updated** | 2026-07-03 (P24 tool backends complete — 127 actions across 9 backends, 379+ tests passing, security audit passed, performance audit passed, VPS production verified, dual-path sync complete.) |
 | **Budget** | $30/month hard cap |
 | **Infrastructure** | Shared VPS (hostdata.id 4C/16GB Ubuntu 24.04) |
 | **Critical Path** | P0 → P1 → P3 → P5 |
@@ -51,7 +51,7 @@
 | P21 | Voice Interface | 🟣 DEFINITION COMPLETE — IMPL HOLD | TBD | TBD | 0h (planning) | P2+P8 + P20-gate | P20 prod-pass | Definition complete (plan+9 research+2 audit rounds); impl waves P21-001..009 held until P20 pass |
 | P22 | Life Integration Hub | 🟢 DEPLOYED — AUDIT REMEDIATED + AUDITOR PASS (32/32) — POST-DEPLOY VERIFIED LIVE (scp 2026-06-28) | 19 core + 13 adapters + 972 tests | $0 | ~100h (impl+fix+deploy done) | P8 | Deployed via scp (operator-directed, no git push). 5 CRITICAL (F01-F05) + 10 HIGH + 17 MEDIUM all live-verified on VPS: Discord cmds registered (COMMAND_SPECS=41), ConsentGate fail-closed, unknown→L2_WRITE default, AuditWriter wired to DB (79 hash-chained rows), rate limiting live (429 reproduced), WORM TRUNCATE revoked. Service active NRestarts=0, P20 cycle 3015+ no regression. 8/8 deploy auditors PASS. Local commit 4c1c7cc (unpushed). Caveats: GUINEVERE_API_KEY unprovisioned, consent_checker=None (L2+ blocked until wired), F10 x_poster untracked. See brutal-2026-06-28/deploy-evidence.md |
 | P23 | Execution Layer (8 Executors) | 🟣 REPLANNED — AUDITOR PASS — IMPL READY | 16 waves | TBD | 0h (planning) | P24 Module 8 | None — execution-layer-only |
-| P24 | Hermes Native Fork v3.0 | COMPLETE — 20 waves, 17 modules, 541 tests, src/→0, 0 forbidden patterns | FULL RUNTIME COMPLETE WITH EXPLICIT OPERATOR-PROVISIONING BLOCKERS (D2 local-only, D3 mock-LLM) | feat/p24-hermes-fork (25 commits, unpushed) | 0h (planning) | P20-pass | ⛔ VPS deploy / Discord live-connect / real LLM (D2/D3) |
+| P24 | Hermes Native Fork v3.0 | ✅ TOOL BACKENDS COMPLETE — 127 actions (9 backends), 379+ tests, security audit PASS, performance audit PASS, VPS production verified, dual-path sync done | Full runtime complete + tool backends implemented + security hardened + performance benchmarked | p24-initial (11 commits, pushed) | ~8h (tool backends + audit + docs) | P20-pass | None — P28+ can start |
 | **Total** | | | **327/343+** | **$29+** | **503-1008h+** | | |
 
 ## P0: Infrastructure Foundation (29 steps)

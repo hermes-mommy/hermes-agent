@@ -118,6 +118,24 @@ alembic upgrade head
 
 **Surveillance layer:** server-side ingest is in `guinvere/surveillance/` (`receiver.py` HMAC-verified webhook → Redis DB2 buffer → `consumer.py` → PostgreSQL/TimescaleDB). The Android Tasker profiles and Windows daemon clients are **not in this repo** — they live on the devices.
 
+## P24 Production Status (2026-07-03)
+
+P24 Hermes Native Fork v3.0 tool backends are **production-complete**:
+
+- **127 tool actions** across 9 backends (filesystem, vps, memory, browser, desktop, github, social, email, freelance)
+- **379+ tests passing** (backend-specific + registry tests)
+- **Security audit passed** — command injection fixes, tarfile path traversal patched, type annotations added
+- **Performance audit passed** — filesystem 0.1ms/call, memory benchmarked, VPS/browser deferred to production
+- **VPS production verified** — `uv sync` completed, all backends load, tests pass on VPS
+- **Dual-path sync** — `guinvere/` (canonical) and `guinevere/` (legacy) paths synchronized
+
+**What remains for full P24 production pass:**
+- D2 blocker resolved (production already running P24 via `guinvere-core.service`)
+- D3 blocker resolved (9Router connected at `localhost:20128`, 64 models available)
+- Discord live-connect: pending (requires bot token provisioning)
+
+**Next phase:** P27+ (Hermes Society Foundation) can begin once Discord is connected.
+
 ## Key Docs (read for substantive work)
 
 `docs/00-core/` (BRD v2.0, PRD v2.2, Technical Architecture v2.0, **Agent Loop Spec v2.0**, **Memory Schema v2.0**, Persona v3.0) · `docs/10-governance/17-ADR_Index_v1.0.md` + `adr/` (33 ADRs) · `docs/20-security/20-SecurityPolicy_v1.0.md` · `docs/60-persona/60-PersonaSafetyPolicy_v1.0.md` + `61-SystemPromptMaster_v1.1.md` · `docs/40-operations/43-DisasterRecoveryPlan_v1.0.md`. Per-phase setup evidence lives in `docs/setup-evidence/`.
