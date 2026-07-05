@@ -29,7 +29,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
-from guinevere.memory.models import Memory, MemoryCollection, MemoryType
+from guinevere.memory.tool_models import Memory, MemoryCollection, MemoryType
 from guinevere.tools.tool_backend import Action, ActionTier, ToolBackend
 
 logger = logging.getLogger(__name__)
