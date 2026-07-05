@@ -23,7 +23,7 @@ HookCallback = Callable[..., object | None]
 
 
 class PersonaPluginRuntime(Protocol):
-    """Runtime hook surface exposed by ``guinvere/hermes/plugins/persona_plugin.py``."""
+    """Runtime hook surface exposed by ``guinevere/hermes/plugins/persona_plugin.py``."""
 
     def pre_llm_call(self, **kwargs: object) -> object | None: ...
 
@@ -38,13 +38,13 @@ def _load_persona_plugin_class() -> type[PersonaPluginRuntime]:
     """Load PersonaPlugin without importing the parent ``src.hermes`` package.
 
     The project package currently has a pre-existing package-level import caveat
-    in ``guinvere/hermes/__init__.py``. Hermes runtime only needs this plugin module,
+    in ``guinevere/hermes/__init__.py``. Hermes runtime only needs this plugin module,
     so load it directly from the repository path.
     """
-    # P24: load from fork p24-port/guinvere/ (not legacy code/guinevere/src/).
-    # src/ removed in P24 cleanup; persona_plugin lives in guinvere/hermes/plugins/.
+    # P24: load from fork p24-port/guinevere/ (not legacy code/guinevere/src/).
+    # src/ removed in P24 cleanup; persona_plugin lives in guinevere/hermes/plugins/.
     repo_root = Path(os.environ.get("GUINEVERE_REPO_ROOT", "/home/guinevere/p24-port"))
-    plugin_path = repo_root / "guinvere" / "hermes" / "plugins" / "persona_plugin.py"
+    plugin_path = repo_root / "guinevere" / "hermes" / "plugins" / "persona_plugin.py"
     spec = importlib.util.spec_from_file_location("guinevere_persona_runtime", plugin_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Cannot load PersonaPlugin from {plugin_path}")

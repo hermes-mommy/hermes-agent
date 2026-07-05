@@ -1,5 +1,5 @@
  guinevere/tools/backends/filesystem.py | 454 +++++++++++++++--
- guinvere/tools/backends/filesystem.py  | 379 +++++++++++++-
+ guinevere/tools/backends/filesystem.py  | 379 +++++++++++++-
  tests/p24/test_filesystem_backend.py   | 884 +++++++++++++++++++++++++++++++--
  3 files changed, 1606 insertions(+), 111 deletions(-)
 0d9a99a fix(mypy): resolve 5 strict-mode errors in filesystem backend
@@ -507,10 +507,10 @@ index 101ed09..37b4f52 100644
 +            return {"ok": False, "action": action, "error": f"os error: {e}"}
 +        except (json.JSONDecodeError, ValueError) as e:
 +            return {"ok": False, "action": action, "error": f"parse error: {e}"}
-diff --git a/guinvere/tools/backends/filesystem.py b/guinvere/tools/backends/filesystem.py
+diff --git a/guinevere/tools/backends/filesystem.py b/guinevere/tools/backends/filesystem.py
 index 5c9ea08..b7d5b5a 100644
---- a/guinvere/tools/backends/filesystem.py
-+++ b/guinvere/tools/backends/filesystem.py
+--- a/guinevere/tools/backends/filesystem.py
++++ b/guinevere/tools/backends/filesystem.py
 @@ -1,9 +1,9 @@
 -"""M8 Filesystem backend — local file I/O + shell + git.
 +"""M8 Filesystem backend — local file I/O + archive + symlinks.
@@ -1031,7 +1031,7 @@ index 4ac527b..9e39492 100644
 +
  import pytest
  
- from guinvere.tools.backends.filesystem import FilesystemBackend
+ from guinevere.tools.backends.filesystem import FilesystemBackend
  
 +# Import ActionTier from the SAME module the backend uses to avoid
 +# cross-module enum identity issues.

@@ -22,7 +22,7 @@ with real I/O via stdlib (pathlib, shutil, tarfile, zipfile). All actions are as
 
 ```
 70 passed, 5 skipped (Windows symlink/chmod limitations)
-93.45% coverage on guinvere.tools.backends.filesystem
+93.45% coverage on guinevere.tools.backends.filesystem
 ```
 
 **Skipped tests (5):**
@@ -100,7 +100,7 @@ On Linux VPS these tests would pass.
 
 1. **5 tests skipped on Windows** due to symlink/chmod limitations. These will pass on the Linux VPS. No code issue, purely platform-specific.
 
-2. **Duplicate package names**: The codebase has both `guinevere/` and `guinvere/` packages (the latter is a typo that became canonical for the P24 fork). Tests import from `guinvere` which is correct for the fork. Coverage must track `guinvere.tools.backends.filesystem` specifically.
+2. **Duplicate package names**: The codebase has both `guinevere/` and `guinevere/` packages (the latter is a typo that became canonical for the P24 fork). Tests import from `guinevere` which is correct for the fork. Coverage must track `guinevere.tools.backends.filesystem` specifically.
 
 3. **No `# type: ignore`** used anywhere in the implementation or tests (per global constraint).
 
@@ -111,5 +111,5 @@ On Linux VPS these tests would pass.
 | File | Action | Lines Changed |
 |------|--------|---------------|
 | `guinevere/tools/backends/filesystem.py` | Modified | +454/-10 |
-| `guinvere/tools/backends/filesystem.py` | Modified | +379/-10 |
+| `guinevere/tools/backends/filesystem.py` | Modified | +379/-10 |
 | `tests/p24/test_filesystem_backend.py` | Modified | +884/-10 |

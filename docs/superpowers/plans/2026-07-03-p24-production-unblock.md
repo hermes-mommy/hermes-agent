@@ -4,7 +4,7 @@
 
 **Goal:** Unblock P24 production pass by implementing 117 tool action stubs across 9 backends, deploying to VPS side-by-side, and completing audit/documentation so P28+ can start.
 
-**Architecture:** The Hermes fork (P24 v3.0) is code-complete with 17 modules wired and 541 tests passing. Phase 4.1 (9Router integration + consciousness refactor) is already done — `guinvere/http/server.py` creates a real `AIAgent` with 9Router config, and `substrates.py` delegates to it via `_self_prompt()`. The remaining work is Phase 4.2-4.11 (tool backends), Phase 5 (VPS deploy), and Phase 6-8 (audit/docs).
+**Architecture:** The Hermes fork (P24 v3.0) is code-complete with 17 modules wired and 541 tests passing. Phase 4.1 (9Router integration + consciousness refactor) is already done — `guinevere/http/server.py` creates a real `AIAgent` with 9Router config, and `substrates.py` delegates to it via `_self_prompt()`. The remaining work is Phase 4.2-4.11 (tool backends), Phase 5 (VPS deploy), and Phase 6-8 (audit/docs).
 
 **Tech Stack:** Python 3.12, FastAPI, SQLAlchemy async, Redis, Hermes Agent framework, 9Router (OpenAI-compatible proxy)
 
@@ -17,7 +17,7 @@
 - **No test deletion:** Forbidden: deleting failing tests, unjustified skip, claiming clean diagnostics while hiding pre-existing issues
 - **Consent-safety:** Never bypass HARD STOP protocol, never bypass consent/surveillance boundary
 - **Secrets:** Never commit Discord bot token, API keys, DB passwords, surveillance credentials, SOPS/age keys
-- **VPS deploy:** Side-by-side with legacy (new service `guinvere-core-p24.service` on port 8091), verify E2E, then switch
+- **VPS deploy:** Side-by-side with legacy (new service `guinevere-core-p24.service` on port 8091), verify E2E, then switch
 
 ---
 
@@ -25,15 +25,15 @@
 
 **Phase 4.1 is already complete:**
 
-1. ✅ `guinvere/consciousness/substrates.py:46-84` — `_self_prompt()` delegates to `llm_router.chat(prompt)` (AIAgent via 9Router)
-2. ✅ `guinvere/http/server.py:127-133` — Creates real `AIAgent(base_url="http://localhost:20128/v1", model="guinevere", provider="custom")`
+1. ✅ `guinevere/consciousness/substrates.py:46-84` — `_self_prompt()` delegates to `llm_router.chat(prompt)` (AIAgent via 9Router)
+2. ✅ `guinevere/http/server.py:127-133` — Creates real `AIAgent(base_url="http://localhost:20128/v1", model="guinevere", provider="custom")`
 3. ✅ 9Router VPS exists at `100.104.210.75:20128` with 92 provider connections (P25/P26 complete)
 
 **Remaining blockers:**
 - 117 tool action stubs across 9 backends (filesystem, vps, memory, desktop, browser, github, social, email, freelance)
 - No systemd service for P24 fork on VPS
 - No venv on VPS p24-port clone
-- Legacy services still running (`guinvere-core.service` on port 8000)
+- Legacy services still running (`guinevere-core.service` on port 8000)
 
 ---
 
@@ -42,25 +42,25 @@
 ### Task 1: Filesystem Backend — 23 Actions
 
 **Files:**
-- Modify: `guinvere/tools/backends/filesystem.py`
-- Test: `tests/guinvere/tools/test_filesystem_backend.py`
+- Modify: `guinevere/tools/backends/filesystem.py`
+- Test: `tests/guinevere/tools/test_filesystem_backend.py`
 
 **Interfaces:**
-- Consumes: `guinvere.tools.registry.ToolRegistry` (register handler functions)
+- Consumes: `guinevere.tools.registry.ToolRegistry` (register handler functions)
 - Produces: 23 working filesystem actions (read_file, write_file, list_dir, mkdir, rmdir, delete, rename, copy, move, stat, chmod, chown, find, grep, tar, untar, zip, unzip, symlink, hardlink, read_json, write_json, watch_file)
 
 - [ ] **Step 1: Audit current stubs**
 
 ```bash
 cd C:/Users/faizz/hermes-agent
-grep -n "def " guinvere/tools/backends/filesystem.py | head -30
+grep -n "def " guinevere/tools/backends/filesystem.py | head -30
 ```
 
 Expected: List of 23 function signatures (most are stubs raising `NotImplementedError` or returning mock data).
 
 - [ ] **Step 2: Write failing tests for 5 core actions**
 
-Create `tests/guinvere/tools/test_filesystem_backend.py`:
+Create `tests/guinevere/tools/test_filesystem_backend.py`:
 
 ```python
 """Test filesystem backend actions — real file operations."""
@@ -70,7 +70,7 @@ from pathlib import Path
 
 import pytest
 
-from guinvere.tools.backends.filesystem import (
+from guinevere.tools.backends.filesystem import (
     read_file, write_file, list_dir, mkdir, delete,
 )
 
@@ -146,14 +146,14 @@ async def test_delete_removes_file(temp_dir: Path):
 - [ ] **Step 3: Run tests to verify they fail**
 
 ```bash
-pytest tests/guinvere/tools/test_filesystem_backend.py -v
+pytest tests/guinevere/tools/test_filesystem_backend.py -v
 ```
 
 Expected: 6 tests FAIL (functions raise NotImplementedError or return mock data).
 
 - [ ] **Step 4: Implement 5 core filesystem actions**
 
-Modify `guinvere/tools/backends/filesystem.py`:
+Modify `guinevere/tools/backends/filesystem.py`:
 
 ```python
 """Filesystem backend — real file operations.
@@ -229,7 +229,7 @@ async def delete(path: str, recursive: bool = False) -> None:
 - [ ] **Step 5: Run tests to verify they pass**
 
 ```bash
-pytest tests/guinvere/tools/test_filesystem_backend.py -v
+pytest tests/guinevere/tools/test_filesystem_backend.py -v
 ```
 
 Expected: 6 tests PASS.
@@ -243,7 +243,7 @@ Use `shutil`, `tarfile`, `zipfile`, `os` stdlib modules. Write tests for each ac
 - [ ] **Step 7: Run all filesystem tests**
 
 ```bash
-pytest tests/guinvere/tools/test_filesystem_backend.py -v --cov=guinvere.tools.backends.filesystem
+pytest tests/guinevere/tools/test_filesystem_backend.py -v --cov=guinevere.tools.backends.filesystem
 ```
 
 Expected: 23+ tests PASS, coverage >= 80%.
@@ -251,7 +251,7 @@ Expected: 23+ tests PASS, coverage >= 80%.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add tests/guinvere/tools/test_filesystem_backend.py guinvere/tools/backends/filesystem.py
+git add tests/guinevere/tools/test_filesystem_backend.py guinevere/tools/backends/filesystem.py
 git commit -m "feat(tools): implement filesystem backend — 23 real actions
 
 Replaces stub implementations with real file operations using pathlib,
@@ -266,8 +266,8 @@ Part of P24 tool backend implementation (Phase 4.2)."
 ### Task 2: VPS Backend — 15 Actions
 
 **Files:**
-- Modify: `guinvere/tools/backends/vps.py`
-- Test: `tests/guinvere/tools/test_vps_backend.py`
+- Modify: `guinevere/tools/backends/vps.py`
+- Test: `tests/guinevere/tools/test_vps_backend.py`
 
 **Interfaces:**
 - Consumes: `subprocess` (async), `asyncio`
@@ -275,14 +275,14 @@ Part of P24 tool backend implementation (Phase 4.2)."
 
 - [ ] **Step 1: Write failing tests for 5 core VPS actions**
 
-Create `tests/guinvere/tools/test_vps_backend.py`:
+Create `tests/guinevere/tools/test_vps_backend.py`:
 
 ```python
 """Test VPS backend actions — mock subprocess for isolation."""
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 
-from guinvere.tools.backends.vps import (
+from guinevere.tools.backends.vps import (
     ssh_exec, systemctl_status, df, free, uptime,
 )
 
@@ -371,7 +371,7 @@ async def test_uptime_returns_load(mock_subprocess):
 
 - [ ] **Step 2: Implement 5 core VPS actions**
 
-Modify `guinvere/tools/backends/vps.py`:
+Modify `guinevere/tools/backends/vps.py`:
 
 ```python
 """VPS backend — remote server operations via SSH.
@@ -442,7 +442,7 @@ async def systemctl_restart(service: str, host: str = "guinevere-vps") -> str:
 - [ ] **Step 3: Run tests to verify they pass**
 
 ```bash
-pytest tests/guinvere/tools/test_vps_backend.py -v
+pytest tests/guinevere/tools/test_vps_backend.py -v
 ```
 
 Expected: 5 tests PASS.
@@ -456,7 +456,7 @@ Use `asyncio.create_subprocess_exec` with `ssh`, `scp`, `systemctl`, `journalctl
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tests/guinvere/tools/test_vps_backend.py guinvere/tools/backends/vps.py
+git add tests/guinevere/tools/test_vps_backend.py guinevere/tools/backends/vps.py
 git commit -m "feat(tools): implement VPS backend — 15 SSH-based actions
 
 Real remote server operations via SSH subprocess. All actions async,
@@ -471,26 +471,26 @@ Part of P24 tool backend implementation (Phase 4.3)."
 ### Task 3: Memory Backend — 18 Actions
 
 **Files:**
-- Modify: `guinvere/tools/backends/memory.py`
-- Test: `tests/guinvere/tools/test_memory_backend.py`
+- Modify: `guinevere/tools/backends/memory.py`
+- Test: `tests/guinevere/tools/test_memory_backend.py`
 
 **Interfaces:**
-- Consumes: `guinvere.memory` (PostgreSQL + pgvector), `guinvere.memory.models`
+- Consumes: `guinevere.memory` (PostgreSQL + pgvector), `guinevere.memory.models`
 - Produces: 18 working memory actions (store_memory, recall_memory, search_memory, update_memory, delete_memory, list_memories, get_memory_by_id, get_memories_by_type, get_memories_by_time_range, consolidate_memories, export_memories, import_memories, get_memory_stats, create_memory_collection, delete_memory_collection, list_memory_collections, set_memory_metadata, get_memory_metadata)
 
 - [ ] **Step 1: Write failing tests for 5 core memory actions**
 
-Create `tests/guinvere/tools/test_memory_backend.py`:
+Create `tests/guinevere/tools/test_memory_backend.py`:
 
 ```python
 """Test memory backend actions — use test DB fixture."""
 import pytest
 from datetime import datetime, timezone
 
-from guinvere.tools.backends.memory import (
+from guinevere.tools.backends.memory import (
     store_memory, recall_memory, search_memory, update_memory, delete_memory,
 )
-from guinvere.memory.models import Memory, MemoryType
+from guinevere.memory.models import Memory, MemoryType
 
 
 @pytest.fixture
@@ -582,7 +582,7 @@ async def test_delete_memory_removes_record(test_db):
 
 - [ ] **Step 2: Implement 5 core memory actions**
 
-Modify `guinvere/tools/backends/memory.py`:
+Modify `guinevere/tools/backends/memory.py`:
 
 ```python
 """Memory backend — PostgreSQL + pgvector operations.
@@ -604,7 +604,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from guinvere.memory.models import Memory, MemoryType
+from guinevere.memory.models import Memory, MemoryType
 
 
 async def store_memory(
@@ -737,7 +737,7 @@ async def delete_memory(
 - [ ] **Step 3: Run tests to verify they pass**
 
 ```bash
-pytest tests/guinvere/tools/test_memory_backend.py -v
+pytest tests/guinevere/tools/test_memory_backend.py -v
 ```
 
 Expected: 5 tests PASS.
@@ -751,7 +751,7 @@ Use SQLAlchemy async queries, pgvector operations, and JSON metadata handling.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tests/guinvere/tools/test_memory_backend.py guinvere/tools/backends/memory.py
+git add tests/guinevere/tools/test_memory_backend.py guinevere/tools/backends/memory.py
 git commit -m "feat(tools): implement memory backend — 18 PostgreSQL+pgvector actions
 
 Real memory operations using SQLAlchemy async, pgvector embeddings,
@@ -786,24 +786,24 @@ For each backend:
 ### Task 10: Create Systemd Service for P24 Fork
 
 **Files:**
-- Create: `systemd/guinvere-core-p24.service`
-- Create: `systemd/guinvere-core-p24.socket` (optional, for socket activation)
+- Create: `systemd/guinevere-core-p24.service`
+- Create: `systemd/guinevere-core-p24.socket` (optional, for socket activation)
 
 **Interfaces:**
-- Consumes: Existing `systemd/guinvere-core.service` as template
+- Consumes: Existing `systemd/guinevere-core.service` as template
 - Produces: New systemd unit running P24 fork on port 8091 (parallel to legacy on 8000)
 
 - [ ] **Step 1: Review existing legacy service**
 
 ```bash
-ssh guinevere-vps 'cat /etc/systemd/system/guinvere-core.service'
+ssh guinevere-vps 'cat /etc/systemd/system/guinevere-core.service'
 ```
 
 Expected: Legacy service definition with WorkingDirectory, ExecStart, User, etc.
 
 - [ ] **Step 2: Create P24 service file locally**
 
-Create `systemd/guinvere-core-p24.service`:
+Create `systemd/guinevere-core-p24.service`:
 
 ```ini
 [Unit]
@@ -816,7 +816,7 @@ Type=simple
 User=guinevere
 Group=guinevere
 WorkingDirectory=/home/guinevere/p24-port
-ExecStart=/home/guinevere/code/guinevere/.venv/bin/uvicorn guinvere.core.main:app --host 127.0.0.1 --port 8091 --workers 1
+ExecStart=/home/guinevere/code/guinevere/.venv/bin/uvicorn guinevere.core.main:app --host 127.0.0.1 --port 8091 --workers 1
 Restart=always
 RestartSec=5
 
@@ -834,7 +834,7 @@ ReadWritePaths=/home/guinevere/p24-port/logs
 # Logging
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=guinvere-core-p24
+SyslogIdentifier=guinevere-core-p24
 
 [Install]
 WantedBy=multi-user.target
@@ -843,15 +843,15 @@ WantedBy=multi-user.target
 - [ ] **Step 3: Upload service file to VPS**
 
 ```bash
-scp systemd/guinvere-core-p24.service guinevere-vps:/home/guinevere/
-ssh guinevere-vps 'sudo mv /home/guinevere/guinvere-core-p24.service /etc/systemd/system/'
+scp systemd/guinevere-core-p24.service guinevere-vps:/home/guinevere/
+ssh guinevere-vps 'sudo mv /home/guinevere/guinevere-core-p24.service /etc/systemd/system/'
 ssh guinevere-vps 'sudo systemctl daemon-reload'
 ```
 
 - [ ] **Step 4: Verify service file syntax**
 
 ```bash
-ssh guinevere-vps 'sudo systemd-analyze verify guinvere-core-p24.service'
+ssh guinevere-vps 'sudo systemd-analyze verify guinevere-core-p24.service'
 ```
 
 Expected: No errors (or only warnings about ReadWritePaths if dir doesn't exist yet).
@@ -859,10 +859,10 @@ Expected: No errors (or only warnings about ReadWritePaths if dir doesn't exist 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add systemd/guinvere-core-p24.service
+git add systemd/guinevere-core-p24.service
 git commit -m "feat(deploy): add systemd service for P24 fork (port 8091)
 
-Runs alongside legacy guinvere-core.service (port 8000) for side-by-side
+Runs alongside legacy guinevere-core.service (port 8000) for side-by-side
 testing. Uses existing venv from code/guinevere, WorkingDirectory at
 p24-port clone. Security hardening enabled (NoNewPrivileges, ProtectSystem).
 
@@ -911,30 +911,30 @@ Expected: All dependencies installed from lockfile (no network calls to PyPI).
 - [ ] **Step 5: Verify critical packages**
 
 ```bash
-ssh guinevere-vps 'cd ~/p24-port && .venv/bin/python -c "import guinvere, run_agent, fastapi; print(\"OK\")"'
+ssh guinevere-vps 'cd ~/p24-port && .venv/bin/python -c "import guinevere, run_agent, fastapi; print(\"OK\")"'
 ```
 
 Expected: `OK` (no ImportError).
 
 - [ ] **Step 6: Update systemd service to use p24-port venv**
 
-Modify `systemd/guinvere-core-p24.service`:
+Modify `systemd/guinevere-core-p24.service`:
 
 ```ini
-ExecStart=/home/guinevere/p24-port/.venv/bin/uvicorn guinvere.core.main:app --host 127.0.0.1 --port 8091 --workers 1
+ExecStart=/home/guinevere/p24-port/.venv/bin/uvicorn guinevere.core.main:app --host 127.0.0.1 --port 8091 --workers 1
 ```
 
 Upload and reload:
 
 ```bash
-scp systemd/guinvere-core-p24.service guinevere-vps:/home/guinevere/
-ssh guinevere-vps 'sudo mv /home/guinevere/guinvere-core-p24.service /etc/systemd/system/ && sudo systemctl daemon-reload'
+scp systemd/guinevere-core-p24.service guinevere-vps:/home/guinevere/
+ssh guinevere-vps 'sudo mv /home/guinevere/guinevere-core-p24.service /etc/systemd/system/ && sudo systemctl daemon-reload'
 ```
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add systemd/guinvere-core-p24.service
+git add systemd/guinevere-core-p24.service
 git commit -m "feat(deploy): update P24 service to use p24-port venv
 
 Previously used shared venv from code/guinevere. Now uses dedicated venv
@@ -957,13 +957,13 @@ Part of P24 VPS deploy (Phase 5)."
 - [ ] **Step 1: Start P24 service**
 
 ```bash
-ssh guinevere-vps 'sudo systemctl start guinvere-core-p24.service'
+ssh guinevere-vps 'sudo systemctl start guinevere-core-p24.service'
 ```
 
 - [ ] **Step 2: Check service status**
 
 ```bash
-ssh guinevere-vps 'sudo systemctl status guinvere-core-p24.service'
+ssh guinevere-vps 'sudo systemctl status guinevere-core-p24.service'
 ```
 
 Expected: `Active: active (running)`, no errors in journal.
@@ -971,7 +971,7 @@ Expected: `Active: active (running)`, no errors in journal.
 - [ ] **Step 3: Check journal logs**
 
 ```bash
-ssh guinevere-vps 'sudo journalctl -u guinvere-core-p24.service -n 50 --no-pager'
+ssh guinevere-vps 'sudo journalctl -u guinevere-core-p24.service -n 50 --no-pager'
 ```
 
 Expected: Logs show FastAPI startup, consciousness loop wired, 9Router connected.
@@ -1004,7 +1004,7 @@ Wait 1 hour, check that all requests succeed and no service restarts occur.
 - [ ] **Step 7: Check for restarts**
 
 ```bash
-ssh guinevere-vps 'sudo systemctl show guinvere-core-p24.service --property=NRestarts'
+ssh guinevere-vps 'sudo systemctl show guinevere-core-p24.service --property=NRestarts'
 ```
 
 Expected: `NRestarts=0`.
@@ -1014,8 +1014,8 @@ Expected: `NRestarts=0`.
 ### Task 13: Switch Traffic to P24 and Retire Legacy
 
 **Files:**
-- Modify: `systemd/guinvere-core.service` (disable)
-- Modify: `systemd/guinvere-core-p24.service` (enable)
+- Modify: `systemd/guinevere-core.service` (disable)
+- Modify: `systemd/guinevere-core-p24.service` (enable)
 
 **Interfaces:**
 - Consumes: Verified P24 service from Task 12
@@ -1024,7 +1024,7 @@ Expected: `NRestarts=0`.
 - [ ] **Step 1: Verify legacy is still running**
 
 ```bash
-ssh guinevere-vps 'sudo systemctl status guinvere-core.service'
+ssh guinevere-vps 'sudo systemctl status guinevere-core.service'
 ```
 
 Expected: `Active: active (running)` on port 8000.
@@ -1034,7 +1034,7 @@ Expected: `Active: active (running)` on port 8000.
 Check current reverse proxy config:
 
 ```bash
-ssh guinevere-vps 'cat /etc/caddy/Caddyfile | grep -A 5 guinvere'
+ssh guinevere-vps 'cat /etc/caddy/Caddyfile | grep -A 5 guinevere'
 ```
 
 Update to point to port 8091 instead of 8000.
@@ -1048,7 +1048,7 @@ ssh guinevere-vps 'sudo systemctl reload caddy'
 - [ ] **Step 4: Verify external access to P24**
 
 ```bash
-curl -s https://guinvere.example.com/health | jq .
+curl -s https://guinevere.example.com/health | jq .
 ```
 
 Expected: P24 health response.
@@ -1056,13 +1056,13 @@ Expected: P24 health response.
 - [ ] **Step 5: Disable legacy service**
 
 ```bash
-ssh guinevere-vps 'sudo systemctl stop guinvere-core.service && sudo systemctl disable guinvere-core.service'
+ssh guinevere-vps 'sudo systemctl stop guinevere-core.service && sudo systemctl disable guinevere-core.service'
 ```
 
 - [ ] **Step 6: Enable P24 service**
 
 ```bash
-ssh guinevere-vps 'sudo systemctl enable guinvere-core-p24.service'
+ssh guinevere-vps 'sudo systemctl enable guinevere-core-p24.service'
 ```
 
 - [ ] **Step 7: Monitor for 24 hours (production soak)**
@@ -1080,7 +1080,7 @@ git add systemd/
 git commit -m "feat(deploy): switch to P24 fork as primary, disable legacy
 
 P24 fork verified via 24-hour soak test (NRestarts=0, all health checks
-pass). Legacy guinvere-core.service disabled. Reverse proxy updated to
+pass). Legacy guinevere-core.service disabled. Reverse proxy updated to
 port 8091.
 
 Part of P24 VPS deploy (Phase 5)."
@@ -1103,9 +1103,9 @@ Part of P24 VPS deploy (Phase 5)."
 
 ```bash
 cd C:/Users/faizz/hermes-agent
-ruff check guinvere/ --select S  # Security rules
-mypy guinvere/ --strict
-bandit -r guinvere/ -f json -o bandit-report.json
+ruff check guinevere/ --select S  # Security rules
+mypy guinevere/ --strict
+bandit -r guinevere/ -f json -o bandit-report.json
 ```
 
 - [ ] **Step 2: Review findings**
@@ -1125,7 +1125,7 @@ Create `docs/setup-evidence/P24/full-completion/audit/security-audit.md`:
 
 **Date:** 2026-07-03
 **Auditor:** Claude Code
-**Scope:** guinvere/ namespace, 17 modules, 87 files
+**Scope:** guinevere/ namespace, 17 modules, 87 files
 
 ## Executive Summary
 
@@ -1200,7 +1200,7 @@ Expected: Requests/sec, latency percentiles, errors.
 - [ ] **Step 3: Monitor resource usage**
 
 ```bash
-ssh guinevere-vps 'sudo systemctl show guinvere-core-p24.service --property=MemoryCurrent,CPUUsage'
+ssh guinevere-vps 'sudo systemctl show guinevere-core-p24.service --property=MemoryCurrent,CPUUsage'
 ```
 
 - [ ] **Step 4: Profile consciousness loop**
@@ -1250,7 +1250,7 @@ Change P24 status from:
 
 To:
 ```
-| P24 | Hermes Native Fork v3.0 | ✅ PRODUCTION PASS — 20 waves, 17 modules, 541 tests, 117 tool backends implemented, VPS deployed side-by-side, 24h soak clean | Deployed to VPS (guinvere-core-p24.service:8091), 9Router integrated, all tool backends real | p24-initial (141 commits, pushed) | ~40h (impl+deploy+audit) | P20-pass | None — P28+ can start |
+| P24 | Hermes Native Fork v3.0 | ✅ PRODUCTION PASS — 20 waves, 17 modules, 541 tests, 117 tool backends implemented, VPS deployed side-by-side, 24h soak clean | Deployed to VPS (guinevere-core-p24.service:8091), 9Router integrated, all tool backends real | p24-initial (141 commits, pushed) | ~40h (impl+deploy+audit) | P20-pass | None — P28+ can start |
 ```
 
 - [ ] **Step 2: Update CLAUDE.md**
@@ -1263,7 +1263,7 @@ P24 Hermes Native Fork v3.0 has achieved production pass:
 - All 17 modules implemented and wired
 - 541+ tests passing
 - 117 tool backend actions implemented (filesystem, vps, memory, browser, desktop, github, social, email, freelance)
-- VPS deployed side-by-side (`guinvere-core-p24.service` on port 8091)
+- VPS deployed side-by-side (`guinevere-core-p24.service` on port 8091)
 - 9Router integrated (`http://localhost:20128/v1`)
 - Consciousness loop delegates to Hermes AIAgent (single brain)
 - 24-hour soak test clean (NRestarts=0)
@@ -1314,13 +1314,13 @@ ssh guinevere-vps 'cd ~/p24-port && git pull origin p24-initial'
 - [ ] **Step 3: Restart P24 service with new code**
 
 ```bash
-ssh guinevere-vps 'sudo systemctl restart guinvere-core-p24.service'
+ssh guinevere-vps 'sudo systemctl restart guinevere-core-p24.service'
 ```
 
 - [ ] **Step 4: Verify service is healthy**
 
 ```bash
-ssh guinevere-vps 'sudo systemctl status guinvere-core-p24.service && curl -s http://127.0.0.1:8091/health | jq .'
+ssh guinevere-vps 'sudo systemctl status guinevere-core-p24.service && curl -s http://127.0.0.1:8091/health | jq .'
 ```
 
 Expected: Service active, health check passes.

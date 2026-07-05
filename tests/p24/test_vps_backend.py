@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from guinvere.tools.backends.vps import (
+from guinevere.tools.backends.vps import (
     df,
     du,
     free,
@@ -67,7 +67,7 @@ def _make_timeout_proc(timeout: float = 30.0) -> AsyncMock:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_ssh_exec_success(mock_subprocess: MagicMock) -> None:
     """ssh_exec returns structured dict with stdout on success."""
     mock_subprocess.return_value = _make_proc(b"hello\n", b"", 0)
@@ -86,7 +86,7 @@ async def test_ssh_exec_success(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_ssh_exec_failure(mock_subprocess: MagicMock) -> None:
     """ssh_exec returns ok=False on non-zero exit code."""
     mock_subprocess.return_value = _make_proc(b"", b"permission denied\n", 255)
@@ -100,7 +100,7 @@ async def test_ssh_exec_failure(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_ssh_exec_timeout(mock_subprocess: MagicMock) -> None:
     """ssh_exec returns ok=False on timeout."""
     proc = AsyncMock()
@@ -120,7 +120,7 @@ async def test_ssh_exec_timeout(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_ssh_exec_custom_timeout(mock_subprocess: MagicMock) -> None:
     """ssh_exec passes custom timeout to wait_for."""
     mock_subprocess.return_value = _make_proc(b"ok\n", b"", 0)
@@ -131,7 +131,7 @@ async def test_ssh_exec_custom_timeout(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_ssh_exec_stderr_only(mock_subprocess: MagicMock) -> None:
     """ssh_exec returns stderr when exit code is 0 but stderr has content."""
     mock_subprocess.return_value = _make_proc(b"result\n", b"warning\n", 0)
@@ -149,7 +149,7 @@ async def test_ssh_exec_stderr_only(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_scp_upload_success(mock_subprocess: MagicMock) -> None:
     """scp_upload returns ok=True on success."""
     mock_subprocess.return_value = _make_proc(b"", b"", 0)
@@ -168,7 +168,7 @@ async def test_scp_upload_success(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_scp_upload_failure(mock_subprocess: MagicMock) -> None:
     """scp_upload returns ok=False on non-zero exit."""
     mock_subprocess.return_value = _make_proc(b"", b"No such file\n", 1)
@@ -180,7 +180,7 @@ async def test_scp_upload_failure(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_scp_upload_timeout(mock_subprocess: MagicMock) -> None:
     """scp_upload returns ok=False on timeout."""
     proc = AsyncMock()
@@ -200,7 +200,7 @@ async def test_scp_upload_timeout(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_scp_upload_custom_host(mock_subprocess: MagicMock) -> None:
     """scp_upload uses custom host."""
     mock_subprocess.return_value = _make_proc(b"", b"", 0)
@@ -221,7 +221,7 @@ async def test_scp_upload_custom_host(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_scp_download_success(mock_subprocess: MagicMock) -> None:
     """scp_download returns ok=True on success."""
     mock_subprocess.return_value = _make_proc(b"", b"", 0)
@@ -240,7 +240,7 @@ async def test_scp_download_success(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_scp_download_failure(mock_subprocess: MagicMock) -> None:
     """scp_download returns ok=False on non-zero exit."""
     mock_subprocess.return_value = _make_proc(b"", b"not found\n", 1)
@@ -252,7 +252,7 @@ async def test_scp_download_failure(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_scp_download_timeout(mock_subprocess: MagicMock) -> None:
     """scp_download returns ok=False on timeout."""
     proc = AsyncMock()
@@ -277,7 +277,7 @@ async def test_scp_download_timeout(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_systemctl_status_active(mock_subprocess: MagicMock) -> None:
     """systemctl_status returns ok=True for active service."""
     mock_subprocess.return_value = _make_proc(
@@ -294,7 +294,7 @@ async def test_systemctl_status_active(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_systemctl_status_inactive(mock_subprocess: MagicMock) -> None:
     """systemctl_status returns ok=False for inactive service (non-zero exit)."""
     mock_subprocess.return_value = _make_proc(
@@ -309,7 +309,7 @@ async def test_systemctl_status_inactive(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_systemctl_status_timeout(mock_subprocess: MagicMock) -> None:
     """systemctl_status returns ok=False on timeout."""
     proc = AsyncMock()
@@ -329,7 +329,7 @@ async def test_systemctl_status_timeout(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_systemctl_status_custom_host(mock_subprocess: MagicMock) -> None:
     """systemctl_status uses custom host."""
     mock_subprocess.return_value = _make_proc(b"Active: active\n", b"", 0)
@@ -349,7 +349,7 @@ async def test_systemctl_status_custom_host(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_systemctl_start_success(mock_subprocess: MagicMock) -> None:
     """systemctl_start returns ok=True on success."""
     mock_subprocess.return_value = _make_proc(b"", b"", 0)
@@ -362,7 +362,7 @@ async def test_systemctl_start_success(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_systemctl_start_failure(mock_subprocess: MagicMock) -> None:
     """systemctl_start returns ok=False on failure."""
     mock_subprocess.return_value = _make_proc(b"", b"Failed to start\n", 1)
@@ -374,7 +374,7 @@ async def test_systemctl_start_failure(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_systemctl_start_timeout(mock_subprocess: MagicMock) -> None:
     """systemctl_start returns ok=False on timeout."""
     proc = AsyncMock()
@@ -399,7 +399,7 @@ async def test_systemctl_start_timeout(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_systemctl_stop_success(mock_subprocess: MagicMock) -> None:
     """systemctl_stop returns ok=True on success."""
     mock_subprocess.return_value = _make_proc(b"", b"", 0)
@@ -412,7 +412,7 @@ async def test_systemctl_stop_success(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_systemctl_stop_failure(mock_subprocess: MagicMock) -> None:
     """systemctl_stop returns ok=False on failure."""
     mock_subprocess.return_value = _make_proc(b"", b"not loaded\n", 5)
@@ -424,7 +424,7 @@ async def test_systemctl_stop_failure(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_systemctl_stop_timeout(mock_subprocess: MagicMock) -> None:
     """systemctl_stop returns ok=False on timeout."""
     proc = AsyncMock()
@@ -449,7 +449,7 @@ async def test_systemctl_stop_timeout(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_systemctl_restart_success(mock_subprocess: MagicMock) -> None:
     """systemctl_restart returns ok=True on success."""
     mock_subprocess.return_value = _make_proc(b"", b"", 0)
@@ -462,7 +462,7 @@ async def test_systemctl_restart_success(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_systemctl_restart_failure(mock_subprocess: MagicMock) -> None:
     """systemctl_restart returns ok=False on failure."""
     mock_subprocess.return_value = _make_proc(b"", b"Job failed\n", 1)
@@ -474,7 +474,7 @@ async def test_systemctl_restart_failure(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_systemctl_restart_timeout(mock_subprocess: MagicMock) -> None:
     """systemctl_restart returns ok=False on timeout."""
     proc = AsyncMock()
@@ -499,7 +499,7 @@ async def test_systemctl_restart_timeout(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_journalctl_success(mock_subprocess: MagicMock) -> None:
     """journalctl returns parsed log entries."""
     log_output = b"Jul 03 10:00:00 host systemd[1]: Started svc.\nJul 03 10:01:00 host svc[123]: hello\n"
@@ -516,7 +516,7 @@ async def test_journalctl_success(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_journalctl_empty_logs(mock_subprocess: MagicMock) -> None:
     """journalctl handles empty logs gracefully."""
     mock_subprocess.return_value = _make_proc(b"", b"", 0)
@@ -528,7 +528,7 @@ async def test_journalctl_empty_logs(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_journalctl_failure(mock_subprocess: MagicMock) -> None:
     """journalctl returns ok=False on non-zero exit."""
     mock_subprocess.return_value = _make_proc(b"", b"unit not found\n", 4)
@@ -540,7 +540,7 @@ async def test_journalctl_failure(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_journalctl_timeout(mock_subprocess: MagicMock) -> None:
     """journalctl returns ok=False on timeout."""
     proc = AsyncMock()
@@ -560,7 +560,7 @@ async def test_journalctl_timeout(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_journalctl_custom_lines(mock_subprocess: MagicMock) -> None:
     """journalctl uses custom line count."""
     mock_subprocess.return_value = _make_proc(b"log line 1\n", b"", 0)
@@ -581,7 +581,7 @@ async def test_journalctl_custom_lines(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_df_success(mock_subprocess: MagicMock) -> None:
     """df returns disk usage information."""
     df_output = (
@@ -599,7 +599,7 @@ async def test_df_success(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_df_failure(mock_subprocess: MagicMock) -> None:
     """df returns ok=False on failure."""
     mock_subprocess.return_value = _make_proc(b"", b"no such mount\n", 1)
@@ -611,7 +611,7 @@ async def test_df_failure(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_df_timeout(mock_subprocess: MagicMock) -> None:
     """df returns ok=False on timeout."""
     proc = AsyncMock()
@@ -631,7 +631,7 @@ async def test_df_timeout(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_df_custom_path(mock_subprocess: MagicMock) -> None:
     """df uses custom path in SSH command."""
     mock_subprocess.return_value = _make_proc(b"disk info\n", b"", 0)
@@ -650,7 +650,7 @@ async def test_df_custom_path(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_du_success(mock_subprocess: MagicMock) -> None:
     """du returns directory size information."""
     mock_subprocess.return_value = _make_proc(b"2048\t/var/log\n", b"", 0)
@@ -664,7 +664,7 @@ async def test_du_success(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_du_failure(mock_subprocess: MagicMock) -> None:
     """du returns ok=False on failure."""
     mock_subprocess.return_value = _make_proc(b"", b"permission denied\n", 1)
@@ -676,7 +676,7 @@ async def test_du_failure(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_du_timeout(mock_subprocess: MagicMock) -> None:
     """du returns ok=False on timeout."""
     proc = AsyncMock()
@@ -701,7 +701,7 @@ async def test_du_timeout(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_free_success(mock_subprocess: MagicMock) -> None:
     """free returns memory usage information."""
     free_output = (
@@ -719,7 +719,7 @@ async def test_free_success(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_free_failure(mock_subprocess: MagicMock) -> None:
     """free returns ok=False on failure."""
     mock_subprocess.return_value = _make_proc(b"", b"command not found\n", 127)
@@ -731,7 +731,7 @@ async def test_free_failure(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_free_timeout(mock_subprocess: MagicMock) -> None:
     """free returns ok=False on timeout."""
     proc = AsyncMock()
@@ -756,7 +756,7 @@ async def test_free_timeout(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_uptime_success(mock_subprocess: MagicMock) -> None:
     """uptime returns system uptime and load average."""
     mock_subprocess.return_value = _make_proc(
@@ -772,7 +772,7 @@ async def test_uptime_success(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_uptime_failure(mock_subprocess: MagicMock) -> None:
     """uptime returns ok=False on failure."""
     mock_subprocess.return_value = _make_proc(b"", b"ssh: connect refused\n", 255)
@@ -784,7 +784,7 @@ async def test_uptime_failure(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_uptime_timeout(mock_subprocess: MagicMock) -> None:
     """uptime returns ok=False on timeout."""
     proc = AsyncMock()
@@ -809,7 +809,7 @@ async def test_uptime_timeout(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_ps_success(mock_subprocess: MagicMock) -> None:
     """ps returns process list."""
     ps_output = (
@@ -828,7 +828,7 @@ async def test_ps_success(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_ps_failure(mock_subprocess: MagicMock) -> None:
     """ps returns ok=False on failure."""
     mock_subprocess.return_value = _make_proc(b"", b"error\n", 1)
@@ -839,7 +839,7 @@ async def test_ps_failure(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_ps_timeout(mock_subprocess: MagicMock) -> None:
     """ps returns ok=False on timeout."""
     proc = AsyncMock()
@@ -864,7 +864,7 @@ async def test_ps_timeout(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_kill_success(mock_subprocess: MagicMock) -> None:
     """kill returns ok=True on success."""
     mock_subprocess.return_value = _make_proc(b"", b"", 0)
@@ -877,7 +877,7 @@ async def test_kill_success(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_kill_failure(mock_subprocess: MagicMock) -> None:
     """kill returns ok=False when process not found."""
     mock_subprocess.return_value = _make_proc(b"", b"No such process\n", 1)
@@ -889,7 +889,7 @@ async def test_kill_failure(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_kill_timeout(mock_subprocess: MagicMock) -> None:
     """kill returns ok=False on timeout."""
     proc = AsyncMock()
@@ -909,7 +909,7 @@ async def test_kill_timeout(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_kill_custom_signal(mock_subprocess: MagicMock) -> None:
     """kill uses custom signal (SIGTERM default, SIGKILL optional)."""
     mock_subprocess.return_value = _make_proc(b"", b"", 0)
@@ -928,7 +928,7 @@ async def test_kill_custom_signal(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_tail_log_success(mock_subprocess: MagicMock) -> None:
     """tail_log returns last N lines of a log file."""
     log_lines = b"line 1\nline 2\nline 3\nline 4\nline 5\n"
@@ -944,7 +944,7 @@ async def test_tail_log_success(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_tail_log_failure(mock_subprocess: MagicMock) -> None:
     """tail_log returns ok=False when file not found."""
     mock_subprocess.return_value = _make_proc(b"", b"No such file\n", 1)
@@ -956,7 +956,7 @@ async def test_tail_log_failure(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_tail_log_timeout(mock_subprocess: MagicMock) -> None:
     """tail_log returns ok=False on timeout."""
     proc = AsyncMock()
@@ -976,7 +976,7 @@ async def test_tail_log_timeout(mock_subprocess: MagicMock) -> None:
 
 
 @pytest.mark.asyncio
-@patch("guinvere.tools.backends.vps.asyncio.create_subprocess_exec")
+@patch("guinevere.tools.backends.vps.asyncio.create_subprocess_exec")
 async def test_tail_log_custom_lines(mock_subprocess: MagicMock) -> None:
     """tail_log uses custom line count."""
     mock_subprocess.return_value = _make_proc(b"last line\n", b"", 0)

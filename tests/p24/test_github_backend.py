@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from guinvere.tools.backends.github import GitHubBackend
+from guinevere.tools.backends.github import GitHubBackend
 
 
 # ---------------------------------------------------------------------------

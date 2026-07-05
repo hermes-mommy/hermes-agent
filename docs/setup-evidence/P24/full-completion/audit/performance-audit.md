@@ -1,7 +1,7 @@
 # P24 Tool Backends — Performance Audit Report
 
 **Date:** 2026-07-03
-**Scope:** guinvere/tools/backends/ (9 backends, 127 actions)
+**Scope:** guinevere/tools/backends/ (9 backends, 127 actions)
 **Environment:** Windows 11, Python 3.14.3 (local dev)
 
 ## Executive Summary

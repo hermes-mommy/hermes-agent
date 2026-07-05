@@ -1,6 +1,6 @@
 """FastAPI application factory with lifespan-managed TaskGroup.
 
-Ported from ``src/core/main.py`` L239-847 (lifespan) and L847-1052 (app).
+Ported from ``guinevere/core/main.py`` L239-847 (lifespan) and L847-1052 (app).
 
 Design (per r11):
   - M15's lifespan OWNS the TaskGroup.
@@ -49,29 +49,6 @@ async def _noop_placeholder() -> None:
         pass
 
 
-def _build_mock_llm_router() -> Any:
-    """Build a MockLLMRouter for D3 (mock-only LLM in consciousness loop).
-
-    Returns an object with an async ``chat()`` method that returns
-    deterministic responses.  Used for local development and tests.
-    """
-
-    class _MockLLMRouter:
-        """Deterministic mock LLM router — D3 compliance."""
-
-        async def chat(
-            self,
-            messages: list[dict[str, str]],
-            task_type: str = "CORE_REASONING",
-            max_tokens: int = 256,
-        ) -> dict[str, Any]:
-            return {
-                "content": '{"thought": "I am thinking.", "quality_score": 0.8}',
-                "usage": {"input_tokens": 10, "output_tokens": 20},
-                "model": "mock-llm",
-            }
-
-    return _MockLLMRouter()
 
 
 @asynccontextmanager
@@ -137,15 +114,25 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     async with asyncio.TaskGroup() as tg:
         app.state.task_group = tg
 
-        # M3 consciousness loop (W6 — replaces placeholder).
-        # Construct with MockLLMRouter (D3) and settings (fail-soft).
+        # M3 consciousness loop (P5 — delegates to Hermes AIAgent single brain).
+        # The consciousness loop does NOT call the LLM itself; it delegates to
+        # a Hermes AIAgent routed through 9router (provider=custom, model=
+        # guinevere, localhost:20128). Built with no _guinevere_settings so
+        # Group G consciousness-wire in agent_init no-ops (breaks the circular:
+        # the brain must not build its own consciousness loop). Fail-soft.
         try:
             from guinevere.consciousness import ConsciousnessLoop
+            from run_agent import AIAgent
 
-            _mock_router = _build_mock_llm_router()
-            _consciousness_settings = getattr(settings, "consciousness", None)
+            _consciousness_brain = AIAgent(
+                base_url="http://localhost:20128/v1",
+                api_key="sk-noauth",
+                provider="custom",
+                model="guinevere",
+                enabled_toolsets=[],
+            )
             _consciousness_loop = ConsciousnessLoop(
-                llm_router=_mock_router,
+                llm_router=_consciousness_brain,
                 settings=settings,
             )
             _consciousness_loop.on_session_start()

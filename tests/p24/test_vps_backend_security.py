@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from guinvere.tools.backends.vps import VPSBackend
+from guinevere.tools.backends.vps import VPSBackend
 
 
 @pytest.fixture

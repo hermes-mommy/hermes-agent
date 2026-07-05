@@ -1,4 +1,4 @@
-"""Tests for guinvere.tools.backends.social — SocialBackend.
+"""Tests for guinevere.tools.backends.social — SocialBackend.
 
 TDD RED phase: one test per action, all httpx calls mocked.
 NO live external API/network calls.
@@ -24,7 +24,7 @@ pytestmark = pytest.mark.social
 @pytest.fixture()
 def backend():
     """Import and instantiate SocialBackend."""
-    from guinvere.tools.backends.social import SocialBackend
+    from guinevere.tools.backends.social import SocialBackend
     return SocialBackend()
 
 
@@ -82,7 +82,7 @@ def _mock_httpx(response: _MockResponse):
     mock_client.post = AsyncMock(return_value=response)
     mock_client.get = AsyncMock(return_value=response)
     mock_client.request = AsyncMock(return_value=response)
-    return patch("guinvere.tools.backends.social.httpx.AsyncClient", return_value=mock_client)
+    return patch("guinevere.tools.backends.social.httpx.AsyncClient", return_value=mock_client)
 
 
 # ---------------------------------------------------------------------------

@@ -30,7 +30,7 @@ Parent-verified all material findings (sub-agent distrust applied).
 - d9d315e99: src-docstring sweep (167 refs replaced)
 
 ## Known artifacts (documented, not blockers)
-1. CI-namespace dual-module: repo root guinvere (misspelled) on CI-capable FS -> 2 sys.modules keys -> isinstance False. xfail. Backends function. Deep rename = separate task.
+1. CI-namespace dual-module: repo root guinevere (misspelled) on CI-capable FS -> 2 sys.modules keys -> isinstance False. xfail. Backends function. Deep rename = separate task.
 2. Env-leaky tests: live (Prometheus) + social (.env.x_poster) -> marked @live/@social, excluded from default suite.
 
 ## P24 state (P0-P9 done)

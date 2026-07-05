@@ -372,8 +372,8 @@ class TestBackendInterface:
 
     @pytest.mark.xfail(
         reason="CI-namespace artifact (NOT a functional bug): the repo root dir is named "
-               "'guinvere' (misspelled) on a case-insensitive-capable FS, so Python can load "
-               "the same disk dir under two sys.modules keys (guinvere / guinevere) -> two "
+               "'guinevere' (misspelled) on a case-insensitive-capable FS, so Python can load "
+               "the same disk dir under two sys.modules keys (guinevere / guinevere) -> two "
                "ToolBackend class objects -> isinstance() False for backends loaded via the "
                "alternate spelling. All 9 backends function correctly (import OK, own TDD "
                "tests pass, dispatch works). Deep namespace rename is a separate task.",

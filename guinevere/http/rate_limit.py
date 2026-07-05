@@ -1,6 +1,6 @@
 """In-process rate-limit middleware for Guinevere's FastAPI app.
 
-Ported from ``src/core/api/rate_limit.py`` (149 lines).
+Ported from ``guinevere/core/api/rate_limit.py`` (149 lines).
 
 Deque-based, self-contained — no ``slowapi`` dependency.  Exempt paths:
 ``/metrics``, ``/health``, ``/health/ready``, ``/health/agent``, ``/``.

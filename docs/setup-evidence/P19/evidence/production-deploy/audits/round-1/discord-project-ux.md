@@ -368,7 +368,7 @@ No service was restarted, stopped, or degraded by the P19 file deployment. The P
 
 1. **The service masking claim in P19-012 evidence is wrong.** `guinevere-discord.service` is `enabled` + `active (running)`. The P19-012 service deploy evidence says "Masked discord bot only" and the P20 memory file records masking. But the service was unmasked and started at 2026-06-25 19:45:01 WIB (unit file birth: 2026-06-25 19:37:35). This is after the P20 closure but before the P19 deploy evidence was authored. The P19 evidence appears to have been written referencing stale state.
 
-2. **The P19 smoke test references `guinvere` DB (typo).** The smoke test (SMOKE 4/5) says `life_kernel.audit_journal` and `audit.audit_trail` are in the `guinvere` DB. The actual DATABASE_URL points to `guinevere` (no typo). The smoke test DB name is wrong, though the actual queries likely ran against the correct DB via the connection string.
+2. **The P19 smoke test references `guinevere` DB (typo).** The smoke test (SMOKE 4/5) says `life_kernel.audit_journal` and `audit.audit_trail` are in the `guinevere` DB. The actual DATABASE_URL points to `guinevere` (no typo). The smoke test DB name is wrong, though the actual queries likely ran against the correct DB via the connection string.
 
 3. **The `require_canonical_registry()` error message is stale.** It says "expected 49 commands" but the check is `len(names) != 51`. Cosmetic only.
 
@@ -383,7 +383,7 @@ No service was restarted, stopped, or degraded by the P19 file deployment. The P
 | REC-UX-01 | LOW | Update P19-012 service deploy evidence to reflect that `guinevere-discord.service` is `enabled`+`active` (not masked). Remove the "masked discord bot only" language. |
 | REC-UX-02 | LOW | Fix `_command_registry.py` line 443 error message from "expected 49" to "expected 51". |
 | REC-UX-03 | INFO | When operator is ready to activate `/project`: sync guild commands (will register `project` + `projects`), set `feature:projects:enabled = true` in Redis, and verify `/project` responds. |
-| REC-UX-04 | LOW | Correct the smoke test DB name reference from `guinvere` to `guinevere` in the evidence documents. |
+| REC-UX-04 | LOW | Correct the smoke test DB name reference from `guinevere` to `guinevere` in the evidence documents. |
 
 ---
 

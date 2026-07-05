@@ -2,15 +2,15 @@
 notifications, gotify, shadow, project-session, and startup utilities.
 
 Ports from:
-- src/discord/_embed_utils.py
-- src/discord/_auth_guard.py
-- src/discord/_intents.py
-- src/discord/colors.py
-- src/discord/notifications.py
-- src/discord/gotify_fallback.py
-- src/discord/shadow_pipeline.py
-- src/discord/project_session.py
-- src/discord/_startup.py
+- guinevere/discord/_embed_utils.py
+- guinevere/discord/_auth_guard.py
+- guinevere/discord/_intents.py
+- guinevere/discord/colors.py
+- guinevere/discord/notifications.py
+- guinevere/discord/gotify_fallback.py
+- guinevere/discord/shadow_pipeline.py
+- guinevere/discord/project_session.py
+- guinevere/discord/_startup.py
 
 All stale imports have been removed (former surveillance gating,
 former persona safe-mode and mood-engine). Cleaned to use
@@ -41,7 +41,7 @@ FOOTER_TEXT: Final[str] = "Guinevere de Baroque"
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# COLORS (from src/discord/colors.py)
+# COLORS (from guinevere/discord/colors.py)
 # ══════════════════════════════════════════════════════════════════════════
 
 PRIMARY: Final[int] = 0x6B21A8
@@ -77,7 +77,7 @@ def as_hex(color: int) -> str:
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# AUTH GUARD (from src/discord/_auth_guard.py)
+# AUTH GUARD (from guinevere/discord/_auth_guard.py)
 # ══════════════════════════════════════════════════════════════════════════
 
 
@@ -95,7 +95,7 @@ def is_faiz_interaction(interaction: object) -> bool:
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# INTENTS (from src/discord/_intents.py)
+# INTENTS (from guinevere/discord/_intents.py)
 # ══════════════════════════════════════════════════════════════════════════
 
 
@@ -134,7 +134,7 @@ def get_intents() -> DiscordIntents:
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# EMBED UTILS (from src/discord/_embed_utils.py)
+# EMBED UTILS (from guinevere/discord/_embed_utils.py)
 # ══════════════════════════════════════════════════════════════════════════
 
 
@@ -279,7 +279,7 @@ async def followup_send(
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# STARTUP (from src/discord/_startup.py)
+# STARTUP (from guinevere/discord/_startup.py)
 # ══════════════════════════════════════════════════════════════════════════
 
 STARTUP_TITLE: Final[str] = "\U0001f451 Mommy sudah bangun, Darling."
@@ -332,7 +332,7 @@ async def startup_on_ready(bot: object) -> None:
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# NOTIFICATIONS (from src/discord/notifications.py)
+# NOTIFICATIONS (from guinevere/discord/notifications.py)
 # ══════════════════════════════════════════════════════════════════════════
 
 SEV_CHANNELS: Final[dict[str, str]] = {
@@ -400,7 +400,7 @@ async def send_notification(bot: object, alert: SevAlert) -> bool:
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# GOTIFY FALLBACK (from src/discord/gotify_fallback.py)
+# GOTIFY FALLBACK (from guinevere/discord/gotify_fallback.py)
 # ══════════════════════════════════════════════════════════════════════════
 
 GOTIFY_URL: Final[str] = "http://localhost:8081"
@@ -450,7 +450,7 @@ async def send_gotify_fallback(title: str, description: str, severity: str) -> b
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# SHADOW PIPELINE (from src/discord/shadow_pipeline.py)
+# SHADOW PIPELINE (from guinevere/discord/shadow_pipeline.py)
 # ══════════════════════════════════════════════════════════════════════════
 
 _COST_CAP_USD: Final[float] = 5.0
@@ -591,7 +591,7 @@ async def _create_subprocess(*args: str) -> Any:
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# PROJECT SESSION (from src/discord/project_session.py)
+# PROJECT SESSION (from guinevere/discord/project_session.py)
 # ══════════════════════════════════════════════════════════════════════════
 
 _DEFAULT_PROJECT_ID: str = "00000000-0000-0000-0000-000000000001"
@@ -621,7 +621,7 @@ def get_default_project_id() -> str:
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# CONVERSATIONAL HANDLER (from src/discord/hermes_conversational.py)
+# CONVERSATIONAL HANDLER (from guinevere/discord/hermes_conversational.py)
 # Condensed — reactive handler for #guinevere-chat. Stale persona
 # imports replaced with guinevere.emotions stubs.
 # ══════════════════════════════════════════════════════════════════════════
@@ -641,9 +641,9 @@ FALLBACK_MESSAGE: Final[str] = (
 class ConversationalHandler:
     """Hermes-native conversational handler for #guinevere-chat.
 
-    Replaces src.discord.hermes_conversational. Cleans stale imports:
+    Replaces guinevere.discord.hermes_conversational. Cleans stale imports:
     - Former persona distress detection → DistressDetectorStub (no-op)
-    - src.persona.mood_engine → guinevere.emotions stub
+    - guinevere.persona.mood_engine → guinevere.emotions stub
     - Former surveillance gating → removed (not used here)
     """
 

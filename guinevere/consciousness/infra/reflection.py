@@ -1,6 +1,6 @@
 """Post-loop reflection hooks — extract lessons learned from completed loops.
 
-Ported from ``src/loops/reflection.py`` — API preserved for M10 (W14).
+Ported from ``guinevere/loops/reflection.py`` — API preserved for M10 (W14).
 """
 
 from __future__ import annotations

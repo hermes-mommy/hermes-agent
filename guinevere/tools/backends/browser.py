@@ -14,8 +14,6 @@ import base64
 import logging
 from typing import Any
 
-from playwright.async_api import async_playwright  # noqa: F811 — module-level for mock.patch
-
 from guinevere.tools.tool_backend import Action, ActionTier, ToolBackend
 
 logger = logging.getLogger(__name__)
@@ -64,6 +62,8 @@ class BrowserBackend(ToolBackend):
         """
         if self._page is not None:
             return self._page
+
+        from playwright.async_api import async_playwright
 
         self._playwright_cm = async_playwright()
         pw = await self._playwright_cm.__aenter__()

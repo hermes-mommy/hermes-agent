@@ -40,13 +40,13 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def _create_session_factory() -> Any:
-    """Create an async session factory from guinvere.memory.db.
+    """Create an async session factory from guinevere.memory.db.
 
     Returns a callable that yields ``AsyncSession`` (async context manager).
     Typed as ``Any`` because the real return is an async generator context
     manager, not a plain callable — mypy cannot reconcile the two.
     """
-    from guinvere.memory.db import get_async_session
+    from guinevere.memory.db import get_async_session
     return get_async_session
 
 

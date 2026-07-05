@@ -1,4 +1,4 @@
-"""X/Twitter channel adapter — ported from src/x_poster/.
+"""X/Twitter channel adapter — ported from guinevere/x_poster/.
 
 Condenses 26 source files (~5201 lines) into a single adapter that
 preserves: X API v2 client (OAuth 2.0 Bearer + auto-refresh), poster
@@ -333,13 +333,18 @@ class XAdapter(ChannelSender):
 
         try:
             # Actual X API post deferred to runtime.
-            logger.info("x_post_simulated", length=len(tweet_text))
+            # P9.5: honest config_missing — use guinevere.tools.backends.social
+            # (SocialBackend.post_x, wired to prod .env.x_poster OAuth 1.0a) for real posts.
+            logger.info("x_post_not_wired_in_channel_adapter", length=len(tweet_text))
             await self._circuit_breaker.record_success()
             return SendResult(
                 success=True,
                 channel=self.channel_id,
                 target=target,
-                message_id="simulated",
+                # P9.5: no fake success — return config_missing
+                success=False,
+                error="X post API not wired in channel adapter — use tools/backends/social",
+                config_missing=True,
             )
         except Exception as exc:
             logger.error("x send failed: %s", exc, exc_info=True)
@@ -407,5 +412,5 @@ class XAdapter(ChannelSender):
             logger.warning("x_refresh_skipped_missing_credentials")
             return False
         # Actual HTTP refresh deferred to runtime.
-        logger.info("x_refresh_simulated")
+        logger.info("x_refresh_config_missing")  # P9.5: not wired
         return True

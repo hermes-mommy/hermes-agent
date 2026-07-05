@@ -1,6 +1,6 @@
 """HMAC API key authentication for Guinevere HTTP routes.
 
-Ported from ``src/core/api/auth.py`` (55 lines).
+Ported from ``guinevere/core/api/auth.py`` (55 lines).
 
 Guinevere is read-only by default — only mutations require the
 ``X-Guinevere-API-Key`` header via ``Depends(get_api_key)``.

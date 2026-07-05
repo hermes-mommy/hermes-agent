@@ -27,7 +27,7 @@ class MoodState(str, Enum):
     """16 discrete mood states for Guinevere's emotion system.
 
     These are greenfield — NOT ported from the old 5-mood FSM in
-    src/persona/mood_engine.py.
+    guinevere/persona/mood_engine.py.
     """
 
     HAPPY = "HAPPY"

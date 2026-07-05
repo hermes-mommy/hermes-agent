@@ -9,8 +9,8 @@ Provides:
   - wire(agent) function for agent_init integration
 
 Patterns ported from:
-  - src/loops/recovery.py (RecoveryManager, checkpoint-based restart)
-  - src/x_poster/circuit_breaker.py (DB-persisted breaker state)
+  - guinevere/loops/recovery.py (RecoveryManager, checkpoint-based restart)
+  - guinevere/x_poster/circuit_breaker.py (DB-persisted breaker state)
 """
 
 from __future__ import annotations

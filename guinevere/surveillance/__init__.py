@@ -1,6 +1,6 @@
 """Surveillance subsystem — HMAC-verified event ingest, buffering, and storage.
 
-Ports from src/surveillance/ (14 files) into 4 target files per r12.
+Ports from guinevere/surveillance/ (14 files) into 4 target files per r12.
 Operator approval gating NOT ported per ADR-062.
 """
 

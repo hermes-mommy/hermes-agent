@@ -46,7 +46,7 @@ async def test_consciousness_loop_with_real_aiagent_delegates_to_9router() -> No
     import sys
     sys.path.insert(0, "/home/guinevere/p24-port")
     from run_agent import AIAgent
-    from guinvere.consciousness.substrates import _self_prompt
+    from guinevere.consciousness.substrates import _self_prompt
 
     # Build the single brain. settings=None so Group G consciousness-wire
     # no-ops (breaks circular: brain does not build its own consciousness loop).

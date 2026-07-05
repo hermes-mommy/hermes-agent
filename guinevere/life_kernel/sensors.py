@@ -4,8 +4,8 @@ Manages daily-life sensor adapters and exposes a single async interface
 for the heartbeat / observer loop to collect observations and check
 adapter health.
 
-Ported from src/life_kernel/sensors.py + sensor_adapters/ and
-src/wearable/ (19 files — sensor adapter patterns; stale consent
+Ported from guinevere/life_kernel/sensors.py + sensor_adapters/ and
+guinevere/wearable/ (19 files — sensor adapter patterns; stale consent
 imports cleaned by M2 paradigm shift).
 
 P20 invariant: fail-soft — one misbehaving sensor never breaks the loop.
@@ -178,7 +178,7 @@ class SensorRegistry:
         }
 
 
-# --- Concrete sensor adapters (ported from src/wearable/) --------------------
+# --- Concrete sensor adapters (ported from guinevere/wearable/) --------------------
 # These are thin sensor adapters that wrap wearable data sources.
 # Stale consent imports have been CLEANED (W13 requirement).
 # Consent checking is removed (M2 paradigm shift — no consent gate).

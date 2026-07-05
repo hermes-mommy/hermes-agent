@@ -5,9 +5,9 @@
 ## 3 Services AUTONOMOUS (creds reused from prod — P7 done)
 | Service | Creds source (prod) | P24 backend wired | Status |
 |---|---|---|---|
-| Gmail | /home/guinevere/code/guinevere/secrets/gmail-token.json + gmail-client-secrets.json (OAuth2, gmail.modify scope) | guinvere/tools/backends/email.py (_build_gmail_service, auto-refresh) | ✅ is_available=True (verified) |
-| X (Twitter) | /home/guinevere/code/guinevere/.env.x_poster (X OAuth 1.0a: X_POSTER_X_API_KEY/SECRET + ACCESS_TOKEN/SECRET) | guinvere/tools/backends/social.py (post_x/read_mentions/reply_x, OAuth 1.0a HMAC-SHA1 signing) | ✅ wired (verified creds load) |
-| WhatsApp | /home/guinevere/code/guinevere/secrets/.env.whatsapp (NEONIZE_SESSION_PATH + PASSWORD, SOPS-encrypted) + neonize session | guinvere/channels/whatsapp/ (21 .py, proven prod code: auth/bridge/consent/hard_stop) | ✅ creds exist (P8 deploy copies session) |
+| Gmail | /home/guinevere/code/guinevere/secrets/gmail-token.json + gmail-client-secrets.json (OAuth2, gmail.modify scope) | guinevere/tools/backends/email.py (_build_gmail_service, auto-refresh) | ✅ is_available=True (verified) |
+| X (Twitter) | /home/guinevere/code/guinevere/.env.x_poster (X OAuth 1.0a: X_POSTER_X_API_KEY/SECRET + ACCESS_TOKEN/SECRET) | guinevere/tools/backends/social.py (post_x/read_mentions/reply_x, OAuth 1.0a HMAC-SHA1 signing) | ✅ wired (verified creds load) |
+| WhatsApp | /home/guinevere/code/guinevere/secrets/.env.whatsapp (NEONIZE_SESSION_PATH + PASSWORD, SOPS-encrypted) + neonize session | guinevere/channels/whatsapp/ (21 .py, proven prod code: auth/bridge/consent/hard_stop) | ✅ creds exist (P8 deploy copies session) |
 
 ## 4 Services NEED OPERATOR PROVISION (genuinely no creds in prod — not reusable)
 | Service | What operator must create | Where to put | P24 backend ready? |

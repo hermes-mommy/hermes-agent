@@ -1,6 +1,6 @@
 """HMAC-verified surveillance event ingest.
 
-Ports: src/surveillance/auth.py, classification.py, models.py, replay.py,
+Ports: guinevere/surveillance/auth.py, classification.py, models.py, replay.py,
 secrets.py, secret_scanner.py.
 
 Consolidates HMAC-SHA256 verification (X-Signature/X-Timestamp/X-Nonce),

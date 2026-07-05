@@ -8,7 +8,7 @@ Design decisions:
   - Per-substrate try/except (r04 §7: TaskGroup propagates CancelledError).
   - Each substrate runs in its own asyncio.Task (not inside the TaskGroup
     directly) so that one substrate crashing does not kill siblings.
-  - MockLLMRouter for all self-prompting (D3).
+  - A real Hermes AIAgent (single brain via 9router) for all self-prompting (P5).
   - Config from agent._guinevere_settings.consciousness (fail-soft).
   - Pydantic v2 / async/await throughout.
 """
@@ -53,7 +53,7 @@ class ConsciousnessLoop:
     """7-substrate consciousness loop per ADR-063.
 
     Lifecycle:
-      1. Construct with ``llm_router`` (MockLLMRouter for D3) and optional
+      1. Construct with ``llm_router`` (a real Hermes AIAgent via 9router) and optional
          ``settings`` (fail-soft if ``None``).
       2. Call ``on_session_start()`` to initialise state.
       3. Call ``run()`` — spawns 7 substrate tasks and blocks until shutdown.

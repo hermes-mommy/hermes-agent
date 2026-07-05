@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import pytest
 
-from guinvere.tools.backends.freelance import FreelanceBackend
+from guinevere.tools.backends.freelance import FreelanceBackend
 
 
 @pytest.fixture

@@ -1,7 +1,7 @@
 """Hash-chained audit trail writer for loop actions.
 
-Ported from ``src/loops/audit_writer.py`` — API preserved for M10 (W14).
-The lazy import of ``src.memory.models.AuditTrail`` is kept so the DB
+Ported from ``guinevere/loops/audit_writer.py`` — API preserved for M10 (W14).
+The lazy import of ``guinevere.memory.models.AuditTrail`` is kept so the DB
 schema reference resolves at write-time (not import-time).
 """
 
@@ -67,7 +67,7 @@ class AuditWriter:
             data: Event data dictionary.
             project_id: P19-010 project namespace UUID. ``None`` = legacy/global.
         """
-        from src.memory.models import AuditTrail  # Lazy import to avoid circular
+        from guinevere.memory.models import AuditTrail  # Lazy import to avoid circular
 
         timestamp = datetime.now(timezone.utc)
 
@@ -133,7 +133,7 @@ class AuditWriter:
         Replays all events for loop_id, recomputes hashes, compares to stored.
         Returns True if chain intact, False if tampered.
         """
-        from src.memory.models import AuditTrail
+        from guinevere.memory.models import AuditTrail
 
         async with self._session_factory() as session:
             query = select(AuditTrail).where(

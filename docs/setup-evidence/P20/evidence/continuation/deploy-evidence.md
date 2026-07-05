@@ -49,7 +49,7 @@ SERVICES: hermes-gateway=active  guinevere-mcp=active  (undisturbed)   ✅
 
 ### Journal persisted to Postgres (AC-LIFE-008 proof)
 ```
-guinvere DB: life_kernel.audit_journal → 2 kernel-written rows
+guinevere DB: life_kernel.audit_journal → 2 kernel-written rows
 latest: "Cycle 197204: act on: Finance Health Check
   Scan recent expense database and billing due dates...
   Next: Query PostgreSQL finance.transactions for this month's records...

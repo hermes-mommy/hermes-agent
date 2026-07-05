@@ -10,7 +10,7 @@
 - **"Truly 100% fork"** = new GitHub repo proper fork-and-diverge from NousResearch/hermes-agent@77a1650c + 0 mock/stub/CONFIG_MISSING in P1-P22 runtime + production live. All 3 dimensions.
 - **End-game**: Guinevere = AI companion 24/7 (mama Faiz) + engineering co-pilot. NOT SaaS.
 - **P24 strict** before P28-P36 (no parallel).
-- **Port all src/ → guinvere/**, then hapus src/ everywhere (built-in = no src/).
+- **Port all src/ → guinevere/**, then hapus src/ everywhere (built-in = no src/).
 - **Deploy**: side-by-side (P24-fork as new service, legacy untouched until verified, then switch).
 - **Work style**: "diskusi tiap phase dulu" — autonomous WITHIN a phase, align BETWEEN phases.
 - **Stub/mock = kegagalan inti** — Guinevere must not use ANY fake code. Test-fixture mocks OK.
@@ -33,21 +33,21 @@
 - Fixed 22 swallow-except anti-patterns (Priority 1-3)
 - 556 tests pass (pre-port)
 
-### Port src/→guinvere/ ✅ (commit 38be76c4, on VPS + pushed to fork)
-- **477 files ported** to guinvere/ namespace (deterministic script on VPS Linux)
-- **564 total .py in guinvere/** (87 P24-native + 477 ported), **30 subpackages**
+### Port src/→guinevere/ ✅ (commit 38be76c4, on VPS + pushed to fork)
+- **477 files ported** to guinevere/ namespace (deterministic script on VPS Linux)
+- **564 total .py in guinevere/** (87 P24-native + 477 ported), **30 subpackages**
 - Hybrid: 15 net-new full port + 7 overlap merge-keep-native
 - 30/30 subpackages importable (prod venv + argon2-cffi installed)
-- 541 tests pass, 0 `from src.` refs, 0 `guinvere.guinvere` double-nesting
+- 541 tests pass, 0 `from src.` refs, 0 `guinevere.guinevere` double-nesting
 - Fixes: persona/__init__ deprecated-import try/except guards; gamification/models `metadata`→`extra_metadata` (col kept)
 - **Live on GitHub**: gh API confirms all 30 subpackages on p24-initial
 
 ## 3. Critical Environment Facts (caused 3 port failures, now solved)
 
-1. **Windows NTFS forward-slash path anomaly**: `guinvere/` dir only stat-able via forward-slash paths; backslash → INVALID_FILE_ATTRIBUTES. `git add guinvere/` fails on Windows.
-2. **Two indistinguishable `guinvere/` dirs on Windows local machine** (p24-fresh/guinvere vs anomalous repo /c/Users/faizz/guinevere/guinevere) → agents wrote to wrong one.
-3. **`.gitignore:40 guinvere/`** (pre-existing) silently un-committed namespace — FIXED.
-4. **Python text-mode subprocess `\r` injection** in git mktree stdin → tree entries named `"guinvere\r"`. Fix: bytes-mode stdin.
+1. **Windows NTFS forward-slash path anomaly**: `guinevere/` dir only stat-able via forward-slash paths; backslash → INVALID_FILE_ATTRIBUTES. `git add guinevere/` fails on Windows.
+2. **Two indistinguishable `guinevere/` dirs on Windows local machine** (p24-fresh/guinevere vs anomalous repo /c/Users/faizz/guinevere/guinevere) → agents wrote to wrong one.
+3. **`.gitignore:40 guinevere/`** (pre-existing) silently un-committed namespace — FIXED.
+4. **Python text-mode subprocess `\r` injection** in git mktree stdin → tree entries named `"guinevere\r"`. Fix: bytes-mode stdin.
 
 **SOLUTION = work on VPS Linux** (`/home/guinevere/p24-port`, clean paths, git works). DO NOT attempt port/mock-kill work on Windows local. All P24 execution should happen via `ssh guinevere-vps` on the p24-port clone.
 
@@ -66,15 +66,15 @@
 
 ### Phase 4.1 — MockLLMRouter → Hermes-delegate (DESIGN CHANGE)
 
-**Original plan**: swap MockLLMRouter → RealLLMRouter (consciousness calls 9router directly via guinvere/core/services/llm_router.py).
+**Original plan**: swap MockLLMRouter → RealLLMRouter (consciousness calls 9router directly via guinevere/core/services/llm_router.py).
 
 **Operator correction this session**: consciousness loop should DELEGATE to Hermes AIAgent (single brain), NOT call LLM itself. "consciousness = hermes juga, bukan LLM sendiri."
 
 **Current code reality** (verified):
-- `guinvere/http/server.py:145` wires `_mock_router = _build_mock_llm_router()` into ConsciousnessLoop
-- `guinvere/consciousness/substrates.py:67` `_self_prompt()` calls `llm_router.chat(messages, task_type, max_tokens)` DIRECTLY (not Hermes)
+- `guinevere/http/server.py:145` wires `_mock_router = _build_mock_llm_router()` into ConsciousnessLoop
+- `guinevere/consciousness/substrates.py:67` `_self_prompt()` calls `llm_router.chat(messages, task_type, max_tokens)` DIRECTLY (not Hermes)
 - consciousness/ has 0 imports of `agent`/`AIAgent`/`run_agent` — does NOT delegate to Hermes
-- `guinvere/core/services/llm_router.py` (ported, 252 lines) = real router to 9router (model ds/deepseek-v4-flash default; operator said use `guinevere` combo model)
+- `guinevere/core/services/llm_router.py` (ported, 252 lines) = real router to 9router (model ds/deepseek-v4-flash default; operator said use `guinevere` combo model)
 - `run_agent.py:327` = `class AIAgent` (importable, constructor takes base_url/api_key/provider/model)
 - `agent/` adapters: anthropic_adapter, azure_identity_adapter, bedrock_adapter, codex_responses_adapter, gemini_cloudcode_adapter, gemini_native_adapter
 - **Hermes agent NOT wired to 9router** (0 refs to 9router/20128 in agent/), and AIAgent import throws `AuthenticationError: invalid username-password pair` (provider init fails — needs wiring)
@@ -96,13 +96,13 @@
 3. Phase 4.4/4.8/4.9 (need creds): github (GITHUB_TOKEN), social (X/Telegram), email (Gmail OAuth in secrets/) — ASK operator.
 4. Phase 4.10 freelance: document N/A (DEFER per feasibility research).
 5. Phase 4.11: CONFIG_MISSING adapters → real creds (WhatsApp LIVE, X LIVE, Gmail/Telegram need creds).
-6. Phase 5: deploy side-by-side (wire config, migrations, new service guinvere-core-p24:8090, verify E2E, switch, retire legacy).
+6. Phase 5: deploy side-by-side (wire config, migrations, new service guinevere-core-p24:8090, verify E2E, switch, retire legacy).
 7. Phase 6-8: audit, super-audit, docs.
 
 ## 7. File References (read these in fresh session)
 
 - **This handoff**: `evidence/P24-deploy/HANDOFF-P24-SESSION.md`
-- **Memory** (auto-loads): `~/.claude/projects/C--Users-faizz-guinevere/memory/` — p24-owned-fork-direction, p24-port-complete, p24-guinvere-gitignore-anomaly, p24-double-nested-import-bug, guinevere-prod-live-faiz-prod-01, p24-src-port-gotchas
+- **Memory** (auto-loads): `~/.claude/projects/C--Users-faizz-guinevere/memory/` — p24-owned-fork-direction, p24-port-complete, p24-guinevere-gitignore-anomaly, p24-double-nested-import-bug, guinevere-prod-live-faiz-prod-01, p24-src-port-gotchas
 - **Gap audit**: `evidence/P24-deploy/audit/full-gap-audit.md`
 - **Port plan**: `evidence/P24-deploy/port/src-port-plan.md` (per-subpackage merge matrix, topological order)
 - **Fork verification**: `evidence/P24-deploy/fork/fork-creation-verification.md`
