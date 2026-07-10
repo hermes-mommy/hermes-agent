@@ -48,9 +48,11 @@ class ConsciousnessLoop:
         self,
         llm_router: Any | None = None,
         settings: Any | None = None,
+        redis_client: Any | None = None,
     ) -> None:
         self._llm_router = llm_router
         self._settings = settings
+        self._redis_client = redis_client
         self._state = ConsciousnessState()
         self._shutdown_event = asyncio.Event()
         self._stream_task: asyncio.Task[None] | None = None
@@ -77,6 +79,7 @@ class ConsciousnessLoop:
             state=self._state,
             shutdown_event=self._shutdown_event,
             config=self._config,
+            redis_client=self._redis_client,
         )
 
         logger.info(

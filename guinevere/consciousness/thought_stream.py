@@ -220,11 +220,13 @@ class ThoughtStream:
         state: ConsciousnessState,
         shutdown_event: asyncio.Event,
         config: dict[str, Any] | None = None,
+        redis_client: Any = None,
     ) -> None:
         self._llm_router = llm_router
         self._state = state
         self._shutdown_event = shutdown_event
         self._config = config or {}
+        self._redis_client = redis_client
 
         # Extract thought_type_weights from config if present.
         self._thought_type_weights: dict[str, float] | None = None
@@ -263,7 +265,7 @@ class ThoughtStream:
             try:
                 from guinevere.consciousness.safety import HardStopGuard
 
-                redis_client = self._config.get("redis_client")
+                redis_client = self._redis_client or self._config.get("redis_client")
                 if redis_client is None:
                     # No Redis client available — skip HARD STOP check entirely.
                     logger.debug("thought_stream.hard_stop.no_redis_client")

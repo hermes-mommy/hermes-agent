@@ -11,7 +11,7 @@ appends-only.
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -102,6 +102,7 @@ class ConsciousnessConfig(BaseModel):
 
     enabled: bool = True
     continuous_stream: bool = True
+    redis_client: Any | None = None
     heartbeat_intervals: list[int] = Field(
         default_factory=lambda: [60, 300, 900],
     )
@@ -116,6 +117,7 @@ class ConsciousnessConfig(BaseModel):
             "heartbeat": 0.15,
         },
     )
+    redis_client: Optional[Any] = None
 
 
 class EmotionConfig(BaseModel):

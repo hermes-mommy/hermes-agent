@@ -145,9 +145,11 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
                     model="guinevere",
                     enabled_toolsets=[],
                 )
+                _redis = getattr(app.state, "redis_client", None)
                 _consciousness_loop = ConsciousnessLoop(
                     llm_router=_consciousness_brain,
                     settings=settings,
+                    redis_client=_redis,
                 )
                 _consciousness_loop.on_session_start()
 
