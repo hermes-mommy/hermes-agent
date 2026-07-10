@@ -288,17 +288,30 @@ STARTUP_FOOTER: Final[str] = "Guinevere de Baroque"
 PRESENCE_TEXT: Final[str] = "Darling \U0001f441"
 
 
-async def startup_on_ready(bot: object) -> None:
+async def startup_on_ready(bot: object, channel_config: object = None) -> None:
     """Startup greeting handler. Sends a greeting embed once per session.
 
     Uses idempotency guard (_startup_sent) to ensure greeting is sent
     only once per bot session.
+
+    Args:
+        bot: The ``GuinevereBot`` instance.
+        channel_config: Optional ``ChannelConfig`` instance.  If not
+            provided, reads ``bot.channel_config``.
     """
     if getattr(bot, "_startup_sent", False):
         return
     setattr(bot, "_startup_sent", True)
 
-    channel_id = 1_510_914_600_777_023_659
+    cfg = channel_config or getattr(bot, "channel_config", None)
+    channel_id: int = 0
+    if cfg is not None:
+        channel_id = getattr(cfg, "general", 0)
+
+    if not isinstance(channel_id, int) or channel_id == 0:
+        logger.warning("startup_channel_not_found", extra={"reason": "no_channel_config"})
+        return
+
     channel = None
     get_channel = getattr(bot, "get_channel", None)
     if get_channel is not None:
@@ -365,26 +378,56 @@ class SevAlert:
             object.__setattr__(self, "color", SEV_COLORS.get(self.severity, NEUTRAL))
 
 
-async def send_notification(bot: object, alert: SevAlert) -> bool:
+SEV_CHANNEL_KEYS: Final[dict[str, str]] = {
+    "SEV0": "notifications",
+    "SEV1": "notifications",
+    "SEV2": "notifications",
+    "SEV3": "notifications",
+    "SEV4": "notifications",
+}
+"""Maps severity → ChannelConfig key for direct ID lookup."""
+
+
+async def send_notification(
+    bot: object,
+    alert: SevAlert,
+    channel_config: object = None,
+) -> bool:
     """Route an SEV alert to the appropriate Discord channel.
+
+    Uses ``channel_config`` for direct ID lookup when available.
+    Falls back to name-based ``discord.utils.get`` only when no config
+    is provided (backward compatibility).
 
     Returns True if the notification was sent successfully.
     """
-    channel_name = SEV_CHANNELS.get(alert.severity, "audit-log")
-    guilds = getattr(bot, "guilds", [])
-    if not guilds:
-        return False
-
-    guild = guilds[0]
-    channels = getattr(guild, "text_channels", [])
+    cfg = channel_config or getattr(bot, "channel_config", None)
     target = None
-    for ch in channels:
-        if getattr(ch, "name", "") == channel_name:
-            target = ch
-            break
+
+    # Direct ID lookup via ChannelConfig
+    if cfg is not None:
+        sev_key = SEV_CHANNEL_KEYS.get(alert.severity, "notifications")
+        ch_id = getattr(cfg, sev_key, None)
+        if isinstance(ch_id, int):
+            get_channel = getattr(bot, "get_channel", None)
+            if get_channel is not None:
+                target = get_channel(ch_id)
+
+    # Fallback: name-based lookup (backward compat, no ChannelConfig)
+    if target is None:
+        channel_name = SEV_CHANNELS.get(alert.severity, "audit-log")
+        guilds = getattr(bot, "guilds", [])
+        if not guilds:
+            return False
+        guild = guilds[0]
+        channels = getattr(guild, "text_channels", [])
+        for ch in channels:
+            if getattr(ch, "name", "") == channel_name:
+                target = ch
+                break
 
     if target is None:
-        logger.warning("notification_channel_not_found", extra={"channel": channel_name})
+        logger.warning("notification_channel_not_found", extra={"severity": alert.severity})
         return False
 
     embed = build_embed(alert.title, alert.description, alert.color)
@@ -392,7 +435,7 @@ async def send_notification(bot: object, alert: SevAlert) -> bool:
     if send_fn is not None:
         try:
             await send_fn(embed=embed)
-            logger.info("notification_sent", extra={"severity": alert.severity, "channel": channel_name})
+            logger.info("notification_sent", extra={"severity": alert.severity})
             return True
         except (OSError, RuntimeError) as exc:
             logger.warning("notification_failed", extra={"error": str(exc)})
@@ -626,7 +669,8 @@ def get_default_project_id() -> str:
 # imports replaced with guinevere.emotions stubs.
 # ══════════════════════════════════════════════════════════════════════════
 
-GUINEVERE_CHAT_CHANNEL_ID: Final[int] = 1_510_914_600_777_023_659
+GUINEVERE_CHAT_CHANNEL_ID: Final[int] = 0
+"""Deprecated. Use ChannelConfig for channel ID resolution."""
 RATE_LIMIT_MAX: Final[int] = 10
 RATE_LIMIT_WINDOW: Final[int] = 60
 DISCORD_MAX_CHARS: Final[int] = 2000
@@ -637,29 +681,53 @@ FALLBACK_MESSAGE: Final[str] = (
     "Try again in a moment? \U0001f49b"
 )
 
+# Default conversational channel keys (same as hermes_conversational.CONVERSATIONAL_CHANNEL_KEYS)
+_CONVERSATIONAL_CHANNEL_KEYS: Final[tuple[str, ...]] = ("general", "commands_hq")
+
 
 class ConversationalHandler:
-    """Hermes-native conversational handler for #guinevere-chat.
+    """Hermes-native conversational handler for multi-channel support.
 
     Replaces guinevere.discord.hermes_conversational. Cleans stale imports:
     - Former persona distress detection → DistressDetectorStub (no-op)
     - guinevere.persona.mood_engine → guinevere.emotions stub
     - Former surveillance gating → removed (not used here)
+
+    Channel IDs are resolved from ``ChannelConfig`` — no hardcoded snowflakes.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, channel_config: object = None) -> None:
         self._cost_tracker: Any = None
         self._rate_limit_redis: Any = None
+        self._channel_config = channel_config
+        self._conversational_ids: frozenset[int] = self._resolve_ids(channel_config)
+
+    @staticmethod
+    def _resolve_ids(cfg: object) -> frozenset[int]:
+        """Build conversational channel IDs from a ChannelConfig."""
+        if cfg is None:
+            return frozenset()
+        ids: set[int] = set()
+        for key in _CONVERSATIONAL_CHANNEL_KEYS:
+            ch_id = getattr(cfg, key, None)
+            if isinstance(ch_id, int):
+                ids.add(ch_id)
+        return frozenset(ids)
+
+    def set_channel_config(self, channel_config: object) -> None:
+        """Update the channel config and re-resolve conversational IDs."""
+        self._channel_config = channel_config
+        self._conversational_ids = self._resolve_ids(channel_config)
 
     async def handle_conversation(self, bot: object, message: object) -> bool:
-        """Handle a conversational message in #guinevere-chat.
+        """Handle a conversational message in configured conversational channels.
 
         Returns True if the message was absorbed (and should not be
         processed as a command).
         """
         channel = getattr(message, "channel", None)
         channel_id = getattr(channel, "id", None)
-        if channel_id != GUINEVERE_CHAT_CHANNEL_ID:
+        if channel_id is None or channel_id not in self._conversational_ids:
             return False
 
         author = getattr(message, "author", None)
@@ -765,9 +833,23 @@ def _split_response(text: str) -> list[str]:
 _conversational_handler: ConversationalHandler | None = None
 
 
-async def handle_conversation(bot: object, message: object) -> bool:
-    """Module-level conversational handler entry point."""
+async def handle_conversation(
+    bot: object,
+    message: object,
+    channel_config: object = None,
+) -> bool:
+    """Module-level conversational handler entry point.
+
+    Args:
+        bot: The ``GuinevereBot`` instance.
+        message: The ``discord.Message`` to evaluate.
+        channel_config: Optional ``ChannelConfig`` for channel resolution.
+            If not provided, reads ``bot.channel_config``.
+    """
     global _conversational_handler
+    cfg = channel_config or getattr(bot, "channel_config", None)
     if _conversational_handler is None:
-        _conversational_handler = ConversationalHandler()
+        _conversational_handler = ConversationalHandler(channel_config=cfg)
+    elif cfg is not None and _conversational_handler._channel_config is None:
+        _conversational_handler.set_channel_config(cfg)
     return await _conversational_handler.handle_conversation(bot, message)

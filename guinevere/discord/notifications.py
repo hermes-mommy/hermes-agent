@@ -16,11 +16,6 @@ from typing import Final, Iterable, Protocol, cast, runtime_checkable
 
 from .colors import ALERT, NEUTRAL, PRIMARY, WARNING
 
-try:
-    from discord import utils as discord_utils
-except Exception:
-    discord_utils = None
-
 logger: logging.Logger = logging.getLogger(__name__)
 """Module-level logger for notification routing failures."""
 
@@ -35,6 +30,11 @@ SEV1_CHANNEL: Final[str] = "system-health"
 SEV2_CHANNEL: Final[str] = "cost-tracker"
 SEV3_CHANNEL: Final[str] = "guinevere-status"
 SEV4_CHANNEL: Final[str] = "audit-log"
+
+# ChannelConfig key mapping — SEV levels → ChannelConfig attribute names.
+# All notification severities route to the 'notifications' channel.
+SEV_CHANNEL_CONFIG_KEY: Final[str] = "notifications"
+"""ChannelConfig attribute name used for direct ID lookup of SEV channels."""
 
 SEV0_TONE: Final[str] = "Urgent, neutral, no persona"
 SEV1_TONE: Final[str] = "Alert, neutral"
@@ -198,24 +198,54 @@ def to_discord_embed(data: NotificationEmbedData) -> DiscordEmbedProtocol:
     return embed
 
 
-async def send_alert(bot: DiscordBotProtocol, sev: str, title: str, description: str, **kwargs: object) -> bool:
+async def send_alert(
+    bot: DiscordBotProtocol,
+    sev: str,
+    title: str,
+    description: str,
+    channel_config: object = None,
+    **kwargs: object,
+) -> bool:
+    """Send a SEV alert to the appropriate Discord channel.
+
+    Uses ``channel_config`` for direct channel ID resolution via
+    ``ChannelConfig.notifications``.  All notification severities route
+    to the notifications channel.
+
+    Args:
+        bot: The Discord bot instance.
+        sev: Severity level (e.g. "SEV0", "SEV1").
+        title: Alert title.
+        description: Alert description.
+        channel_config: Optional ``ChannelConfig`` instance for direct
+            channel ID resolution.  If not provided, reads
+            ``bot.channel_config``.
+        **kwargs: Additional keyword arguments (e.g. ``thread_name``).
+
+    Returns:
+        ``True`` if the alert was sent successfully.
+    """
     try:
         normalized = _normalize_sev(sev)
         if normalized not in SEV_MATRIX:
             raise ValueError(f"Unsupported severity: {sev}")
         data = _build_notification_data(normalized, title, description)
-        if discord_utils is None:
-            import discord as discord_module
-            discord_utils_local = getattr(discord_module, "utils", None)
-        else:
-            discord_utils_local = discord_utils
-        if discord_utils_local is None:
-            raise AttributeError("discord.utils is unavailable")
-        channels = bot.get_all_channels()
-        channel = discord_utils_local.get(channels, name=data.channel_name)
+
+        cfg = channel_config or getattr(bot, "channel_config", None)
+        channel = None
+
+        # Direct ID lookup via ChannelConfig
+        if cfg is not None:
+            ch_id = getattr(cfg, SEV_CHANNEL_CONFIG_KEY, None)
+            if isinstance(ch_id, int):
+                get_channel_fn = getattr(bot, "get_channel", None)
+                if get_channel_fn is not None:
+                    channel = get_channel_fn(ch_id)
+
         if channel is None:
             logger.error("Notification channel not found for %s", normalized)
             return False
+
         embed = to_discord_embed(data)
         send_kwargs: dict[str, object] = {"embed": embed}
         if data.ping_faiz:

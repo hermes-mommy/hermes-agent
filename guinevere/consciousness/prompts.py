@@ -7,6 +7,11 @@ the real auxiliary_client resolution chain in production.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from guinevere.consciousness.state import AffectVector
+
 # ── Heartbeat ───────────────────────────────────────────────
 
 HEARTBEAT_SYSTEM = (
@@ -102,3 +107,97 @@ EMOTION_USER = (
     "Recent events: {recent_thoughts}. "
     "Suggest updated affect dimensions."
 )
+
+
+# ── Affect-Influenced Prompts (A4) ─────────────────────────
+
+
+def affect_tone_prompt(tone_modifier: str) -> str:
+    """Return a system prompt prefix based on affect tone.
+
+    Args:
+        tone_modifier: One of "positive", "negative", or "neutral".
+
+    Returns:
+        A prefix string to prepend to system prompts.
+    """
+    if tone_modifier == "positive":
+        return (
+            "You are feeling positive and optimistic. "
+            "Frame your thoughts constructively."
+        )
+    if tone_modifier == "negative":
+        return (
+            "You are feeling cautious. "
+            "Consider risks and challenges."
+        )
+    return (
+        "You are in a balanced state. "
+        "Think objectively."
+    )
+
+
+def affect_influenced_prompt(
+    thought_type: str,
+    affect: AffectVector,
+    base_context: dict[str, object],
+) -> tuple[str, str]:
+    """Build a (system_msg, user_msg) pair with affect influence.
+
+    Combines the base context with the current affect state to produce
+    prompts that reflect the system's emotional posture.
+
+    Args:
+        thought_type: The thought type string (e.g. "cognition", "planning").
+        affect: The current AffectVector.
+        base_context: Dict with context keys such as ``recent_thoughts``,
+            ``self_story``, ``thought``, etc.  Keys are interpolated into
+            the user message.
+
+    Returns:
+        Tuple of (system_msg, user_msg).
+    """
+    influence = affect.get_influence()
+    tone_prefix = affect_tone_prompt(influence["tone_modifier"])
+
+    energy_level = influence["energy_level"]
+    priority_bias = influence["priority_bias"]
+
+    # System message: tone prefix + type-specific framing.
+    type_framing = {
+        "cognition": "Focus on active reasoning and exploration.",
+        "reflection": "Consolidate experiences into lasting lessons.",
+        "planning": "Generate actionable next steps toward aspirations.",
+        "dreaming": "Replay a recent experience counterfactually.",
+        "meta": "Assess the quality of recent thoughts.",
+        "heartbeat": "Report current liveness and system health.",
+    }
+    framing = type_framing.get(thought_type, "Think carefully.")
+    system_msg = f"{tone_prefix} {framing}"
+
+    # User message: contextualised with affect state.
+    recent = base_context.get("recent_thoughts", "none")
+    self_story = base_context.get("self_story", "")
+    thought = base_context.get("thought", "")
+
+    user_parts = [
+        f"Energy level: {energy_level:.2f}.",
+        f"Priority bias: {priority_bias:.2f}.",
+    ]
+
+    if recent and recent != "none":
+        user_parts.append(f"Recent thoughts: {recent}.")
+    if self_story:
+        user_parts.append(f"Self-story: {self_story}.")
+    if thought:
+        user_parts.append(f"Thought to consider: {thought}.")
+
+    affect_dict = affect.as_dict()
+    user_parts.append(
+        f"Affect state: valence={affect_dict['valence']:.2f}, "
+        f"arousal={affect_dict['arousal']:.2f}, "
+        f"curiosity={affect_dict['curiosity']:.2f}."
+    )
+
+    user_msg = " ".join(user_parts)
+    return (system_msg, user_msg)

@@ -15,6 +15,18 @@ Heartbeat intervals from P5+P20 Architecture Benchmark:
 
 from __future__ import annotations
 
+import warnings
+
+warnings.warn(
+    "HeartbeatService is superseded by ThoughtStream "
+    "(guinevere/consciousness/thought_stream.py). HARD STOP detection → "
+    "HardStopGuard (guinevere/consciousness/safety.py). Liveness monitoring → "
+    "HEARTBEAT thought type. This module is preserved for backward compatibility "
+    "(P20 LangGraph). Will be removed in a future release.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 import asyncio
 import time
 from datetime import datetime
@@ -28,6 +40,11 @@ from redis.exceptions import RedisError
 from guinevere.life_kernel.state import LifeMindPhase
 
 logger = structlog.get_logger(__name__)
+
+logger.warning(
+    "life_kernel.heartbeat.deprecated",
+    msg="HeartbeatService superseded by ThoughtStream (guinevere/consciousness/thought_stream.py).",
+)
 
 _LIFECYCLE_LOG_THROTTLE_SECONDS = 300  # at most one lifecycle log line per 5 min
 

@@ -1,16 +1,17 @@
-"""Consciousness Loop — ADR-063 composite 7-substrate architecture.
+"""Consciousness Loop — unified thought-stream architecture.
 
-Owns one asyncio.Task per substrate, runs them concurrently, and
-provides lifecycle hooks (on_session_start / on_session_end) for
-the W4 server lifespan to call.
+Replaces the 7-substrate pattern (ADR-063) with a single ThoughtStream
+that generates thoughts sequentially.  The loop provides lifecycle hooks
+(on_session_start / on_session_end) and delegates all thought generation
+to ThoughtStream.
 
 Design decisions:
-  - Per-substrate try/except (r04 §7: TaskGroup propagates CancelledError).
-  - Each substrate runs in its own asyncio.Task (not inside the TaskGroup
-    directly) so that one substrate crashing does not kill siblings.
-  - A real Hermes AIAgent (single brain via 9router) for all self-prompting (P5).
-  - Config from agent._guinevere_settings.consciousness (fail-soft).
-  - Pydantic v2 / async/await throughout.
+  - Single asyncio.Task for the ThoughtStream (not 7 tasks).
+  - Shutdown via asyncio.Event (same pattern as before).
+  - ConsciousnessState shared between loop and stream.
+  - AffectVector from state.py influences thought type selection.
+  - HARD STOP check at start of each thought cycle.
+  - No asyncio.sleep in thought generation — natural flow.
 """
 
 from __future__ import annotations
@@ -20,43 +21,26 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-import guinevere.consciousness.prompts as _prompts_module
-from guinevere.consciousness.state import ConsciousnessState, SubstrateStatus
-from guinevere.consciousness.substrates import (
-    substrate_active_cognition,
-    substrate_dreaming,
-    substrate_emotion_driven,
-    substrate_heartbeat,
-    substrate_metacognition,
-    substrate_reflection,
-    substrate_strategic_planning,
-)
-from guinevere.consciousness.substrate_registry import build_registry
+from guinevere.consciousness.state import ConsciousnessState
+from guinevere.consciousness.thought import Thought, ThoughtType
+from guinevere.consciousness.thought_stream import ThoughtStream
 
 import structlog
 
 logger = structlog.get_logger("guinevere.consciousness")
 
-# Default substrate names — must be exactly 7 (ADR-063).
-SUBSTRATE_NAMES: list[str] = [
-    "heartbeat",
-    "active_cognition",
-    "reflection",
-    "strategic_planning",
-    "dreaming",
-    "metacognition",
-    "emotion_driven",
-]
+# Thought type names — the 6 consciousness modes.
+THOUGHT_TYPE_NAMES: list[str] = [t.value for t in ThoughtType]
 
 
 class ConsciousnessLoop:
-    """7-substrate consciousness loop per ADR-063.
+    """Unified consciousness loop delegating to ThoughtStream.
 
     Lifecycle:
-      1. Construct with ``llm_router`` (a real Hermes AIAgent via 9router) and optional
-         ``settings`` (fail-soft if ``None``).
+      1. Construct with ``llm_router`` (a real Hermes AIAgent via 9router)
+         and optional ``settings`` (fail-soft if ``None``).
       2. Call ``on_session_start()`` to initialise state.
-      3. Call ``run()`` — spawns 7 substrate tasks and blocks until shutdown.
+      3. Call ``run()`` — spawns the ThoughtStream task and blocks until shutdown.
       4. Call ``on_session_end()`` to flush journals and persist state.
     """
 
@@ -69,17 +53,8 @@ class ConsciousnessLoop:
         self._settings = settings
         self._state = ConsciousnessState()
         self._shutdown_event = asyncio.Event()
-        self._tasks: list[asyncio.Task[None]] = []
+        self._stream_task: asyncio.Task[None] | None = None
         self._session_active = False
-
-        # Expose for substrates.py (which accesses self._prompts).
-        self._prompts = _prompts_module
-
-        # Expose SubstrateStatus enum for substrates.
-        self._SubstrateStatus = SubstrateStatus
-
-        # Build the substrate registry.
-        self._registry = build_registry(self)
 
         # Read config from settings (fail-soft).
         self._config: dict[str, Any] = {}
@@ -96,19 +71,21 @@ class ConsciousnessLoop:
                     else:
                         self._config = vars(consciousness_cfg)
 
+        # Build the ThoughtStream.
+        self._stream = ThoughtStream(
+            llm_router=self._llm_router,
+            state=self._state,
+            shutdown_event=self._shutdown_event,
+            config=self._config,
+        )
+
         logger.info(
             "consciousness_loop.initialized",
-            substrate_count=len(self._registry),
             has_llm_router=llm_router is not None,
             has_settings=settings is not None,
         )
 
     # ── public properties ───────────────────────────────────
-
-    @property
-    def substrate_names(self) -> list[str]:
-        """Return the list of substrate names (always 7)."""
-        return list(self._registry.keys())
 
     @property
     def state(self) -> ConsciousnessState:
@@ -119,6 +96,11 @@ class ConsciousnessLoop:
     def is_running(self) -> bool:
         """Return True if the loop is actively running."""
         return self._session_active and not self._shutdown_event.is_set()
+
+    @property
+    def thought_stream(self) -> ThoughtStream:
+        """Return the ThoughtStream instance."""
+        return self._stream
 
     # ── lifecycle hooks ─────────────────────────────────────
 
@@ -132,10 +114,6 @@ class ConsciousnessLoop:
         self._session_active = True
         self._shutdown_event.clear()
 
-        # Reset substrate statuses.
-        for name in SUBSTRATE_NAMES:
-            self._state.set_substrate_status(name, SubstrateStatus.IDLE)
-
         logger.info(
             "consciousness.session_started",
             session_id=self._state.session_id,
@@ -145,7 +123,7 @@ class ConsciousnessLoop:
         """Called when the session ends.
 
         Flushes dream journal, persists affect state, checkpoints
-        consciousness state.  Signals all substrates to stop.
+        consciousness state.  Signals the thought stream to stop.
         """
         self._shutdown_event.set()
         self._session_active = False
@@ -160,95 +138,47 @@ class ConsciousnessLoop:
     # ── main run loop ───────────────────────────────────────
 
     async def run(self) -> None:
-        """Spawn all 7 substrate tasks and block until shutdown.
+        """Run the ThoughtStream and block until shutdown.
 
-        Each substrate runs in its own asyncio.Task with per-substrate
-        failure isolation (try/except).  This method itself runs inside
-        the W4 lifespan TaskGroup — when cancelled, it signals all
-        substrates to stop and awaits their completion.
+        Delegates to ThoughtStream.run() in a single asyncio.Task.
+        This method itself runs inside the W4 lifespan TaskGroup —
+        when cancelled, it signals the stream to stop and awaits
+        completion.
         """
         if not self._session_active:
             self.on_session_start()
 
-        logger.info("consciousness.run_starting", substrates=list(self._registry.keys()))
+        logger.info("consciousness.run_starting")
 
-        # Spawn one task per substrate.
-        for name, coroutine_fn in self._registry.items():
-            task = asyncio.create_task(
-                self._run_substrate(name, coroutine_fn),
-                name=f"substrate-{name}",
-            )
-            self._tasks.append(task)
+        # Spawn the ThoughtStream as a single task.
+        self._stream_task = asyncio.create_task(
+            self._stream.run(),
+            name="thought-stream",
+        )
 
-        logger.info("consciousness.all_substrates_spawned", count=len(self._tasks))
+        logger.info("consciousness.thought_stream_spawned")
 
-        # Block until shutdown signal or cancellation.
         try:
-            # Wait for the shutdown event or for all tasks to complete.
-            # Using asyncio.Event.wait() ensures we block until the
-            # lifespan cancels us or on_session_end() sets the event.
-            done_event = asyncio.Event()
-
-            # Watch for all tasks finishing (should not happen normally).
-            async def _watch_tasks() -> None:
-                if self._tasks:
-                    await asyncio.gather(*self._tasks, return_exceptions=True)
-                done_event.set()
-
-            watcher = asyncio.create_task(_watch_tasks())
-
-            # Wait for either shutdown signal or all tasks completing.
+            # Wait for either shutdown signal or stream completion.
             shutdown_waiter = asyncio.create_task(self._shutdown_event.wait())
             await asyncio.wait(
-                [shutdown_waiter, watcher],
+                [shutdown_waiter, self._stream_task],
                 return_when=asyncio.FIRST_COMPLETED,
             )
 
-            # Cancel the watcher if shutdown was signalled.
-            if not watcher.done():
-                watcher.cancel()
+            # Cancel the waiter if stream finished first.
             if not shutdown_waiter.done():
                 shutdown_waiter.cancel()
 
         except asyncio.CancelledError:
             logger.info("consciousness.run_cancelled")
             self._shutdown_event.set()
-            # Cancel all substrate tasks.
-            for task in self._tasks:
-                if not task.done():
-                    task.cancel()
-            # Wait for them to finish cleanup.
-            if self._tasks:
-                await asyncio.gather(*self._tasks, return_exceptions=True)
+            if self._stream_task and not self._stream_task.done():
+                self._stream_task.cancel()
+            if self._stream_task:
+                await asyncio.gather(self._stream_task, return_exceptions=True)
             raise
 
         finally:
-            self._tasks.clear()
+            self._stream_task = None
             logger.info("consciousness.run_exited")
-
-    # ── substrate runner (failure isolation) ────────────────
-
-    async def _run_substrate(
-        self,
-        name: str,
-        coroutine_fn: Any,
-    ) -> None:
-        """Run a single substrate with per-substrate failure isolation.
-
-        If the substrate raises (non-CancelledError), it is logged and
-        the substrate is marked FAILED — but siblings continue running.
-
-        Note: coroutine_fn is a functools.partial-bound callable that
-        already has the loop instance bound — call with no arguments.
-        """
-        logger.debug("substrate.starting", name=name)
-        try:
-            await coroutine_fn()
-        except asyncio.CancelledError:
-            logger.debug("substrate.cancelled", name=name)
-            raise
-        except Exception as e:
-            logger.exception("substrate.failed", name=name, error=str(e))
-            self._state.set_substrate_status(name, SubstrateStatus.FAILED)
-        finally:
-            logger.debug("substrate.exited", name=name)

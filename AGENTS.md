@@ -44,6 +44,7 @@ Cara aku kerja:
 - NEVER delegate implementation without a per-step planner verification scaffold (scaffold.md) that specifies expected files, forbidden patterns, required commands, and hard rejection criteria.
 - NEVER accept a sub-agent "done" claim without verifying every scaffold criterion passes; re-run scaffold commands yourself.
 - NEVER silently sanitize scaffold violations; record every violation in evidence and re-delegate or fix explicitly.
+- NEVER delegate to a sub-agent (explore, librarian, specialist, implementer) without requiring file-based output — every sub-agent MUST write output to a `.md` file at an explicit `output_path`.
 
 ### Bypass Mode
 
@@ -89,7 +90,7 @@ Before non-trivial implementation, fire unlimited independent sub-agents:
 - `librarian` for external libraries/APIs/providers/tooling readiness, including Hermes Agent, Discord.py, 9Router, Tasker, PostgreSQL, Redis, Prometheus, Grafana, SOPS/age.
 - Specialist/security/safety agents for auth, consent, surveillance, persona, credentials, architecture-heavy changes.
 
-Every research output must use explicit `output_path`, write a complete file, and return only verdict/path/short summary. Parent must read reports before planner gate.
+Every research sub-agent output must be written to a `.md` file at an explicit `output_path`. The file must be a complete markdown artifact. Inline return is limited to verdict/path/short summary only. Parent must read reports before planner gate.
 
 ### 2.3 Planner Gate — Mandatory
 
@@ -365,6 +366,7 @@ Consent-safety: never send secrets, Discord tokens, API keys, DB passwords, surv
 
 | Version | Date | Author | Changes |
 |---|---|---|---|
+| 2.4 | 2026-07-10 | Faiz + Guinevere | Added BLOCKING rule: sub-agents MUST write `.md` file at explicit `output_path`. Strengthened §2.2, §14 to mandate file-based output for all sub-agents. |
 | 2.3 | 2026-06-02 | Faiz + Guinevere | Explicit parallel verification wave + parallel audit wave rules (§2.4, §14 Workflow Gates) |
 | 2.2 | 2026-06-02 | Faiz + Guinevere | Added mandatory planner verification scaffold (§2.5), 3 new BLOCKING rules, scaffold violation anti-pattern, enforcement rules 1-7 |
 | 2.1 | 2026-06-01 | Faiz + Guinevere | Simplified + added 3 new rules (parent verify delegate, one sub-agent one step, planner determines parallelism) |
@@ -418,6 +420,8 @@ After firing background tasks, end response and wait for system notification. Do
 ### Sub-Agent Output Discipline
 
 All structured sub-agent deliverables need explicit `output_path`: research, catalogs, plans, implementation summaries, security reviews, testing reports, auditor reports. Inline return is only verdict/status + path + short summary. Parent verifies file existence and reads report before use.
+
+**MANDATORY pattern:** every sub-agent `task()` call for explore, librarian, specialist, or implementer MUST include `output_path` in the prompt pointing to a `.md` file. The sub-agent writes the complete markdown artifact there. The parent then reads the file before using the results.
 
 ### Workflow Gates
 

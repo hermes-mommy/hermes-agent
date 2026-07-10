@@ -62,6 +62,60 @@ class AffectVector:
                 old = getattr(self, name)
                 setattr(self, name, lam * value + (1.0 - lam) * old)
 
+    def get_influence(self) -> dict[str, object]:
+        """Return affect→thought influence mapping.
+
+        Maps current affect state to modifiers that influence thought
+        generation: tone, confidence threshold, priority, thought type
+        bias, and energy level.
+
+        Returns:
+            dict with keys:
+                tone_modifier: "positive", "negative", or "neutral"
+                confidence_threshold_modifier: float in [-0.2, 0.2]
+                priority_bias: float in [0.0, 1.0]
+                thought_type_bias: "dreaming", "cognition", or None
+                energy_level: float in [0.0, 1.0]
+        """
+        # Tone from valence.
+        if self.valence >= 0.3:
+            tone_modifier = "positive"
+        elif self.valence <= -0.3:
+            tone_modifier = "negative"
+        else:
+            tone_modifier = "neutral"
+
+        # Confidence threshold modifier from arousal.
+        # Low arousal (calm) → lower threshold (easier to act).
+        # High arousal → higher threshold (more cautious).
+        # Maps arousal [0, 1] → [-0.2, 0.2].
+        confidence_threshold_modifier = (self.arousal - 0.5) * 0.4
+
+        # Priority bias from dominance.
+        # Higher dominance → higher priority bias [0.0, 1.0].
+        priority_bias = max(0.0, min(1.0, self.dominance))
+
+        # Thought type bias from curiosity and dominance.
+        thought_type_bias = None
+        if self.curiosity >= 0.7:
+            if self.dominance >= 0.7:
+                thought_type_bias = "planning"
+            else:
+                thought_type_bias = "dreaming"
+        elif self.dominance >= 0.7:
+            thought_type_bias = "planning"
+
+        # Energy level from arousal, clamped to [0.0, 1.0].
+        energy_level = max(0.0, min(1.0, self.arousal))
+
+        return {
+            "tone_modifier": tone_modifier,
+            "confidence_threshold_modifier": confidence_threshold_modifier,
+            "priority_bias": priority_bias,
+            "thought_type_bias": thought_type_bias,
+            "energy_level": energy_level,
+        }
+
 
 @dataclass
 class DreamJournalEntry:
@@ -139,6 +193,108 @@ class ConsciousnessState:
         # Cap at 50 entries.
         if len(self.dream_journal) > 50:
             self.dream_journal = self.dream_journal[:50]
+
+    def update_affect_from_thought(
+        self, thought_content: str, thought_type: str
+    ) -> None:
+        """Update affect vector based on thought content analysis.
+
+        Uses basic word-list heuristics (no external NLP) to adjust
+        valence, arousal, curiosity, confidence, and serenity.
+        Updates are applied via EWMA with lambda=0.3.
+
+        Args:
+            thought_content: The text of the thought.
+            thought_type: The thought type string (e.g. "cognition").
+        """
+        content_lower = thought_content.lower()
+        words = content_lower.split()
+
+        # ── Positive / negative sentiment ─────────────────────
+        _POSITIVE_WORDS = frozenset({
+            "good", "great", "excellent", "happy", "positive", "success",
+            "wonderful", "amazing", "brilliant", "love", "joy", "hope",
+            "progress", "improve", "improved", "improvement", "achieve",
+            "achieved", "benefit", "beneficial", "effective", "efficient",
+            "elegant", "beautiful", "creative", "inspired", "productive",
+            "thriving", "flourish", "promising", "optimistic", "grateful",
+            "confident", "empowered", "vibrant", "harmonious", "celebrate",
+            "delight", "fantastic", "superb", "remarkable", "strengthen",
+        })
+        _NEGATIVE_WORDS = frozenset({
+            "bad", "terrible", "awful", "sad", "negative", "failure",
+            "horrible", "dreadful", "hate", "misery", "despair", "regress",
+            "worse", "worst", "damage", "harmful", "ineffective", "broken",
+            "ugly", "destructive", "anxious", "frustrated", "disappoint",
+            "disappointing", "struggle", "suffering", "painful", "critical",
+            "error", "fault", "flaw", "risk", "threat", "danger", "crisis",
+            "fear", "angry", "confused", "overwhelmed", "exhausted",
+        })
+        positive_count = sum(1 for w in words if w in _POSITIVE_WORDS)
+        negative_count = sum(1 for w in words if w in _NEGATIVE_WORDS)
+        total_sentiment = positive_count + negative_count
+
+        if total_sentiment > 0:
+            valence_signal = (positive_count - negative_count) / total_sentiment
+        else:
+            valence_signal = 0.0
+
+        # ── Arousal from intensity ────────────────────────────
+        exclamation_count = thought_content.count("!")
+        intensity_markers = sum(
+            1 for w in words
+            if w in {
+                "must", "critical", "urgent", "immediately", "now",
+                "always", "never", "extremely", "absolutely", "terrible",
+                "amazing", "incredible", "unbelievable",
+            }
+        )
+        arousal_signal = min(1.0, 0.5 + (exclamation_count * 0.1) + (intensity_markers * 0.1))
+
+        # ── Curiosity from questions and exploratory language ──
+        question_marks = thought_content.count("?")
+        exploratory_words = sum(
+            1 for w in words
+            if w in {
+                "why", "how", "what", "explore", "discover", "investigate",
+                "curious", "wonder", "question", "hypothesis", "experiment",
+                "perhaps", "maybe", "possible", "alternative",
+            }
+        )
+        curiosity_signal = min(1.0, 0.5 + (question_marks * 0.15) + (exploratory_words * 0.05))
+
+        # ── Confidence from certainty markers ─────────────────
+        certainty_words = sum(
+            1 for w in words
+            if w in {
+                "certain", "definitely", "clearly", "surely", "indeed",
+                "absolutely", "confirmed", "proven", "established", "know",
+                "confident", "precise", "exact", "undoubtedly",
+            }
+        )
+        uncertainty_words = sum(
+            1 for w in words
+            if w in {
+                "maybe", "perhaps", "uncertain", "unsure", "possibly",
+                "might", "could", "seems", "appears", "guess", "doubt",
+                "approximately", "roughly", "unclear",
+            }
+        )
+        confidence_signal = min(
+            1.0,
+            max(0.0, 0.5 + (certainty_words - uncertainty_words) * 0.1),
+        )
+
+        # ── Apply EWMA update ─────────────────────────────────
+        self.affect.ewma_update(
+            {
+                "valence": valence_signal,
+                "arousal": arousal_signal,
+                "curiosity": curiosity_signal,
+                "confidence": confidence_signal,
+            },
+            lam=0.3,
+        )
 
     def snapshot(self) -> dict[str, Any]:
         """Return a JSON-safe snapshot of the entire state."""

@@ -12,6 +12,7 @@ default behavior; specific commands override as needed.
 
 from __future__ import annotations
 
+import functools
 import logging
 from dataclasses import dataclass
 from typing import Any
@@ -22,6 +23,7 @@ from guinevere.discord._infrastructure import (
     defer_ephemeral,
     followup_send,
     build_embed,
+    _is_valid_interaction,
     PRIMARY,
     ALERT,
     SUCCESS,
@@ -31,8 +33,27 @@ from guinevere.discord._infrastructure import (
     FINANCE,
     color_for_mood,
 )
+from guinevere.discord.channel_config import (
+    ChannelConfig,
+    ChannelPermissions,
+    build_default_permissions,
+    is_command_allowed,
+)
 
 logger = logging.getLogger(__name__)
+
+# ── Default channel config + permissions (lazy init) ──────────────────────
+
+_default_channel_config: ChannelConfig | None = None
+_default_permissions: ChannelPermissions | None = None
+
+
+def _get_default_permissions() -> ChannelPermissions:
+    """Return the module-level default permissions singleton."""
+    global _default_permissions
+    if _default_permissions is None:
+        _default_permissions = build_default_permissions()
+    return _default_permissions
 
 
 # ── Command Spec Data Types ──────────────────────────────────────────────
@@ -284,6 +305,23 @@ def command_categories() -> dict[str, tuple[str, ...]]:
 
 
 # ── Callback Helpers ─────────────────────────────────────────────────────
+
+
+def get_current_channel_id(ctx_or_interaction: object) -> int:
+    """Resolve the channel ID from a discord.py Context or Interaction.
+
+    Works with both ``discord.ext.commands.Context`` and
+    ``discord.Interaction`` objects via duck typing.
+
+    Returns 0 if the channel cannot be resolved.
+    """
+    # Interaction-style: interaction.channel.id
+    channel = getattr(ctx_or_interaction, "channel", None)
+    if channel is not None:
+        ch_id = getattr(channel, "id", None)
+        if isinstance(ch_id, int):
+            return ch_id
+    return 0
 
 
 async def _require_faiz(interaction: object) -> bool:
@@ -685,19 +723,62 @@ class CommandRegistry:
         self._bot = bot
         self._registered: list[str] = []
 
-    def register_all(self, tree: Any) -> None:
+    def register_all(
+        self,
+        tree: Any,
+        channel_config: ChannelConfig | None = None,
+        permissions: ChannelPermissions | None = None,
+    ) -> None:
         """Register all 41 commands on the given CommandTree.
+
+        If *channel_config* and *permissions* are provided, each command
+        callback is wrapped with a channel-permission gate that responds
+        with an ephemeral denial when the command is not allowed in the
+        originating channel.
 
         Args:
             tree: The discord.app_commands.CommandTree instance.
+            channel_config: Resolved ChannelConfig for channel ID lookup.
+            permissions: ChannelPermissions governing per-channel allowlists.
         """
         import discord
+
+        _cfg = channel_config
+        _perms = permissions if permissions is not None else _get_default_permissions()
 
         for spec in COMMAND_SPECS:
             callback = _COMMAND_CALLBACKS.get(spec.name)
             if callback is None:
                 # Fallback stub for any missing callback
                 callback = _make_stub(spec.name)
+
+            # Inject channel-permission gate when config is available
+            if _cfg is not None:
+                original = callback
+                cmd_name = spec.name
+
+                @functools.wraps(original)
+                async def gated_callback(
+                    interaction: object,
+                    _orig: Any = original,
+                    _cmd: str = cmd_name,
+                    _cc: ChannelConfig = _cfg,
+                    _pp: ChannelPermissions = _perms,
+                ) -> None:
+                    ch_id = get_current_channel_id(interaction)
+                    if ch_id and not is_command_allowed(ch_id, _cmd, _cc, _pp):
+                        if not is_faiz_interaction(interaction):
+                            return
+                        if _is_valid_interaction(interaction):
+                            await interaction.response.send_message(
+                                content="This command is not available in this channel.",
+                                ephemeral=True,
+                            )
+                        return
+                    await _orig(interaction)
+
+                callback = gated_callback
+
             tree.command(
                 name=spec.name,
                 description=spec.description,

@@ -120,36 +120,50 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         # guinevere, localhost:20128). Built with no _guinevere_settings so
         # Group G consciousness-wire in agent_init no-ops (breaks the circular:
         # the brain must not build its own consciousness loop). Fail-soft.
-        try:
-            from guinevere.consciousness import ConsciousnessLoop
-            from run_agent import AIAgent
+        _consciousness_enabled = True
+        if settings is not None:
+            _cc = getattr(settings, "consciousness", None)
+            if _cc is not None and not getattr(_cc, "enabled", True):
+                _consciousness_enabled = False
+                logger.info("m3_consciousness_disabled_by_config")
 
-            _consciousness_brain = AIAgent(
-                base_url="http://localhost:20128/v1",
-                api_key="sk-noauth",
-                provider="custom",
-                model="guinevere",
-                enabled_toolsets=[],
-            )
-            _consciousness_loop = ConsciousnessLoop(
-                llm_router=_consciousness_brain,
-                settings=settings,
-            )
-            _consciousness_loop.on_session_start()
-
-            consciousness_task = tg.create_task(
-                _consciousness_loop.run(),
-                name="m3-consciousness",
-            )
-            app.state.consciousness_loop = _consciousness_loop
-            logger.info("m3_consciousness_wired", substrates=len(_consciousness_loop.substrate_names))
-        except Exception as e:
-            logger.warning("m3_consciousness_wire_failed: %s", e, exc_info=True)
+        if not _consciousness_enabled:
             consciousness_task = tg.create_task(
                 _noop_placeholder(),
-                name="m3-consciousness-fallback",
+                name="m3-consciousness-disabled",
             )
             app.state.consciousness_loop = None
+        else:
+            try:
+                from guinevere.consciousness import THOUGHT_TYPE_NAMES, ConsciousnessLoop
+                from run_agent import AIAgent
+
+                _consciousness_brain = AIAgent(
+                    base_url="http://localhost:20128/v1",
+                    api_key="sk-noauth",
+                    provider="custom",
+                    model="guinevere",
+                    enabled_toolsets=[],
+                )
+                _consciousness_loop = ConsciousnessLoop(
+                    llm_router=_consciousness_brain,
+                    settings=settings,
+                )
+                _consciousness_loop.on_session_start()
+
+                consciousness_task = tg.create_task(
+                    _consciousness_loop.run(),
+                    name="m3-consciousness",
+                )
+                app.state.consciousness_loop = _consciousness_loop
+                logger.info("m3_consciousness_wired", thought_types=len(THOUGHT_TYPE_NAMES))
+            except Exception as e:
+                logger.warning("m3_consciousness_wire_failed: %s", e, exc_info=True)
+                consciousness_task = tg.create_task(
+                    _noop_placeholder(),
+                    name="m3-consciousness-fallback",
+                )
+                app.state.consciousness_loop = None
 
         app.state.consciousness_task = consciousness_task
 

@@ -45,7 +45,7 @@ async def test_self_prompt_delegates_to_agent_chat_and_returns_str() -> None:
     which returned a dict, and extracted .get("content", "").
     After P5: _self_prompt calls agent.chat(message) which returns str.
     """
-    from guinevere.consciousness.substrates import _self_prompt
+    from guinevere.consciousness.thought_stream import _self_prompt
 
     agent = _FakeAIAgent(response="conscious-thought-from-brain")
 
@@ -68,12 +68,12 @@ async def test_self_prompt_delegates_to_agent_chat_and_returns_str() -> None:
 
 @pytest.mark.asyncio
 async def test_self_prompt_returns_empty_string_on_agent_failure() -> None:
-    """If agent.chat raises, _self_prompt must not crash the substrate.
+    """If agent.chat raises, _self_prompt must not crash the thought stream.
 
-    Consciousness substrates run at second/minute cadence; a single failed
-    self-prompt must degrade to empty thought, not kill the substrate.
+    The consciousness stream runs continuously; a single failed
+    self-prompt must degrade to empty thought, not crash the stream.
     """
-    from guinevere.consciousness.substrates import _self_prompt
+    from guinevere.consciousness.thought_stream import _self_prompt
 
     class _ExplodingAgent:
         def chat(self, message: str, stream_callback: Any = None) -> str:

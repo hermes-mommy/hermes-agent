@@ -17,6 +17,13 @@ Usage::
 
 from guinevere.discord.bots import GuinevereBot, BOT_IDENTITIES, create_bot
 from guinevere.discord.commands import CommandRegistry, COMMAND_SPECS
+from guinevere.discord.channel_config import (
+    ChannelConfig,
+    ChannelPermissions,
+    CHANNEL_COMMAND_ALLOW,
+    is_command_allowed,
+    build_default_permissions,
+)
 
 __all__ = [
     "GuinevereBot",
@@ -24,4 +31,9 @@ __all__ = [
     "COMMAND_SPECS",
     "BOT_IDENTITIES",
     "create_bot",
+    "ChannelConfig",
+    "ChannelPermissions",
+    "CHANNEL_COMMAND_ALLOW",
+    "is_command_allowed",
+    "build_default_permissions",
 ]

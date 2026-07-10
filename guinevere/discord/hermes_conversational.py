@@ -1,4 +1,4 @@
-"""Hermes-native conversational handler for #guinevere-chat channel.
+"""Hermes-native conversational handler for multi-channel support.
 
 Replaces the previous ``conversational_handler.py`` pipeline with a
 Hermes AIAgent-native architecture. All custom hooks — distress detection,
@@ -9,7 +9,7 @@ Hermes LLM invocation.
 Architecture::
 
     Incoming Message
-      -> Channel check (#guinevere-chat only)
+      -> Channel check (conversational_channels frozenset)
       -> Bot check (ignore bot messages)
       -> Slash command check (skip if slash)
       -> Faiz check (guild owner only)
@@ -17,6 +17,7 @@ Architecture::
       -> Typing indicator
       -> Distress detection (custom hook — preserved)
       -> Mood system (guinevere_safety plugin state)
+      -> Affect-driven tone (AffectVector -> system prompt modifier)
       -> System prompt construction (SOUL.md + memory context)
       -> Memory recall (HermesMemoryBridge)
       -> Hermes AIAgent invocation (replaces direct LLM call)
@@ -26,8 +27,18 @@ Architecture::
       -> Shadow forward (fire-and-forget via asyncio.create_task)
       -> Structured logging
 
-Channel:
-    #guinevere-chat (ID: 1510914600777023659)
+B5 Loop-Driven Behavior:
+    ThoughtStream affect → tone: AffectVector dimensions (valence, arousal,
+    curiosity, serenity) modify the system prompt tone before Hermes call.
+
+    High-confidence thoughts → Discord: When ThoughtStream produces a
+    COGNITION or PLANNING thought with confidence > 0.8, ActionExecutor
+    routes it as a Discord message via ``process_thought_for_discord()``.
+
+Channels:
+    Conversational mode is enabled for channels listed in
+    ``CONVERSATIONAL_CHANNELS`` (default: general + commands_hq).
+    Channel IDs are resolved via ``ChannelConfig`` — no hardcoded IDs.
 """
 
 from __future__ import annotations
@@ -47,8 +58,18 @@ logger: Final = structlog.get_logger()
 # Constants
 # ---------------------------------------------------------------------------
 
-GUINEVERE_CHAT_CHANNEL_ID: Final[int] = 1_510_914_600_777_023_659
-"""Discord channel ID for #guinevere-chat."""
+# Default conversational channels — resolved from ChannelConfig at runtime.
+# These are the ChannelConfig *key names*, not snowflake IDs.
+CONVERSATIONAL_CHANNEL_KEYS: Final[frozenset[str]] = frozenset({
+    "general",
+    "commands_hq",
+})
+"""Channel config keys where conversational mode is enabled by default."""
+
+# Backward-compat alias — deprecated; prefer CONVERSATIONAL_CHANNEL_KEYS.
+# No hardcoded snowflake IDs — resolved at runtime via ChannelConfig.
+GUINEVERE_CHAT_CHANNEL_ID: Final[int] = 0
+"""Deprecated. Use ChannelConfig to resolve channel IDs at runtime."""
 
 RATE_LIMIT_MAX: Final[int] = 10
 """Maximum messages per minute per user."""
@@ -95,6 +116,286 @@ _embedding_service: Any = None
 
 _memory_bridge: Any = None
 """Lazy-initialised ``HermesMemoryBridge`` singleton for memory bridge."""
+
+_conversational_channel_ids: frozenset[int] | None = None
+"""Resolved set of channel snowflake IDs where conversational mode is active."""
+
+_action_executor: Any = None
+"""Lazy-initialised ``ActionExecutor`` singleton for loop-driven Discord."""
+
+_bot_ref: Any = None
+"""Weak reference to the bot instance for Discord send callbacks."""
+
+
+def set_action_executor(executor: Any) -> None:
+    """Inject an ActionExecutor instance for loop-driven Discord behavior.
+
+    Called during startup (e.g. from _entrypoint.py) to enable the
+    ThoughtStream → ActionExecutor → Discord pipeline.
+
+    Args:
+        executor: An ``ActionExecutor`` instance from
+            ``guinevere.consciousness.action_executor``.
+    """
+    global _action_executor
+    _action_executor = executor
+    logger.info("action_executor.injected", executor_type=type(executor).__name__)
+
+
+def set_bot_reference(bot: Any) -> None:
+    """Store a reference to the bot instance for send callbacks.
+
+    Args:
+        bot: The ``GuinevereBot`` instance.
+    """
+    global _bot_ref
+    _bot_ref = bot
+
+
+def resolve_conversational_channels(channel_config: Any) -> frozenset[int]:
+    """Build the frozenset of channel snowflake IDs for conversational mode.
+
+    Reads channel IDs from *channel_config* for each key in
+    ``CONVERSATIONAL_CHANNEL_KEYS``.
+
+    Args:
+        channel_config: A ``ChannelConfig`` instance (duck-typed).
+
+    Returns:
+        A frozenset of Discord channel snowflake IDs.
+    """
+    ids: set[int] = set()
+    for key in CONVERSATIONAL_CHANNEL_KEYS:
+        ch_id = getattr(channel_config, key, None)
+        if isinstance(ch_id, int):
+            ids.add(ch_id)
+    return frozenset(ids)
+
+
+# ---------------------------------------------------------------------------
+# B5 Loop-Driven Behavior — Affect → Tone + Thought → Discord
+# ---------------------------------------------------------------------------
+
+
+def compute_affect_tone(affect: Any) -> str:
+    """Derive a tone directive from the AffectVector for system prompt injection.
+
+    Maps affect dimensions to natural-language tone guidance:
+    - valence → positivity/negativity
+    - arousal → energy level
+    - curiosity → exploration enthusiasm
+    - serenity → calmness
+    - confidence → assertiveness
+
+    Args:
+        affect: An ``AffectVector`` instance (duck-typed with valence, arousal,
+            curiosity, serenity, confidence attributes).
+
+    Returns:
+        A short tone directive string suitable for injection into the system
+        prompt.  Returns empty string if affect is None.
+    """
+    if affect is None:
+        return ""
+
+    parts: list[str] = []
+
+    valence = getattr(affect, "valence", 0.5)
+    if valence > 0.6:
+        parts.append("warm and positive")
+    elif valence < 0.4:
+        parts.append("gentle and empathetic")
+
+    arousal = getattr(affect, "arousal", 0.5)
+    if arousal > 0.7:
+        parts.append("energetic")
+    elif arousal < 0.3:
+        parts.append("calm and measured")
+
+    curiosity = getattr(affect, "curiosity", 0.5)
+    if curiosity > 0.7:
+        parts.append("curious and exploratory")
+
+    serenity = getattr(affect, "serenity", 0.5)
+    if serenity > 0.7:
+        parts.append("serene and composed")
+
+    confidence = getattr(affect, "confidence", 0.5)
+    if confidence > 0.7:
+        parts.append("confident")
+    elif confidence < 0.3:
+        parts.append("humble and tentative")
+
+    if not parts:
+        return ""
+
+    return "Tone: " + ", ".join(parts) + "."
+
+
+def create_discord_send_callback(bot: Any = None) -> Any:
+    """Create an async callback for ActionExecutor to send Discord messages.
+
+    The callback resolves the target channel via ChannelConfig and sends
+    the message content.  Returns True on success, False on failure.
+
+    Args:
+        bot: Optional bot instance.  Falls back to module-level ``_bot_ref``.
+
+    Returns:
+        An async callable ``(channel_key: str, content: str) -> bool``.
+    """
+    effective_bot = bot or _bot_ref
+
+    async def _send_to_discord(channel_key: str, content: str) -> bool:
+        """Send content to a Discord channel resolved by ChannelConfig key.
+
+        Args:
+            channel_key: ChannelConfig attribute name (e.g. "general").
+            content: Message text to send.
+
+        Returns:
+            True if sent successfully, False otherwise.
+        """
+        if effective_bot is None:
+            logger.warning(
+                "discord_send_callback.no_bot_ref",
+                channel_key=channel_key,
+            )
+            return False
+
+        cfg = getattr(effective_bot, "channel_config", None)
+        if cfg is None:
+            logger.warning(
+                "discord_send_callback.no_channel_config",
+                channel_key=channel_key,
+            )
+            return False
+
+        channel_id = getattr(cfg, channel_key, None)
+        if not isinstance(channel_id, int):
+            logger.warning(
+                "discord_send_callback.invalid_channel_key",
+                channel_key=channel_key,
+            )
+            return False
+
+        # Get the channel object from the bot's guild cache.
+        channel = None
+        for guild in effective_bot.guilds:
+            channel = guild.get_channel(channel_id)
+            if channel is not None:
+                break
+
+        if channel is None:
+            logger.warning(
+                "discord_send_callback.channel_not_found",
+                channel_key=channel_key,
+                channel_id=channel_id,
+            )
+            return False
+
+        try:
+            await channel.send(content)
+            logger.info(
+                "discord_send_callback.sent",
+                channel_key=channel_key,
+                channel_id=channel_id,
+                content_length=len(content),
+            )
+            return True
+        except Exception as exc:
+            logger.error(
+                "discord_send_callback.send_failed",
+                channel_key=channel_key,
+                channel_id=channel_id,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            return False
+
+    return _send_to_discord
+
+
+async def process_thought_for_discord(
+    thought: Any,
+    action_executor: Any = None,
+    channel_config: Any = None,
+) -> bool:
+    """Evaluate a thought and route it to Discord if high-confidence.
+
+    This is the B5 integration point: ThoughtStream produces a Thought,
+    this function evaluates it via ActionExecutor and sends it to Discord
+    if it meets the criteria (COGNITION/PLANNING type, confidence > 0.8,
+    channel in conversational_channels).
+
+    Args:
+        thought: A ``Thought`` instance from ThoughtStream.
+        action_executor: Optional ``ActionExecutor`` instance.  Falls back
+            to module-level ``_action_executor``.
+        channel_config: Optional ``ChannelConfig`` for target resolution.
+
+    Returns:
+        True if the thought was acted upon and sent to Discord.
+    """
+    executor = action_executor or _action_executor
+    if executor is None:
+        logger.debug(
+            "process_thought_for_discord.no_executor",
+            thought_type=getattr(thought, "type", None),
+        )
+        return False
+
+    # Evaluate the thought — ActionExecutor checks confidence > 0.8
+    # and type in {COGNITION, PLANNING}.
+    action_spec = executor.evaluate_thought(thought)
+    if action_spec is None:
+        return False
+
+    # For discord_message actions, ensure we have a send callback wired.
+    if action_spec.action_type == "discord_message":
+        # Check if executor already has a send callback (preferred path).
+        send_callback = getattr(executor, "_discord_send_callback", None)
+        if send_callback is None:
+            # Wire one dynamically if not already set.
+            cfg = channel_config or _bot_ref
+            if cfg is not None:
+                send_callback = create_discord_send_callback(cfg)
+            else:
+                logger.warning(
+                    "process_thought_for_discord.no_send_callback",
+                    thought_type=getattr(thought, "type", None),
+                )
+
+        if send_callback is not None:
+            target_channel = action_spec.payload.get("channel", "general")
+            content = action_spec.payload.get("content", thought.content)
+            sent = await send_callback(target_channel, content)
+            if sent:
+                logger.info(
+                    "process_thought_for_discord.sent",
+                    thought_type=getattr(thought, "type", "unknown"),
+                    confidence=thought.confidence,
+                    target_channel=target_channel,
+                )
+                return True
+            logger.warning(
+                "process_thought_for_discord.send_failed",
+                thought_type=getattr(thought, "type", "unknown"),
+                target_channel=target_channel,
+            )
+            return False
+
+    # Non-discord actions: delegate to executor normally.
+    result = await executor.execute(action_spec)
+    acted = result.get("status") not in ("error",)
+    if acted:
+        logger.info(
+            "process_thought_for_discord.executed",
+            thought_type=getattr(thought, "type", "unknown"),
+            action_type=action_spec.action_type,
+            status=result.get("status"),
+        )
+    return acted
 
 
 def _get_cost_tracker() -> Any:
@@ -355,13 +656,23 @@ async def _invoke_hermes_and_send(
 # ---------------------------------------------------------------------------
 
 
-async def handle_conversation(bot: Any, message: Any) -> bool:
-    """Handle conversational messages in #guinevere-chat.
+async def handle_conversation(
+    bot: Any,
+    message: Any,
+    channel_config: Any = None,
+    action_executor: Any = None,
+) -> bool:
+    """Handle conversational messages in conversational channels.
 
     Orchestrates the full Hermes-native conversational flow: guard checks,
-    rate limiting, distress detection, system prompt assembly, memory recall,
-    Hermes AIAgent invocation, response delivery, cost tracking, shadow
-    forwarding, auto-store, and structured logging.
+    rate limiting, distress detection, system prompt assembly with
+    affect-driven tone, memory recall, Hermes AIAgent invocation, response
+    delivery, cost tracking, shadow forwarding, auto-store, and structured
+    logging.
+
+    B5: When *action_executor* is provided, it is stored as the module
+    default for ``process_thought_for_discord()`` and used for any
+    inline thought evaluations.
 
     Interface is compatible with ``bot.py`` ``on_message``::
 
@@ -375,15 +686,37 @@ async def handle_conversation(bot: Any, message: Any) -> bool:
     Args:
         bot: The ``GuinevereBot`` instance (used for context, not modified).
         message: The ``discord.Message`` to evaluate and respond to.
+        channel_config: Optional ``ChannelConfig`` instance.  If not
+            provided, the function attempts to read ``bot.channel_config``.
+            Falls back to an empty set (no channels → no conversational
+            messages processed).
+        action_executor: Optional ``ActionExecutor`` instance for B5
+            loop-driven behavior.  Stored as module-level reference.
 
     Returns:
         ``True`` if the message was handled, ``False`` to pass through.
     """
+    global _conversational_channel_ids
+
+    # B5: store action executor reference if provided.
+    if action_executor is not None:
+        set_action_executor(action_executor)
+    # B5: store bot reference for send callbacks.
+    set_bot_reference(bot)
+
     start_time = time.time()
+
+    # --- Resolve conversational channel IDs ---
+    if _conversational_channel_ids is None:
+        cfg = channel_config or getattr(bot, "channel_config", None)
+        if cfg is not None:
+            _conversational_channel_ids = resolve_conversational_channels(cfg)
+        else:
+            _conversational_channel_ids = frozenset()
 
     # --- Step 1: Channel check ---
     channel = message.channel if message is not None else None
-    if channel is None or channel.id != GUINEVERE_CHAT_CHANNEL_ID:
+    if channel is None or channel.id not in _conversational_channel_ids:
         return False
 
     # --- Step 2: Bot check ---
@@ -412,10 +745,12 @@ async def handle_conversation(bot: Any, message: Any) -> bool:
         async with typing_ctx():
             return await _process_and_respond(
                 bot, author, channel, content, start_time,
+                action_executor=action_executor,
             )
     # Fallback: no typing context available (shouldn't happen in practice)
     return await _process_and_respond(
         bot, author, channel, content, start_time,
+        action_executor=action_executor,
     )
 
 
@@ -430,6 +765,7 @@ async def _process_and_respond(
     channel: Any,
     content: str,
     start_time: float,
+    action_executor: Any = None,
 ) -> bool:
     """Core Hermes-native conversational flow after guard checks pass.
 
@@ -485,11 +821,34 @@ async def _process_and_respond(
         )
         safe_mode_activated = False
 
-    # ── Step 8: Mood evaluation ────────────────────────────────────────────
+    # ── Step 8: Mood evaluation + B5 Affect-driven tone ────────────────────
     from guinevere.persona.mood_engine import Mood
 
     # Default to Content for conversational context
     current_mood: str = Mood.CONTENT.value
+
+    # B5: Read AffectVector from consciousness state for tone modulation.
+    affect_tone: str = ""
+    try:
+        consciousness_loop = getattr(bot, "consciousness_loop", None)
+        if consciousness_loop is not None:
+            state = getattr(consciousness_loop, "state", None)
+            if state is not None:
+                affect = getattr(state, "affect", None)
+                affect_tone = compute_affect_tone(affect)
+                if affect_tone:
+                    logger.info(
+                        "affect_tone_computed",
+                        tone=affect_tone,
+                        valence=getattr(affect, "valence", 0.5),
+                        arousal=getattr(affect, "arousal", 0.5),
+                    )
+    except Exception as exc:
+        logger.debug(
+            "affect_tone_fallback",
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
 
     # ── Step 9: System prompt assembly with memory recall ──────────────────
     from guinevere.core.services.prompt_loader import get_system_prompt_with_context
@@ -531,6 +890,10 @@ async def _process_and_respond(
             )
             system_prompt += ANTI_HALLUCINATION_GUARD
             logger.info("memory_recall_skipped", reason="no_session_factory")
+
+        # B5: Inject affect-driven tone into system prompt.
+        if affect_tone:
+            system_prompt += f"\n\n[{affect_tone}]"
     except Exception as exc:
         logger.warning(
             "memory_recall_fallback",

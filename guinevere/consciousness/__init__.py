@@ -1,21 +1,27 @@
-"""Guinevere Consciousness Loop — ADR-063 composite 7-substrate architecture.
+"""Guinevere Consciousness Loop — unified thought-stream architecture.
 
-Re-exports the primary public interface: ConsciousnessLoop and ConsciousnessState.
+Re-exports the primary public interface: ConsciousnessLoop, ThoughtStream,
+Thought, ThoughtType, ConsciousnessState, and MetaCogEval.
 """
 
-from guinevere.consciousness.loop import ConsciousnessLoop, SUBSTRATE_NAMES
+from guinevere.consciousness.loop import ConsciousnessLoop, THOUGHT_TYPE_NAMES
+from guinevere.consciousness.metacognition import MetaCogEval
 from guinevere.consciousness.state import (
     AffectVector,
     ConsciousnessState,
     DreamJournalEntry,
-    SubstrateStatus,
 )
+from guinevere.consciousness.thought import Thought, ThoughtType
+from guinevere.consciousness.thought_stream import ThoughtStream
 
 __all__ = [
     "AffectVector",
     "ConsciousnessLoop",
     "ConsciousnessState",
     "DreamJournalEntry",
-    "SUBSTRATE_NAMES",
-    "SubstrateStatus",
+    "MetaCogEval",
+    "THOUGHT_TYPE_NAMES",
+    "Thought",
+    "ThoughtStream",
+    "ThoughtType",
 ]

@@ -1,5 +1,9 @@
 """Wire consciousness loop into Hermes agent runtime.
 
+DEPRECATED: server.py ``_lifespan()`` is the primary consciousness loop
+entrypoint. This wire is preserved for backward compatibility (agent_init.py
+Group G) but will be removed in a future release.
+
 Parent calls this from agent_init.py (appends-only Group G block). We do NOT
 edit agent_init.py. Fail-soft: any import/construction failure is logged and
 the agent simply lacks the consciousness loop attribute.

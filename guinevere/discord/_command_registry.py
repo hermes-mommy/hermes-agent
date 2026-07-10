@@ -14,7 +14,7 @@ handlers are implemented in later P2 steps and can reuse the same canonical
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import NotRequired, TypedDict
+from typing import Final, NotRequired, TypedDict
 
 GUILD_ID = 1_510_876_414_671_323_206
 APPLICATION_ID = 1_510_873_134_981_582_858
@@ -77,12 +77,31 @@ class CommandOption:
 
 @dataclass(frozen=True)
 class CommandSpec:
-    """Canonical slash command definition for Guinevere's guild."""
+    """Canonical slash command definition for Guinevere's guild.
+
+    Attributes
+    ----------
+    channel_allowlist:
+        Channels where this command is permitted.
+
+        * ``frozenset()`` (empty) — command is permitted in **all** channels
+          that allow it via ``ChannelPermissions`` (default; backward compat).
+        * ``frozenset({"__all__"})`` — explicit wildcard; same behaviour as
+          empty for the gate function but signals "all channels" semantically.
+        * ``frozenset({"status", "mood", ...})`` — restricted to the listed
+          channel config keys.
+    """
 
     category: str
     name: str
     description: str
     options: tuple[CommandOption, ...] = ()
+    channel_allowlist: frozenset[str] = frozenset()
+
+    @property
+    def allows_all_channels(self) -> bool:
+        """Return ``True`` if the command is allowed in every channel."""
+        return not self.channel_allowlist or "__all__" in self.channel_allowlist
 
     def to_payload(self) -> CommandPayload:
         """Convert the command to a Discord REST payload."""
@@ -127,7 +146,11 @@ BUDGET_ACTION_CHOICES = (
     ("Set", "set"),
 )
 
-COMMAND_SPECS: tuple[CommandSpec, ...] = (
+# ---------------------------------------------------------------------------
+# Base command specs (without channel_allowlist — populated below)
+# ---------------------------------------------------------------------------
+
+_BASE_SPECS: tuple[CommandSpec, ...] = (
     CommandSpec("core", "status", "Show Mommy's current system, loop, and safety status."),
     CommandSpec("core", "mood", "Show or update Guinevere's current mood state."),
     CommandSpec("core", "help", "Show the Guinevere command guide."),
@@ -299,6 +322,63 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
             CommandOption("action", "Action name to dry-run (e.g. delete_invoice).", required=True),
         ),
     ),
+)
+
+
+# ---------------------------------------------------------------------------
+# Populate channel_allowlist from CHANNEL_COMMAND_ALLOW
+# ---------------------------------------------------------------------------
+
+
+def _build_reverse_channel_map(
+    allow_map: dict[str, frozenset[str]],
+) -> dict[str, frozenset[str]]:
+    """Build ``{command_name: frozenset(channel_keys)}`` from ``CHANNEL_COMMAND_ALLOW``.
+
+    Each command name is mapped to the set of channel keys where it is
+    explicitly allowed.  If a channel uses ``"__all__"``, all commands in
+    that channel inherit ``"__all__"`` in their set.
+    """
+    cmd_to_channels: dict[str, set[str]] = {}
+    for channel_key, allowed_cmds in allow_map.items():
+        if "__all__" in allowed_cmds:
+            # All commands are allowed in this channel — we'll handle this
+            # by not adding every command; instead we note the wildcard channels
+            # and let allows_all_channels handle it.
+            # For the reverse map, we don't need to enumerate all 41 commands
+            # for wildcard channels.
+            continue
+        for cmd_name in allowed_cmds:
+            cmd_to_channels.setdefault(cmd_name, set()).add(channel_key)
+    return {cmd: frozenset(channels) for cmd, channels in cmd_to_channels.items()}
+
+
+# Directly define the per-command channel allowlist to avoid circular import
+# with channel_config.py.  This matches the CHANNEL_COMMAND_ALLOW mapping:
+#   general → {status, mood, help, casual, safeword}
+#   commands_hq → __all__ (wildcard — not enumerated)
+#   media_gallery → {mood, help, memory-search}
+#   notifications → empty (no commands)
+#   admin_internal → __all__ (wildcard — not enumerated)
+_CMD_CHANNEL_MAP: Final[dict[str, frozenset[str]]] = {
+    "status": frozenset({"general"}),
+    "mood": frozenset({"general", "media_gallery"}),
+    "help": frozenset({"general", "media_gallery"}),
+    "casual": frozenset({"general"}),
+    "safeword": frozenset({"general"}),
+    "memory-search": frozenset({"media_gallery"}),
+}
+
+
+COMMAND_SPECS: tuple[CommandSpec, ...] = tuple(
+    CommandSpec(
+        category=spec.category,
+        name=spec.name,
+        description=spec.description,
+        options=spec.options,
+        channel_allowlist=_CMD_CHANNEL_MAP.get(spec.name, frozenset()),
+    )
+    for spec in _BASE_SPECS
 )
 
 EXPECTED_COMMAND_NAMES = tuple(spec.name for spec in COMMAND_SPECS)

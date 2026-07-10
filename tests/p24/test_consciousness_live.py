@@ -1,7 +1,7 @@
 """P5 integration test: ConsciousnessLoop wired with real AIAgent (9router brain).
 
 Verifies the FULL delegate chain end-to-end:
-  ConsciousnessLoop(agent=AIAgent) -> substrate -> _self_prompt -> agent.chat -> 9router
+  ConsciousnessLoop -> ThoughtStream -> _self_prompt -> agent.chat -> 9router
 
 This is a LIVE integration test (requires 9router at localhost:20128).
 Skipped if 9router unreachable (CI / no-VPS).
@@ -40,13 +40,13 @@ async def test_consciousness_loop_with_real_aiagent_delegates_to_9router() -> No
     """ConsciousnessLoop wired with a real AIAgent brain produces live inference.
 
     This is the P5 end-state: consciousness delegates to Hermes AIAgent (single
-    brain) routed through 9router. A single _self_prompt tick through the loop
+    brain) routed through 9router. A single _self_prompt tick through the stream
     must return a non-empty real LLM response (not a mock canned string).
     """
     import sys
     sys.path.insert(0, "/home/guinevere/p24-port")
     from run_agent import AIAgent
-    from guinevere.consciousness.substrates import _self_prompt
+    from guinevere.consciousness.thought_stream import _self_prompt
 
     # Build the single brain. settings=None so Group G consciousness-wire
     # no-ops (breaks circular: brain does not build its own consciousness loop).

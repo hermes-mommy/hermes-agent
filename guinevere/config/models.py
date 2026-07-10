@@ -93,15 +93,28 @@ class MemoryConfig(BaseModel):
 
 
 class ConsciousnessConfig(BaseModel):
-    """Consciousness simulation / heartbeat settings."""
+    """Consciousness thought-stream configuration.
 
-    enabled: bool = False
+    Controls the unified thought stream (replaces 7-substrate pattern).
+    ``thought_type_weights`` maps ThoughtType values to base selection
+    weights (affect-based modulation applied at runtime).
+    """
+
+    enabled: bool = True
+    continuous_stream: bool = True
     heartbeat_intervals: list[int] = Field(
         default_factory=lambda: [60, 300, 900],
     )
     dreaming_pct: float = 0.05
-    substrates: list[str] = Field(
-        default_factory=lambda: ["short_term", "long_term", "emotional"],
+    thought_type_weights: dict[str, float] = Field(
+        default_factory=lambda: {
+            "cognition": 0.30,
+            "reflection": 0.15,
+            "planning": 0.10,
+            "dreaming": 0.10,
+            "meta": 0.20,
+            "heartbeat": 0.15,
+        },
     )
 
 
