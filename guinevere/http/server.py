@@ -21,7 +21,9 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-import structlog.logging  # side-effect: registers stdlib log handler
+import logging
+
+import structlog
 
 from fastapi import FastAPI
 
@@ -82,11 +84,12 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # ── Phase 1b: runtime log level ────────────────────────────────────
     # Suppress DEBUG-level structlog noise (consciousness thought stream
     # generates ~30 log lines/sec at DEBUG, filling syslog in hours).
-    # structlog's default processor chain routes through stdlib logging,
-    # so setting the stdlib level is sufficient.
-    for _ns in ("consciousness", "discord", "life_kernel", "channels", "x_poster"):
-        logging.getLogger(f"guinevere.{_ns}").setLevel(logging.INFO)
-    logging.getLogger("guinevere").setLevel(logging.INFO)
+    # Use make_filtering_bound_logger which drops messages before rendering,
+    # unlike stdlib setLevel (structlog ConsoleRenderer bypasses stdlib).
+    structlog.configure(
+        wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+        cache_logger_on_first_use=True,
+    )
 
     # ── Phase 2: optional PG pool (fail-soft) ─────────────────────────
     pg_pool: Any = None

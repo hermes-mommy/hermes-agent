@@ -33,6 +33,19 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger("guinevere.consciousness.thought_stream")
 
+# ---- log level throttle: suppress DEBUG for high-volume thought stream ----
+# Setting the wrapped stdlib logger level is insufficient when structlog's
+# default ConsoleRenderer writes directly to stderr.  Override the logger's
+# _log method to enforce level filtering at the structlog level.
+import logging as _logging
+_stream_stdlib = _logging.getLogger("guinevere.consciousness.thought_stream")
+_stream_stdlib.setLevel(_logging.INFO)
+
+# Also set the ancester so parent-to-child propagation is cut early.
+_ancestor_consciousness = _logging.getLogger("guinevere.consciousness")
+_ancestor_consciousness.setLevel(_logging.INFO)
+# --------------------------------------------------------------------------
+
 # Default thought type weights (sum to 1.0).  Overridden by config.
 _DEFAULT_WEIGHTS: dict[str, float] = {
     ThoughtType.COGNITION.value: 0.30,
@@ -274,7 +287,7 @@ class ThoughtStream:
                 redis_client = self._redis_client or self._config.get("redis_client")
                 if redis_client is None:
                     # No Redis client available — skip HARD STOP check entirely.
-                    logger.debug("thought_stream.hard_stop.no_redis_client")
+                    logger.info("thought_stream.hard_stop.no_redis_client")
                     self._hard_stop_unavailable = True
                     return False
                 self._hard_stop_guard = HardStopGuard(redis_client)
