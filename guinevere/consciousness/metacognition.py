@@ -198,14 +198,8 @@ class MetacognitiveEvaluator:
             self._recent_contents = self._recent_contents[-self._review_interval :]
             self._recent_types = self._recent_types[-self._review_interval :]
 
-        logger.debug(
-            "metacognition.evaluate",
-            type=type_value,
-            confidence=round(confidence, 3),
-            coherence=round(coherence, 3),
-            novelty=round(novelty, 3),
-            safety_pass=safety_pass,
-        )
+        # Suppressed per-thought debug log (was ~30 lines/sec at DEBUG).
+        # Periodic review captures summary stats every N thoughts instead.
 
         return MetaCogEval(
             confidence=confidence,

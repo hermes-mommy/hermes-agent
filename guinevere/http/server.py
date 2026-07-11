@@ -84,18 +84,11 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.agent_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_AGENTS)
     logger.info("agent_semaphore_created", max_concurrent=_MAX_CONCURRENT_AGENTS)
 
-    # ── Phase 1b: runtime log level ────────────────────────────────────
-    # Suppress DEBUG-level structlog noise (consciousness thought stream
-    # generates ~30 log lines/sec at DEBUG, filling syslog in hours).
-    # make_filtering_bound_logger(INFO) creates a FilteringBoundLogger
-    # whose debug() checks isEnabledFor(DEBUG) BEFORE calling the processor
-    # chain. Root was set to INFO at module top, so debug() → noop.
-    # logger_factory=stdlib ensures the underlying logger has isEnabledFor.
-    structlog.configure(
-        wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
-        cache_logger_on_first_use=True,
-        logger_factory=structlog.stdlib.LoggerFactory(),
-    )
+    # ── Phase 1b: hot-path debug log suppression ──────────────────────
+    # Per-thought DEBUG logs in metacognition.evaluate and
+    # thought_stream.thought_generated have been removed at source
+    # (see metacognition.py:201, thought_stream.py:376).
+    # Periodic review logs remain at INFO (once per 20 thoughts).
 
     # ── Phase 2: optional PG pool (fail-soft) ─────────────────────────
     pg_pool: Any = None

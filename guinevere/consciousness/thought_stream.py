@@ -373,13 +373,8 @@ class ThoughtStream:
                     # Update the thought to mark it as acted.
                     object.__setattr__(thought, "acted", True)
 
-            logger.debug(
-                "thought_stream.thought_generated",
-                type=thought_type.value,
-                confidence=confidence,
-                acted=acted,
-                content_preview=content[:80] if content else "",
-            )
+            # Suppressed per-thought log (was ~30 lines/sec at DEBUG).
+            # Periodic review captures summary stats every N thoughts instead.
 
             # Step 8: Periodic self-review (every N thoughts).
             if self._metacog.should_run_periodic_review():
