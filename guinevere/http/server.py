@@ -21,6 +21,8 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
+import structlog
+
 from fastapi import FastAPI
 
 from guinevere.http.middleware import PrometheusMiddleware
@@ -76,6 +78,25 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # ── Phase 1: concurrency gate ─────────────────────────────────────
     app.state.agent_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_AGENTS)
     logger.info("agent_semaphore_created", max_concurrent=_MAX_CONCURRENT_AGENTS)
+
+    # ── Phase 1b: runtime log level ────────────────────────────────────
+    # Suppress DEBUG-level structlog noise (consciousness thought stream
+    # generates ~30 log lines/sec at DEBUG, filling syslog in hours).
+    structlog.configure_once(
+        wrapper_class=structlog.stdlib.BoundLogger,
+        processors=[
+            structlog.stdlib.filter_by_level,
+            structlog.dev.ConsoleRenderer(),
+        ],
+        context_class=dict,
+        cache_logger_on_first_use=True,
+    )
+    # Set structlog's stdlib helper to INFO for the consciousness namespace.
+    _sl = logging.getLogger("guinevere.consciousness")
+    _sl.setLevel(logging.INFO)
+    # Also tame discord, life_kernel, channels namespaces.
+    for _ns in ("discord", "life_kernel", "channels", "x_poster"):
+        logging.getLogger(f"guinevere.{_ns}").setLevel(logging.INFO)
 
     # ── Phase 2: optional PG pool (fail-soft) ─────────────────────────
     pg_pool: Any = None

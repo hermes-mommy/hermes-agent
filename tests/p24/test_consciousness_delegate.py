@@ -88,4 +88,8 @@ async def test_self_prompt_returns_empty_string_on_agent_failure() -> None:
         max_tokens=32,
     )
 
-    assert result == "", f"expected empty string on failure, got {result!r}"
+    # Changed: _self_prompt now returns a descriptive fallback string instead of
+    # empty string so the thought stream has non-empty content for metacog eval.
+    assert (
+        "self-prompt failed" in result
+    ), f"expected fallback message on failure, got {result!r}"

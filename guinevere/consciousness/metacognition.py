@@ -164,10 +164,16 @@ class MetacognitiveEvaluator:
             + NOVELTY_WEIGHT * novelty
         )
 
+        # Boost baseline with sentence/word structure.
+        # A non-empty thought with sentences should never floor at 0.2.
+        word_count = len(content.split())
+        if word_count >= 5:
+            confidence = max(confidence, 0.4)
+
         # Adjust confidence with affect if available.
         if affect:
             affect_confidence = affect.get("confidence", 0.5)
-            confidence = confidence * 0.8 + affect_confidence * 0.2
+            confidence = confidence * 0.7 + affect_confidence * 0.3
 
         # Clamp to [0.0, 1.0].
         confidence = max(0.0, min(1.0, confidence))

@@ -129,12 +129,18 @@ async def _self_prompt(
         The agent's response string. Empty string on failure (thought stream
         must not crash on a single failed self-prompt).
     """
+    if llm_router is None:
+        logger.warning("self_prompt.llm_router_none")
+        return "[consciousness: llm_router not available]"
+
     prompt = system_msg + chr(10) + chr(10) + user_msg
     try:
-        result = llm_router.chat(prompt)
+        # AIAgent.chat() is synchronous — wrap in to_thread to avoid blocking
+        # the event loop while the 9router call is in flight.
+        result = await asyncio.to_thread(llm_router.chat, prompt)
     except Exception as exc:
         logger.warning("self_prompt.delegate_failed %s", exc)
-        return ""
+        return "[consciousness: self-prompt failed]"
     if not isinstance(result, str):
         # Defensive: if a legacy dict-returning router is wired, extract content.
         if isinstance(result, dict):
