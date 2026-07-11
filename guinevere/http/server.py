@@ -87,14 +87,12 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # ── Phase 1b: runtime log level ────────────────────────────────────
     # Suppress DEBUG-level structlog noise (consciousness thought stream
     # generates ~30 log lines/sec at DEBUG, filling syslog in hours).
-    # BoundLogger.debug() checks isEnabledFor(DEBUG) on the stdlib logger
-    # BEFORE calling the processor chain, so setting root to INFO at module
-    # top is sufficient to drop all DEBUG messages. No filter_by_level
-    # processor needed (it would also drop INFO due to internal thresholds).
+    # make_filtering_bound_logger(INFO) creates a FilteringBoundLogger
+    # whose debug() checks isEnabledFor(DEBUG) BEFORE calling the processor
+    # chain. Root was set to INFO at module top, so debug() → noop.
+    # logger_factory=stdlib ensures the underlying logger has isEnabledFor.
     structlog.configure(
-        processors=[structlog.dev.ConsoleRenderer()],
-        wrapper_class=structlog.stdlib.BoundLogger,
-        context_class=dict,
+        wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
         cache_logger_on_first_use=True,
         logger_factory=structlog.stdlib.LoggerFactory(),
     )
