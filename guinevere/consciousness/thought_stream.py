@@ -430,6 +430,11 @@ class ThoughtStream:
             max_tokens=256,
         )
 
+        # If LLM is unavailable, pace the loop to avoid CPU spin:
+        # placeholder thoughts are generated at CPU speed otherwise.
+        if self._llm_router is None:
+            await asyncio.sleep(1.0)
+
         return content
 
     def _build_user_message(
