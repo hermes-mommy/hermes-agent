@@ -21,8 +21,6 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-import logging
-
 import structlog
 
 from fastapi import FastAPI
@@ -30,6 +28,11 @@ from fastapi import FastAPI
 from guinevere.http.middleware import PrometheusMiddleware
 from guinevere.http.rate_limit import RateLimitMiddleware
 from guinevere.http.routes import router
+
+# Set root stdlib logger BEFORE any structlog loggers are created.
+# structlog.stdlib.BoundLogger.debug() checks isEnabledFor() and returns
+# immediately if level < threshold, bypassing the processor chain entirely.
+logging.getLogger().setLevel(logging.INFO)
 
 logger = logging.getLogger("guinevere.http")
 
@@ -84,10 +87,16 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # ── Phase 1b: runtime log level ────────────────────────────────────
     # Suppress DEBUG-level structlog noise (consciousness thought stream
     # generates ~30 log lines/sec at DEBUG, filling syslog in hours).
-    # Use make_filtering_bound_logger which drops messages before rendering,
-    # unlike stdlib setLevel (structlog ConsoleRenderer bypasses stdlib).
+    # Uses structlog.stdlib.BoundLogger whose debug() checks
+    # isEnabledFor(DEBUG) on the underlying stdlib logger BEFORE calling
+    # the processor chain. Root logger was set to INFO at module top.
     structlog.configure(
-        wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+        processors=[
+            structlog.stdlib.filter_by_level,
+            structlog.dev.ConsoleRenderer(),
+        ],
+        wrapper_class=structlog.stdlib.BoundLogger,
+        context_class=dict,
         cache_logger_on_first_use=True,
     )
 
